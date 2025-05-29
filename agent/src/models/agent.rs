@@ -89,10 +89,8 @@ impl Agent {
                         }
                         Err(e) => {
                             eprintln!("Tool {} execution failed: {}", tool_call.function.name, e);
-                            // Send back an error message as the tool's output
                             let error_content = format!("Error executing tool {}: {}", tool_call.function.name, e);
                             let response_tool_call_id = tool_call.id.clone().unwrap_or_else(|| tool_call.function.name.clone());
-                            
                             messages.push(Message::tool(
                                 response_tool_call_id,
                                 error_content,

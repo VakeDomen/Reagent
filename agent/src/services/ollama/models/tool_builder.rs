@@ -28,7 +28,6 @@ pub struct ToolBuilder {
     tool_type: Option<ToolType>,
     function_name: Option<String>,
     function_description: Option<String>,
-    function_param_type: Option<String>,
     function_properties: HashMap<String, Property>,
     function_required: Vec<String>,
     executor: Option<AsyncToolFn>,
@@ -40,7 +39,6 @@ impl std::fmt::Debug for ToolBuilder {
             .field("tool_type", &self.tool_type)
             .field("function_name", &self.function_name)
             .field("function_description", &self.function_description)
-            .field("function_param_type", &self.function_param_type)
             .field("function_properties", &self.function_properties)
             .field("function_required", &self.function_required)
             .field("executor", &self.executor.as_ref().map(|_| "<async_fn>")) // Show placeholder if executor is Some
@@ -54,8 +52,7 @@ impl ToolBuilder {
     /// `function_param_type` will be `"object"` if not explicitly set.
     pub fn new() -> Self {
         ToolBuilder {
-            tool_type: Some(ToolType::Function), // Default to Function
-            function_param_type: Some("object".to_string()), // Default for function arguments
+            tool_type: Some(ToolType::Function),
             function_properties: HashMap::new(),
             function_required: Vec::new(),
             ..Default::default()
@@ -81,12 +78,6 @@ impl ToolBuilder {
         self
     }
 
-    /// Sets the type for the function's arguments object.
-    /// Defaults to `"object"`.
-    pub fn function_arguments_type(mut self, param_type: impl Into<String>) -> Self {
-        self.function_param_type = Some(param_type.into());
-        self
-    }
 
     /// Adds a property to the function's arguments.
     ///
@@ -136,7 +127,7 @@ impl ToolBuilder {
         let executor = self.executor.ok_or(ToolBuilderError::MissingExecutor)?; // Check for executor
 
         let arguments = FunctionArguments {
-            param_type: self.function_param_type.unwrap_or_else(|| "object".to_string()),
+            param_type:"object".to_string(),
             properties: self.function_properties,
             required: self.function_required,
         };
