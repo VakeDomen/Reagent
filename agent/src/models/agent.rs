@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
 
-use crate::services::ollama::{client::OllamaClient, models::{BaseRequest, ChatRequest, ChatResponse, Function, FunctionParameters, Message, Property, Tool, ToolType}};
+
+use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}};
 
 use super::AgentError;
 
@@ -53,7 +52,26 @@ impl Agent {
         };
 
         let response: ChatResponse = self.ollama_client.chat(request).await?;
-        self.history.push(response.message.clone());
+        let message = response.message.clone();
+        
+        if let Some(tc) = &message.tool_calls {
+            self.call_tools(tc).await
+        }
+        
+        self.history.push(message);
         Ok(response.message)
+    }
+
+
+    async fn call_tools(&self, tool_calls: &Vec<ToolCall>) {
+        if let Some(avalible_tools) = &self.tools {
+            for tool_call in tool_calls {
+                for avalible_tool in avalible_tools {
+                    if avalible_tool.function.name.eq(&tool_call.function.name) {
+                        let _ = avalible_tool.execute(tool_call.function.arguments.clone()).await;
+                    }
+                }
+            }
+        }
     }
 }

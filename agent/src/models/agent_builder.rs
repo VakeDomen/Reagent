@@ -1,4 +1,5 @@
-use crate::services::ollama::models::Tool;
+
+use crate::services::ollama::models::tool::Tool;
 
 use super::Agent;
 

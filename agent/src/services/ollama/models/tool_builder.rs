@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
-use super::models::{Function, FunctionParameters, Property, Tool, ToolType};
+use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolBuilderError {
     MissingFunctionName,
     MissingFunctionDescription,
+    MissingExecutor,
 }
 
 impl std::fmt::Display for ToolBuilderError {
@@ -13,6 +15,7 @@ impl std::fmt::Display for ToolBuilderError {
         match self {
             ToolBuilderError::MissingFunctionName => write!(f, "Function name is required."),
             ToolBuilderError::MissingFunctionDescription => write!(f, "Function description is required."),
+            ToolBuilderError::MissingExecutor => write!(f, "Executor function is required for the tool."),
         }
     }
 }
@@ -20,7 +23,7 @@ impl std::fmt::Display for ToolBuilderError {
 impl std::error::Error for ToolBuilderError {}
 
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ToolBuilder {
     tool_type: Option<ToolType>,
     function_name: Option<String>,
@@ -28,6 +31,21 @@ pub struct ToolBuilder {
     function_param_type: Option<String>,
     function_properties: HashMap<String, Property>,
     function_required: Vec<String>,
+    executor: Option<AsyncToolFn>,
+}
+
+impl std::fmt::Debug for ToolBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolBuilder")
+            .field("tool_type", &self.tool_type)
+            .field("function_name", &self.function_name)
+            .field("function_description", &self.function_description)
+            .field("function_param_type", &self.function_param_type)
+            .field("function_properties", &self.function_properties)
+            .field("function_required", &self.function_required)
+            .field("executor", &self.executor.as_ref().map(|_| "<async_fn>")) // Show placeholder if executor is Some
+            .finish()
+    }
 }
 
 impl ToolBuilder {
@@ -102,6 +120,12 @@ impl ToolBuilder {
         self
     }
 
+    /// Sets the asynchronous executor function for the tool. (Required for building)
+    pub fn executor(mut self, exec: AsyncToolFn) -> Self {
+        self.executor = Some(exec);
+        self
+    }
+
     /// Consumes the builder and attempts to create a `Tool`.
     ///
     /// # Errors
@@ -109,7 +133,7 @@ impl ToolBuilder {
     pub fn build(self) -> Result<Tool, ToolBuilderError> {
         let function_name = self.function_name.ok_or(ToolBuilderError::MissingFunctionName)?;
         let function_description = self.function_description.ok_or(ToolBuilderError::MissingFunctionDescription)?;
-
+        let executor = self.executor.ok_or(ToolBuilderError::MissingExecutor)?; // Check for executor
 
         let parameters = FunctionParameters {
             param_type: self.function_param_type.unwrap_or_else(|| "object".to_string()),
@@ -126,6 +150,7 @@ impl ToolBuilder {
         Ok(Tool {
             tool_type: self.tool_type.unwrap_or(ToolType::Function),
             function,
+            executor, 
         })
     }
 }

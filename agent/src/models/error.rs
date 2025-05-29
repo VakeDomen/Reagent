@@ -1,4 +1,5 @@
-use crate::services::ollama::models::OllamaError;
+use crate::services::ollama::models::errors::OllamaError;
+
 
 
 #[derive(Debug)]

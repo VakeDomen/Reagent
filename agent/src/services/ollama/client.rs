@@ -2,7 +2,8 @@ use reqwest::{Client, Error as ReqwestError};
 use serde::de::DeserializeOwned;
 use std::fmt;
 
-use super::models::{ChatRequest, ChatResponse, EmbeddingsRequest, EmbeddingsResponse, GenerateRequest, GenerateResponse, OllamaError};
+use super::models::{chat::{ChatRequest, ChatResponse}, embedding::{EmbeddingsRequest, EmbeddingsResponse}, errors::OllamaError, generate::{GenerateRequest, GenerateResponse}};
+
 
 /// The main client for interacting with the Ollama API.
 #[derive(Debug, Clone)]
@@ -45,8 +46,8 @@ impl OllamaClient {
         R: DeserializeOwned + fmt::Debug,
     {
         let url = format!("{}{}", self.base_url, endpoint);
-        println!("Sending request to: {}", url);
-        println!("Request body: {:?}", serde_json::to_string(request_body));
+        // println!("Sending request to: {}", url);
+        // println!("Request body: {:?}", serde_json::to_string(request_body));
 
         let response = match self
             .client
@@ -64,18 +65,12 @@ impl OllamaClient {
                 OllamaError::ApiError(format!("Failed to read response text: {}", e))
             })?;
         
-            println!("--------------------------------------------------");
-            println!("RAW JSON RESPONSE FROM OLLAMA:\n{}", response_text);
-            println!("--------------------------------------------------");
-        
-            // Now try to deserialize from the captured text
+            
             match serde_json::from_str::<R>(&response_text) {
                 Ok(result) => {
-                    println!("Received response (deserialized): {:?}", result);
                     Ok(result)
                 }
                 Err(e) => {
-                    // Attach the raw text to the error for better debugging
                     let deserialization_error_message = format!(
                         "Error decoding response body: {}. Raw JSON was: '{}'",
                         e, response_text
