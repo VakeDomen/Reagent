@@ -1,7 +1,7 @@
 
 use std::sync::Arc;
 
-use agent::{models::AgentBuilder, AsyncToolFn, ToolBuilder};
+use agent::{models::AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
 use anyhow::Result;
 use serde_json::Value;
 
@@ -11,7 +11,16 @@ async fn main() -> Result<()> {
     let my_executor: AsyncToolFn = Arc::new(|args: Value| {
         Box::pin(async move {
             println!("Executing with args: {:?}", args);
-            Ok("Tool executed successfully".to_string())
+            if let Some(location) = args.get("location").and_then(|v| v.as_str()) {
+                Ok(format!(
+                    "The weather in {} is sunny and 25°C.",
+                    location
+                ))
+            } else {
+                Err(ToolExecutionError::ArgumentParsingError(
+                    "Missing 'location' argument".to_string(),
+                ))
+            }
         })
     });
 
@@ -39,6 +48,8 @@ async fn main() -> Result<()> {
 
     let resp = agent.invoke("What is the current weather in Ljubljana?").await;
     println!("Agent Resp: {:#?}", resp);
+
+    println!("AGENT: {:#?}", agent);
 
     Ok(())
 }

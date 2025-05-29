@@ -39,39 +39,77 @@ impl Agent {
     {
         self.history.push(Message::user(prompt.into()));
 
-        let request = ChatRequest {
-            base: BaseRequest {
-                model: self.model.clone(),
-                format: None,
-                options: None,
-                stream: Some(false), 
-                keep_alive: Some("5m".to_string()),
-            },
-            messages: self.history.clone(),
-            tools: self.tools.clone(), 
-        };
+        loop {
+            
+            let request = ChatRequest {
+                base: BaseRequest {
+                    model: self.model.clone(),
+                    format: None,
+                    options: None,
+                    stream: Some(false), 
+                    keep_alive: Some("5m".to_string()),
+                },
+                messages: self.history.clone(),
+                tools: self.tools.clone(), 
+            };
+    
+            let response: ChatResponse = self.ollama_client.chat(request).await?;
+            let message = response.message.clone();
+           
+            let tool_calls = message.tool_calls.clone();
+            self.history.push(message);
 
-        let response: ChatResponse = self.ollama_client.chat(request).await?;
-        let message = response.message.clone();
-        
-        if let Some(tc) = &message.tool_calls {
-            self.call_tools(tc).await
+            if let Some(tc) = tool_calls {
+                for tool_message in self.call_tools(&tc).await {
+                    self.history.push(tool_message);
+                }
+            } else {
+                return Ok(response.message);
+            }
         }
-        
-        self.history.push(message);
-        Ok(response.message)
     }
 
 
-    async fn call_tools(&self, tool_calls: &Vec<ToolCall>) {
+    async fn call_tools(&self, tool_calls: &Vec<ToolCall>) -> Vec<Message> {
         if let Some(avalible_tools) = &self.tools {
+            let mut messages = vec![];
             for tool_call in tool_calls {
                 for avalible_tool in avalible_tools {
-                    if avalible_tool.function.name.eq(&tool_call.function.name) {
-                        let _ = avalible_tool.execute(tool_call.function.arguments.clone()).await;
+                    if !avalible_tool.function.name.eq(&tool_call.function.name) {
+                        continue;
+                    }
+                    match avalible_tool.execute(tool_call.function.arguments.clone()).await {
+                        Ok(tool_result_content) => {
+                            let response_tool_call_id = tool_call.id
+                                .clone()
+                                .unwrap_or_else(|| tool_call.function.name.clone());
+    
+    
+                            messages.push(Message::tool(
+                                tool_result_content,
+                                response_tool_call_id, 
+                            ));
+                        }
+                        Err(e) => {
+                            eprintln!("Tool {} execution failed: {}", tool_call.function.name, e);
+                            // Send back an error message as the tool's output
+                            let error_content = format!("Error executing tool {}: {}", tool_call.function.name, e);
+                            let response_tool_call_id = tool_call.id.clone().unwrap_or_else(|| tool_call.function.name.clone());
+                            
+                            messages.push(Message::tool(
+                                response_tool_call_id,
+                                error_content,
+                            ));
+                        }
                     }
                 }
             }
+            messages
+        } else {
+            vec![Message::tool(
+                "Tool",
+                "Could not find tool with same name. Try again.",
+            )]
         }
     }
 }
