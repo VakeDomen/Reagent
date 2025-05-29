@@ -1,7 +1,7 @@
 
 use std::sync::Arc;
 
-use agent::{models::AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError, Value};
+use agent::{json, models::AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError, Value};
 use anyhow::Result;
 use tokio::sync::Mutex;
 
@@ -9,10 +9,30 @@ use tokio::sync::Mutex;
 async fn main() -> Result<()> {
     let weather_agent = AgentBuilder::default()
         .set_model("qwen3:30b")
-        .set_system_prompt("/no_think \nYou make up weather when given a location")
+        .set_system_prompt("/no_think \nYou make up weather when given a location. Act like you know. ")
         .set_ollama_endpoint("http://hivecore.famnit.upr.si")
         .set_ollama_port(6666)
-        .build();
+        .set_response_format(r#"{
+                "type": "object",
+                "properties": {
+                    "windy": {
+                        "type": "boolean"
+                    },
+                    "temperature": {
+                        "type": "integer"
+                    },
+                    "overlook": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "windy",
+                    "temperature",
+                    "overlook"
+                ]
+            }"#
+        )
+        .build()?;
 
     let weather_agent_ref = Arc::new(Mutex::new(weather_agent));
 
@@ -77,7 +97,7 @@ async fn main() -> Result<()> {
         .set_ollama_endpoint("http://hivecore.famnit.upr.si")
         .set_ollama_port(6666)
         .add_tool(get_weather_tool)
-        .build();
+        .build()?;
 
     let resp = agent.invoke("Can you say 'Yeah'").await;
     // println!("Agent Resp: {:#?}", resp?.content);

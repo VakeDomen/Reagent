@@ -1,7 +1,7 @@
 
 use crate::services::ollama::models::tool::Tool;
 
-use super::Agent;
+use super::{Agent, AgentBuildError};
 
 #[derive(Debug, Default)]
 pub struct AgentBuilder {
@@ -9,7 +9,8 @@ pub struct AgentBuilder {
     ollama_url: Option<String>,
     ollama_port: Option<u16>,
     system_prompt: Option<String>,
-    tools: Option<Vec<Tool>>
+    tools: Option<Vec<Tool>>,
+    response_format: Option<String>,
 }
 
 
@@ -33,6 +34,11 @@ impl AgentBuilder {
         self.system_prompt = Some(prompt.into());
         self
     }
+
+    pub fn set_response_format<T>(mut self, format: T) -> Self where T: Into<String> {
+        self.response_format = Some(format.into());
+        self
+    }
     
     pub fn add_tool(mut self, tool: Tool) -> Self {
         match self.tools.as_mut() {
@@ -42,10 +48,10 @@ impl AgentBuilder {
         self
     }
 
-    pub fn build(self) -> Agent {
+    pub fn build(self) -> Result<Agent, AgentBuildError> {
         let model = match self.model {
             Some(m) => m,
-            None => "qwen3:30b".into(),
+            None => return Err(AgentBuildError::ModelNotSet),
         };
         
         let ollama_url = match self.ollama_url {
@@ -63,7 +69,25 @@ impl AgentBuilder {
             None => "You are a helpful agent.".into(),
         };
         
+        let mut response_format = None;
+        if let Some(schema_str) = self.response_format {
+            let trimmed_schema_str = schema_str.trim();
+            match serde_json::from_str(trimmed_schema_str) {
+                Ok(parsed_schema_object) => response_format = Some(parsed_schema_object),
+                Err(e) => return Err(AgentBuildError::InvalidJsonSchema(format!(
+                        "Failed to parse provided JSON schema string: {}. Error: {}",
+                        trimmed_schema_str, e
+                )))
+            }
+        }
 
-        Agent::new(&model, &ollama_url, ollama_port, &system_prompt, self.tools)
+        Ok(Agent::new(
+            &model, 
+            &ollama_url, 
+            ollama_port, 
+            &system_prompt, 
+            self.tools,
+            response_format,
+        ))
     }
 }

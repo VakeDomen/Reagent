@@ -1,3 +1,5 @@
+use std::fmt::write;
+
 use crate::services::ollama::models::errors::OllamaError;
 
 
@@ -31,3 +33,21 @@ impl From<OllamaError> for AgentError {
         AgentError::OllamaError(err)
     }
 }
+
+
+// Define a specific error type for builder configuration if parsing fails
+#[derive(Debug)]
+pub enum AgentBuildError {
+    InvalidJsonSchema(String),
+    ModelNotSet
+}
+
+impl std::fmt::Display for AgentBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {}", e),
+            AgentBuildError::ModelNotSet => write!(f, "Model not set."),
+                    }
+    }
+}
+impl std::error::Error for AgentBuildError {}

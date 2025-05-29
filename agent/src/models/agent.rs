@@ -1,3 +1,5 @@
+use serde_json::Value;
+
 use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}};
 
 use super::AgentError;
@@ -9,6 +11,7 @@ pub struct Agent {
     history: Vec<Message>,
     ollama_client: OllamaClient,
     tools: Option<Vec<Tool>>,
+    response_format: Option<Value>,
 }
 
 impl Agent {
@@ -17,7 +20,8 @@ impl Agent {
         ollama_host: &str,
         ollama_port: u16,
         system_prompt: &str,
-        tools: Option<Vec<Tool>>
+        tools: Option<Vec<Tool>>,
+        response_format: Option<Value>,
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
         let history = vec![Message::system(system_prompt.to_string())];
@@ -26,7 +30,8 @@ impl Agent {
             model: model.into(),
             history,
             ollama_client: OllamaClient::new(base_url),
-            tools
+            tools,
+            response_format
         }
     }
 
@@ -41,7 +46,7 @@ impl Agent {
             let request = ChatRequest {
                 base: BaseRequest {
                     model: self.model.clone(),
-                    format: None,
+                    format: self.response_format.clone(),
                     options: None,
                     stream: Some(false), 
                     keep_alive: Some("5m".to_string()),

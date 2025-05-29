@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::tool::ToolCall;
 
@@ -70,7 +71,7 @@ impl Message {
 pub struct BaseRequest {
     pub model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<String>, // e.g., "json"
+    pub format: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<HashMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
