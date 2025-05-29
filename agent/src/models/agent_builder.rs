@@ -1,3 +1,5 @@
+use crate::services::ollama::models::Tool;
+
 use super::Agent;
 
 #[derive(Debug, Default)]
@@ -6,6 +8,7 @@ pub struct AgentBuilder {
     ollama_url: Option<String>,
     ollama_port: Option<u16>,
     system_prompt: Option<String>,
+    tools: Option<Vec<Tool>>
 }
 
 
@@ -30,6 +33,13 @@ impl AgentBuilder {
         self
     }
     
+    pub fn add_tool(mut self, tool: Tool) -> Self {
+        match self.tools.as_mut() {
+            Some(vec_tools) => vec_tools.push(tool),
+            None => self.tools = Some(vec![tool]),
+        };
+        self
+    }
 
     pub fn build(self) -> Agent {
         let model = match self.model {
@@ -53,6 +63,6 @@ impl AgentBuilder {
         };
         
 
-        Agent::new(&model, &ollama_url, ollama_port, &system_prompt)
+        Agent::new(&model, &ollama_url, ollama_port, &system_prompt, self.tools)
     }
 }

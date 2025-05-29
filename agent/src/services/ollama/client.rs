@@ -58,21 +58,40 @@ impl OllamaClient {
                 Err(e) => return Err(OllamaError::ApiError(e.to_string())),
             };
 
-        if response.status().is_success() {
-            let result = match response.json::<R>().await {
-                Ok(r) => r,
-                Err(e) => return Err(OllamaError::SerializationError(e.to_string())),
-            };
-            println!("Received response: {:?}", result);
-            Ok(result)
+        let status = response.status();
+        if status.is_success() {
+            let response_text = response.text().await.map_err(|e| {
+                OllamaError::ApiError(format!("Failed to read response text: {}", e))
+            })?;
+        
+            println!("--------------------------------------------------");
+            println!("RAW JSON RESPONSE FROM OLLAMA:\n{}", response_text);
+            println!("--------------------------------------------------");
+        
+            // Now try to deserialize from the captured text
+            match serde_json::from_str::<R>(&response_text) {
+                Ok(result) => {
+                    println!("Received response (deserialized): {:?}", result);
+                    Ok(result)
+                }
+                Err(e) => {
+                    // Attach the raw text to the error for better debugging
+                    let deserialization_error_message = format!(
+                        "Error decoding response body: {}. Raw JSON was: '{}'",
+                        e, response_text
+                    );
+                    println!("Deserialization failed: {}", deserialization_error_message);
+                    Err(OllamaError::SerializationError(deserialization_error_message))
+                }
+            }
         } else {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_else(|_| "Failed to read error body".to_string());
-            println!("Request failed with status: {}", status);
-            println!("Error body: {}", text);
+            let status_code = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to read error body".to_string());
+            println!("Request failed with status: {}", status_code);
+            println!("Error body: {}", error_text);
             Err(OllamaError::ApiError(format!(
                 "Request failed: {} - {}",
-                status, text
+                status_code, error_text
             )))
         }
     }

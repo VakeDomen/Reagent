@@ -1,0 +1,131 @@
+use std::collections::HashMap;
+
+use super::models::{Function, FunctionParameters, Property, Tool, ToolType};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBuilderError {
+    MissingFunctionName,
+    MissingFunctionDescription,
+}
+
+impl std::fmt::Display for ToolBuilderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolBuilderError::MissingFunctionName => write!(f, "Function name is required."),
+            ToolBuilderError::MissingFunctionDescription => write!(f, "Function description is required."),
+        }
+    }
+}
+
+impl std::error::Error for ToolBuilderError {}
+
+
+#[derive(Debug, Default)]
+pub struct ToolBuilder {
+    tool_type: Option<ToolType>,
+    function_name: Option<String>,
+    function_description: Option<String>,
+    function_param_type: Option<String>,
+    function_properties: HashMap<String, Property>,
+    function_required: Vec<String>,
+}
+
+impl ToolBuilder {
+    /// Creates a new `ToolBuilder`.
+    /// By default, `tool_type` will be `ToolType::Function` and
+    /// `function_param_type` will be `"object"` if not explicitly set.
+    pub fn new() -> Self {
+        ToolBuilder {
+            tool_type: Some(ToolType::Function), // Default to Function
+            function_param_type: Some("object".to_string()), // Default for function parameters
+            function_properties: HashMap::new(),
+            function_required: Vec::new(),
+            ..Default::default()
+        }
+    }
+
+    /// Sets the type of the tool.
+    /// Defaults to `ToolType::Function`.
+    pub fn tool_type(mut self, tool_type: ToolType) -> Self {
+        self.tool_type = Some(tool_type);
+        self
+    }
+
+    /// Sets the name of the function for the tool. (Required)
+    pub fn function_name(mut self, name: impl Into<String>) -> Self {
+        self.function_name = Some(name.into());
+        self
+    }
+
+    /// Sets the description of the function for the tool. (Required)
+    pub fn function_description(mut self, description: impl Into<String>) -> Self {
+        self.function_description = Some(description.into());
+        self
+    }
+
+    /// Sets the type for the function's parameters object.
+    /// Defaults to `"object"`.
+    pub fn function_parameters_type(mut self, param_type: impl Into<String>) -> Self {
+        self.function_param_type = Some(param_type.into());
+        self
+    }
+
+    /// Adds a property to the function's parameters.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the property.
+    /// * `property_type` - The JSON schema type of the property (e.g., "string", "number", "boolean").
+    /// * `description` - A description of what the property represents.
+    pub fn add_property(
+        mut self,
+        name: impl Into<String>,
+        property_type: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        self.function_properties.insert(
+            name.into(),
+            Property {
+                property_type: property_type.into(),
+                description: description.into(),
+            },
+        );
+        self
+    }
+
+    /// Marks a property as required for the function.
+    /// The property must have been previously added using `add_property`.
+    pub fn add_required_property(mut self, name: impl Into<String>) -> Self {
+        // It's good practice to ensure the property exists before adding it to required,
+        // but for simplicity in the builder, we'll assume the user calls add_property first.
+        // Alternatively, the build method could validate this.
+        self.function_required.push(name.into());
+        self
+    }
+
+    /// Consumes the builder and attempts to create a `Tool`.
+    ///
+    /// # Errors
+    /// Returns a `ToolBuilderError` if required fields are missing.
+    pub fn build(self) -> Result<Tool, ToolBuilderError> {
+        let function_name = self.function_name.ok_or(ToolBuilderError::MissingFunctionName)?;
+        let function_description = self.function_description.ok_or(ToolBuilderError::MissingFunctionDescription)?;
+
+
+        let parameters = FunctionParameters {
+            param_type: self.function_param_type.unwrap_or_else(|| "object".to_string()),
+            properties: self.function_properties,
+            required: self.function_required,
+        };
+
+        let function = Function {
+            name: function_name,
+            description: function_description,
+            parameters,
+        };
+
+        Ok(Tool {
+            tool_type: self.tool_type.unwrap_or(ToolType::Function),
+            function,
+        })
+    }
+}

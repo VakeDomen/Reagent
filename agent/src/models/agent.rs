@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 
-use crate::services::ollama::{client::OllamaClient, models::{BaseRequest, ChatRequest, ChatResponse, Message}};
+use crate::services::ollama::{client::OllamaClient, models::{BaseRequest, ChatRequest, ChatResponse, Function, FunctionParameters, Message, Property, Tool, ToolType}};
 
 use super::AgentError;
 
@@ -10,6 +12,7 @@ pub struct Agent {
     model: String,
     history: Vec<Message>,
     ollama_client: OllamaClient,
+    tools: Option<Vec<Tool>>,
 }
 
 impl Agent {
@@ -18,6 +21,7 @@ impl Agent {
         ollama_host: &str,
         ollama_port: u16,
         system_prompt: &str,
+        tools: Option<Vec<Tool>>
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
         let history = vec![Message::system(system_prompt.to_string())];
@@ -26,6 +30,7 @@ impl Agent {
             model: model.into(),
             history,
             ollama_client: OllamaClient::new(base_url),
+            tools
         }
     }
 
@@ -44,7 +49,7 @@ impl Agent {
                 keep_alive: Some("5m".to_string()),
             },
             messages: self.history.clone(),
-            tools: None, 
+            tools: self.tools.clone(), 
         };
 
         let response: ChatResponse = self.ollama_client.chat(request).await?;

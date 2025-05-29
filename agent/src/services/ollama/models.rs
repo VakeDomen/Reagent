@@ -30,14 +30,15 @@ pub enum Role {
     Tool,
 }
 
-/// Represents a single message in a chat conversation.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     pub role: Role,
-    pub content: String,
+    // Make content optional and provide a default if it's missing in the JSON
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")] // Ensure this is also default
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
@@ -48,7 +49,7 @@ impl Message {
     pub fn new(role: Role, content: String) -> Self {
         Self {
             role,
-            content,
+            content: Some(content),
             images: None,
             tool_calls: None,
             tool_call_id: None,
@@ -68,6 +69,16 @@ impl Message {
     /// Creates a new 'assistant' message.
     pub fn assistant(content: String) -> Self {
         Self::new(Role::Assistant, content)
+    }
+
+    pub fn tool(content: String, tool_call_id: String) -> Self {
+        Self {
+            role: Role::Tool,
+            content: Some(content),
+            images: None,
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id),
+        }
     }
 }
 /// Base structure for requests.
@@ -254,15 +265,30 @@ pub struct Property {
 /// Represents a tool call requested by the model.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
-    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default = "default_tool_call_type", skip_serializing_if = "is_default_tool_call_type")]
     #[serde(rename = "type")]
     pub tool_type: ToolType, // Should always be "function" for now
     pub function: ToolCallFunction,
+}
+
+// Helper function to provide a default ToolType if it's missing in the JSON
+// This is used if your Ollama version consistently omits the "type" field in the tool_call object.
+fn default_tool_call_type() -> ToolType {
+    ToolType::Function // Default to function
+}
+
+// Helper for skip_serializing_if to avoid serializing if it's the default
+// This is more relevant if you were to serialize this struct often and wanted to omit default values.
+#[allow(clippy::trivially_copy_pass_by_ref)] // Added to address potential clippy lint
+fn is_default_tool_call_type(tool_type: &ToolType) -> bool {
+    *tool_type == default_tool_call_type()
 }
 
 /// Contains the name and arguments for a function call.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCallFunction {
     pub name: String,
-    pub arguments: HashMap<String, serde_json::Value>,
+    pub arguments: serde_json::Value,
 }
