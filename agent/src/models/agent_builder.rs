@@ -20,8 +20,8 @@ impl AgentBuilder {
         self
     }
 
-    pub fn set_ollama_port<T>(mut self, port: T) -> Self where T: Into<u16> {
-        self.ollama_port = Some(port.into());
+    pub fn set_ollama_port(mut self, port: u16) -> Self {
+        self.ollama_port = Some(port);
         self
     }
 

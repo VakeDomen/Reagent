@@ -1,5 +1,6 @@
-use ollama_rs::{generation::chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponse}, Ollama};
 use anyhow::Result;
+
+use crate::services::ollama::{client::OllamaClient, models::{BaseRequest, ChatRequest, ChatResponse, Message}};
 
 use super::AgentError;
 
@@ -7,8 +8,8 @@ use super::AgentError;
 #[derive(Debug)]
 pub struct Agent {
     model: String,
-    history: Vec<ChatMessage>,
-    ollama_client: Ollama,
+    history: Vec<Message>,
+    ollama_client: OllamaClient,
 }
 
 impl Agent {
@@ -18,30 +19,36 @@ impl Agent {
         ollama_port: u16,
         system_prompt: &str,
     ) -> Self {
-        let mut history = vec![];
-        history.push(ChatMessage::system(system_prompt.into()));
+        let base_url = format!("{}:{}", ollama_host, ollama_port);
+        let history = vec![Message::system(system_prompt.to_string())];
 
-
-        Self { 
-            model: model.into(), 
+        Self {
+            model: model.into(),
             history,
-            ollama_client: Ollama::new(ollama_host, ollama_port)
+            ollama_client: OllamaClient::new(base_url),
         }
     }
 
+    pub async fn invoke<T>(&mut self, prompt: T) -> Result<Message, AgentError>
+    where
+        T: Into<String>,
+    {
+        self.history.push(Message::user(prompt.into()));
 
-    pub async fn invoke<T>(&mut self, prompt: T) -> Result<ChatMessageResponse, AgentError> where T: Into<String> {
-        let resp = self.ollama_client.send_chat_messages_with_history(
-            &mut self.history, 
-            ChatMessageRequest::new(
-                self.model.clone(),
-                vec![ChatMessage::user(prompt.into())], 
-            ),
-        ).await;
-        
-        match resp {
-            Ok(r) => Ok(r),
-            Err(e) => Err(AgentError::OllamaError(e)),
-        }
+        let request = ChatRequest {
+            base: BaseRequest {
+                model: self.model.clone(),
+                format: None,
+                options: None,
+                stream: Some(false), 
+                keep_alive: Some("5m".to_string()),
+            },
+            messages: self.history.clone(),
+            tools: None, 
+        };
+
+        let response: ChatResponse = self.ollama_client.chat(request).await?;
+        self.history.push(response.message.clone());
+        Ok(response.message)
     }
 }
