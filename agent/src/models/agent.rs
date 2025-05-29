@@ -1,6 +1,3 @@
-use anyhow::Result;
-
-
 use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}};
 
 use super::AgentError;

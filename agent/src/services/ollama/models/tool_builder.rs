@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
+use super::tool::{AsyncToolFn, Function, FunctionArguments, Property, Tool, ToolType};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +55,7 @@ impl ToolBuilder {
     pub fn new() -> Self {
         ToolBuilder {
             tool_type: Some(ToolType::Function), // Default to Function
-            function_param_type: Some("object".to_string()), // Default for function parameters
+            function_param_type: Some("object".to_string()), // Default for function arguments
             function_properties: HashMap::new(),
             function_required: Vec::new(),
             ..Default::default()
@@ -81,14 +81,14 @@ impl ToolBuilder {
         self
     }
 
-    /// Sets the type for the function's parameters object.
+    /// Sets the type for the function's arguments object.
     /// Defaults to `"object"`.
-    pub fn function_parameters_type(mut self, param_type: impl Into<String>) -> Self {
+    pub fn function_arguments_type(mut self, param_type: impl Into<String>) -> Self {
         self.function_param_type = Some(param_type.into());
         self
     }
 
-    /// Adds a property to the function's parameters.
+    /// Adds a property to the function's arguments.
     ///
     /// # Arguments
     /// * `name` - The name of the property.
@@ -135,7 +135,7 @@ impl ToolBuilder {
         let function_description = self.function_description.ok_or(ToolBuilderError::MissingFunctionDescription)?;
         let executor = self.executor.ok_or(ToolBuilderError::MissingExecutor)?; // Check for executor
 
-        let parameters = FunctionParameters {
+        let arguments = FunctionArguments {
             param_type: self.function_param_type.unwrap_or_else(|| "object".to_string()),
             properties: self.function_properties,
             required: self.function_required,
@@ -144,7 +144,7 @@ impl ToolBuilder {
         let function = Function {
             name: function_name,
             description: function_description,
-            parameters,
+            arguments,
         };
 
         Ok(Tool {

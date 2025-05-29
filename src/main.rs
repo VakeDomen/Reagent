@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
         .add_required_property("location")
         .add_property("unit", "string", "Temperature unit (celsius or fahrenheit)") // Optional parameter
         .executor(my_executor)
-        .build()?; // The '?' will propagate ToolBuilderError if it occurs.
+        .build()?;
  
 
     let mut agent = AgentBuilder::default()
@@ -49,7 +49,6 @@ async fn main() -> Result<()> {
     let resp = agent.invoke("What is the current weather in Ljubljana?").await;
     println!("Agent Resp: {:#?}", resp);
 
-    println!("AGENT: {:#?}", agent);
 
     Ok(())
 }

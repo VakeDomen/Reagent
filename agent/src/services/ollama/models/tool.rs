@@ -53,24 +53,24 @@ impl Tool {
     }
 }
 
-/// Defines a function, its description, and its parameters.
+/// Defines a function, its description, and its arguments.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Function {
     pub name: String,
     pub description: String,
-    pub parameters: FunctionParameters,
+    pub arguments: FunctionArguments,
 }
 
-/// Defines the parameters for a function using a JSON schema-like structure.
+/// Defines the arguments for a function using a JSON schema-like structure.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FunctionParameters {
+pub struct FunctionArguments {
     #[serde(rename = "type")]
     pub param_type: String, // Typically "object"
     pub properties: HashMap<String, Property>,
     pub required: Vec<String>,
 }
 
-/// Defines a single property within function parameters.
+/// Defines a single property within function arguments.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Property {
     #[serde(rename = "type")]
