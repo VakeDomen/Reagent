@@ -119,3 +119,49 @@ impl AgentBuilder {
         ))
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*; 
+
+    #[tokio::test]
+    async fn agent_builder_defaults() {
+        // Assuming ModelNotSet is an error if set_model is not called
+        let builder_result = AgentBuilder::default().build().await;
+        assert!(builder_result.is_err());
+        match builder_result.unwrap_err() {
+            AgentBuildError::ModelNotSet => {} // Expected
+            _ => panic!("Expected ModelNotSet error"),
+        }
+
+        let agent = AgentBuilder::default()
+            .set_model("test-model")
+            .build()
+            .await
+            .expect("Agent build failed with default settings");
+
+        assert_eq!(agent.model, "test-model"); // Add a getter for model name in Agent
+        assert!(agent.response_format.is_none()); // Add getter
+        assert!(agent.tools.is_none() || agent.tools.unwrap().is_empty()); // Add getter
+    }
+
+    #[tokio::test]
+    async fn agent_builder_custom_settings() {
+        let agent = AgentBuilder::default()
+            .set_model("custom-model")
+            .set_ollama_endpoint("http://custom-ollama")
+            .set_ollama_port(12345)
+            .set_system_prompt("Custom prompt")
+            .set_response_format(r#"{"type": "object", "properties": {"key": {"type": "string"}}}"#)
+            .build()
+            .await
+            .expect("Agent build failed with custom settings");
+
+        assert_eq!(agent.model, "custom-model");
+        assert_eq!(agent.history.first().unwrap().content.clone().unwrap(), "Custom prompt"); // Add getter
+        assert!(agent.response_format.is_some());
+        assert_eq!(agent.response_format.unwrap().get("type").unwrap().as_str().unwrap(), "object");
+    }
+
+}

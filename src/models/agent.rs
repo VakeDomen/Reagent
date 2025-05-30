@@ -7,11 +7,11 @@ use super::AgentError;
 
 #[derive(Debug)]
 pub struct Agent {
-    model: String,
-    history: Vec<Message>,
+    pub model: String,
+    pub history: Vec<Message>,
+    pub tools: Option<Vec<Tool>>,
+    pub response_format: Option<Value>,
     ollama_client: OllamaClient,
-    tools: Option<Vec<Tool>>,
-    response_format: Option<Value>,
 }
 
 impl Agent {

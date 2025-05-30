@@ -145,3 +145,69 @@ impl ToolBuilder {
         })
     }
 }
+
+
+// In your tool_builder.rs or a dedicated test module
+#[cfg(test)]
+mod tests {
+    use super::*; // Imports ToolBuilder, ToolBuilderError
+    use crate::services::ollama::models::tool::{Tool, ToolType, Function, FunctionArguments, Property, AsyncToolFn};
+    use std::sync::Arc;
+    use serde_json::Value;
+
+    // A simple placeholder executor for testing definitions
+    fn create_dummy_executor() -> AsyncToolFn {
+        Arc::new(|_args: Value| {
+            Box::pin(async { Ok("dummy execution".to_string()) })
+        })
+    }
+
+    #[test]
+    fn tool_builder_valid_tool() {
+        let tool_result = ToolBuilder::new()
+            .function_name("test_tool")
+            .function_description("A tool for testing")
+            .add_property("param1", "string", "A string parameter")
+            .add_required_property("param1")
+            .executor(create_dummy_executor())
+            .build();
+
+        assert!(tool_result.is_ok());
+        let tool = tool_result.unwrap();
+        assert_eq!(tool.function.name, "test_tool");
+        assert_eq!(tool.function.arguments.properties.get("param1").unwrap().property_type, "string");
+        assert!(tool.function.arguments.required.contains(&"param1".to_string()));
+    }
+
+    #[test]
+    fn tool_builder_missing_name_fails() {
+        let tool_result = ToolBuilder::new()
+            .function_description("A tool missing a name")
+            .executor(create_dummy_executor())
+            .build();
+        assert!(tool_result.is_err());
+        assert_eq!(tool_result.unwrap_err(), ToolBuilderError::MissingFunctionName);
+    }
+
+    #[test]
+    fn tool_builder_missing_description_fails() {
+        let tool_result = ToolBuilder::new()
+            .function_name("test_tool_no_desc")
+            .executor(create_dummy_executor())
+            .build();
+        assert!(tool_result.is_err());
+        // Assuming you have a MissingFunctionDescription error variant
+        assert_eq!(tool_result.unwrap_err(), ToolBuilderError::MissingFunctionDescription);
+    }
+
+    #[test]
+    fn tool_builder_missing_executor_fails() {
+        let tool_result = ToolBuilder::new()
+            .function_name("test_tool_no_exec")
+            .function_description("A tool missing an executor")
+            .build();
+        assert!(tool_result.is_err());
+        // Assuming you have a MissingExecutor error variant
+        assert_eq!(tool_result.unwrap_err(), ToolBuilderError::MissingExecutor);
+    }
+}
