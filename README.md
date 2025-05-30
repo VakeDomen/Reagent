@@ -4,6 +4,7 @@
 
 A zero-boilerplate Rust library for building simple AI agents on top of Ollama. It provides a flexible builder-pattern API for defining system prompts, JSON-schema response formats, and both static and dynamic tools (MCP and custom tool-calling). Designed for simplicity and extensibility.
 
+...does not yet support streaming tho...
 
 
 ## 📖 Table of Contents
@@ -62,13 +63,13 @@ Add **Ragent** to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-Ragent = "0.1"
+ragent = "0.1"
 ```
 
 Or via the CLI:
 
 ```bash
-cargo add Ragent
+cargo add ragent
 ```
 
 Ensure you have a compatible Rust toolchain (Rust 1.65+).

@@ -8,7 +8,6 @@ use serde_json::Value;
 async fn main() -> Result<(), Box<dyn Error>> {
     let weather_agent = AgentBuilder::default()
         .set_model("granite3-moe")
-        .set_ollama_port(11435)
         .set_system_prompt("/no_think \nYou make up weather info in JSON. You always say it's sowing")
         .set_response_format(
             r#"
@@ -58,8 +57,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:30b")
-        .set_ollama_port(6666)
-        .set_ollama_endpoint("http://hivecore.famnit.upr.si")
         .set_system_prompt("You are a helpful, assistant.")
         .add_mcp_server(McpServerType::stdio("npx -y @modelcontextprotocol/server-memory"))
         .add_tool(weather_tool)
