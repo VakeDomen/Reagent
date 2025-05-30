@@ -1,3 +1,5 @@
+# Simple Rust AI Agent
+
 ```rust
 
 use std::sync::Arc;
@@ -11,8 +13,6 @@ async fn main() -> Result<()> {
     let weather_agent = AgentBuilder::default()
         .set_model("qwen3:30b")
         .set_system_prompt("/no_think \nYou make up weather when given a location. Act like you know. ")
-        .set_ollama_endpoint("http://hivecore.famnit.upr.si")
-        .set_ollama_port(6666)
         .set_response_format(r#"{
                 "type": "object",
                 "properties": {
@@ -96,8 +96,6 @@ async fn main() -> Result<()> {
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:30b")
         .set_system_prompt("/no_think \nYou are a helpful agent")
-        .set_ollama_endpoint("http://hivecore.famnit.upr.si")
-        .set_ollama_port(6666)
         .add_tool(get_weather_tool)
         .add_mcp_server(McpServerType::stdio("npx -y @modelcontextprotocol/server-everything"))
         .add_mcp_server(McpServerType::streamable_http("http://localhost:8000/mcp"))
