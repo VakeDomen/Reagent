@@ -11,7 +11,7 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     tools: Option<Vec<Tool>>,
     response_format: Option<String>,
-    mcp_server: Option<String>,
+    mcp_server: Option<McpServerType>,
 }
 
 
@@ -49,8 +49,8 @@ impl AgentBuilder {
         self
     }
 
-    pub fn add_mcp_server<T>(mut self, url: T) -> Self where T: Into<String> {
-        self.mcp_server = Some(url.into());
+    pub fn add_mcp_server(mut self, server_type: McpServerType) -> Self {
+        self.mcp_server = Some(server_type);
         self
     }
 
@@ -89,8 +89,8 @@ impl AgentBuilder {
 
         let mut tools = self.tools.clone();
         
-        if let Some(server_url) = self.mcp_server {
-            let mcp_tools = match get_mcp_tools(server_url, McpServerType::Sse).await {
+        if let Some(mcp_server) = self.mcp_server {
+            let mcp_tools = match get_mcp_tools(mcp_server).await {
                 Ok(t) => t,
                 Err(e) => return Err(AgentBuildError::McpError(e)),
             };

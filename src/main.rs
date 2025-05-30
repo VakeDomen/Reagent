@@ -1,7 +1,7 @@
 
 use std::sync::Arc;
 
-use agent::{json, models::AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError, Value};
+use agent::{models::AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError, Value};
 use anyhow::Result;
 use tokio::sync::Mutex;
 
@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
                 if let Some(location) = args.get("location").and_then(|v| v.as_str()) {
                     let prompt = format!("/no_think What is the weather at: {}", location);
 
-                    match agent.invoke(format!("What is the weather at: {}", location)).await {
+                    match agent.invoke(prompt).await {
                         Ok(message_from_agent) => {
                             match message_from_agent.content {
                                 Some(text_content) => {
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
         .set_ollama_endpoint("http://hivecore.famnit.upr.si")
         .set_ollama_port(6666)
         .add_tool(get_weather_tool)
-        .add_mcp_server("http://localhost:8000/sse")
+        .add_mcp_server(agent::McpServerType::stdio("npx -y @modelcontextprotocol/server-everything"))
         .build()
         .await?;
 
@@ -108,10 +108,10 @@ async fn main() -> Result<()> {
 
     // let resp = agent.invoke("What is the current weather in Ljubljana?").await;
     // println!("Agent Resp: {:#?}", resp?.content);
-    let resp = agent.invoke("Can you increment the counter twice and tell me the new value?").await;
+    let resp = agent.invoke("what is your current env?").await;
 
 
-    println!("Agen: {:#?}", agent);
+    println!("Agen: {:#?}", resp);
 
 
     Ok(())

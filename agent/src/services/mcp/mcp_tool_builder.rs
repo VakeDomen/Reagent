@@ -1,21 +1,59 @@
-use std::{collections::HashMap, error, sync::{Arc}};
+use std::sync::Arc;
 
 use serde_json::Value;
-use tokio::sync::Mutex;
+use tokio::{process::Command, sync::Mutex};
 
-use crate::{services::ollama::models::tool::{Function, FunctionArguments, Property, Tool}, ToolBuilder, ToolExecutionError};
+use crate::{services::ollama::models::tool::Tool, ToolBuilder, ToolExecutionError};
 
 use super::error::McpIntegrationError;
-use rmcp::{model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, JsonObject, Tool as McpTool}, schemars::schema::{InstanceType, Schema, SingleOrVec}, service::RunningService, transport::{SseClientTransport, StreamableHttpClientTransport}, Service, ServiceExt};
+use rmcp::{model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ServiceError, ServiceExt};
 use crate::AsyncToolFn;
 
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum McpServerType {
-    Sse,
-    Io,
+    Sse(String),
+    Stdio(String),
+    StreamableHttp(String)
 }
 
-pub async fn get_mcp_tools<T>(server_url: T, mcp_server_type: McpServerType) -> Result<Vec<Tool>, McpIntegrationError> where T: Into<String> {
-    let (mcp_client_arc, mcp_raw_tools) = get_mcp_sse_tools(server_url).await?;
+impl McpServerType {
+    pub fn sse<S: Into<String>>(url: S) -> Self { McpServerType::Sse(url.into()) }
+    pub fn stdio<S: Into<String>>(cmd: S) -> Self { McpServerType::Stdio(cmd.into()) }
+    pub fn streamable_http<S: Into<String>>(url: S) -> Self { McpServerType::StreamableHttp(url.into()) }
+}
+
+
+
+pub type McpClient = Arc<Mutex<McpClientType>>;
+
+
+
+pub enum McpClientType {
+    SseClient(ArcMcpSseClient),
+    StdioClient(ArcMcpStdioClient),
+    StreamableHttp(ArcMcpStreamableHttpClient)
+}
+
+impl McpClientType {
+    pub fn call_tool(&mut self, param: CallToolRequestParam) -> impl Future<Output = Result<rmcp::model::CallToolResult, ServiceError>> {
+        match self {
+            McpClientType::SseClient(running_service) => running_service.call_tool(param),
+            McpClientType::StdioClient(running_service) => running_service.call_tool(param),
+            McpClientType::StreamableHttp(running_service) => running_service.call_tool(param),
+        }
+    }
+}
+
+pub async fn get_mcp_tools(mcp_server_type: McpServerType) -> Result<Vec<Tool>, McpIntegrationError> {
+    
+    let (mcp_client_arc, mcp_raw_tools) = match mcp_server_type {
+        McpServerType::Sse(url) => get_mcp_sse_tools(url).await?,
+        McpServerType::StreamableHttp(url) => get_mcp_streamable_http_tools(url).await?,
+        McpServerType::Stdio(command) => get_mcp_stdio_tools(command).await?,
+    };
+
+    
 
     println!(
         "[MCP] Discovered {} raw tools from MCP server. Converting...",
@@ -122,8 +160,11 @@ pub async fn get_mcp_tools<T>(server_url: T, mcp_server_type: McpServerType) -> 
 }
 
 
-pub type ArcMcpClient = Arc<Mutex<RunningService<rmcp::RoleClient, rmcp::model::InitializeRequestParam>>>;
-pub async fn get_mcp_sse_tools<T>(url: T) -> Result<(ArcMcpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
+pub type ArcMcpSseClient = RunningService<rmcp::RoleClient, rmcp::model::InitializeRequestParam>;
+pub type ArcMcpStreamableHttpClient = RunningService<rmcp::RoleClient, rmcp::model::InitializeRequestParam>;
+pub type ArcMcpStdioClient = RunningService<rmcp::RoleClient, ()>;
+
+pub async fn get_mcp_sse_tools<T>(url: T) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let transport = match  SseClientTransport::start(url.into()).await {
         Ok(t) => t,
         Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
@@ -145,5 +186,60 @@ pub async fn get_mcp_sse_tools<T>(url: T) -> Result<(ArcMcpClient, Vec<rmcp::mod
         Ok(l) => l,
         Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
     };
-    Ok((Arc::new(Mutex::new(client)), tool_list.tools))
+    Ok((Arc::new(Mutex::new(McpClientType::SseClient(client))), tool_list.tools))
+}
+
+
+pub async fn get_mcp_streamable_http_tools<T>(url: T) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
+    let transport = StreamableHttpClientTransport::from_uri(url.into());
+    let client_info = ClientInfo {
+        protocol_version: Default::default(),
+        capabilities: ClientCapabilities::default(),
+        client_info: Implementation {
+            name: "test sse client".to_string(),
+            version: "0.0.1".to_string(),
+        },
+    };
+    let client = match client_info.serve(transport).await {
+        Ok(c) =>c,
+        Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+    };
+
+    let tool_list = match client.list_tools(Default::default()).await {
+        Ok(l) => l,
+        Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
+    };
+    Ok((Arc::new(Mutex::new(McpClientType::StreamableHttp(client))), tool_list.tools))
+}
+
+
+pub async fn get_mcp_stdio_tools<T>(full_command: T) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
+    let full_command_string = full_command.into();
+    let mut command_args = full_command_string.split(" ");
+    let first = command_args.next();
+    if first.is_none() {
+        return Err(McpIntegrationError::ConnectionError("Invalid command.".into()));
+    }
+    let transport = match TokioChildProcess::new(Command::new(first.unwrap()).configure(
+        |cmd| {
+            for arg in command_args {
+                cmd.arg(arg);
+            }
+        },
+    )) {
+        Ok(t) =>t,
+        Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+    };
+
+    let client = match ().serve(transport)
+        .await {
+            Ok(c) =>c,
+            Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+        };
+
+    let tool_list = match client.list_tools(Default::default()).await {
+        Ok(l) => l,
+        Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
+    };
+    Ok((Arc::new(Mutex::new(McpClientType::StdioClient(client))), tool_list.tools))
 }
