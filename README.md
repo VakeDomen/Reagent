@@ -1,5 +1,8 @@
 # Ragent - Simple rust Agents
 
+
+
+
 **Rust Ollama Agent Library**
 
 A zero-boilerplate Rust library for building simple AI agents on top of Ollama. It provides a flexible builder-pattern API for defining system prompts, JSON-schema response formats, and both static and dynamic tools (MCP and custom tool-calling). Designed for simplicity and extensibility.
@@ -57,8 +60,10 @@ Whether you need a single-purpose assistant or a complex multi-tool pipeline, **
 
 ---
 
-## Installation
+## Installation 
 
+Waiting for `rmcp` to be stable before publish.
+<!-- 
 Add **Ragent** to your `Cargo.toml`:
 
 ```toml
@@ -70,7 +75,7 @@ Or via the CLI:
 
 ```bash
 cargo add ragent
-```
+``` --> -->
 
 Ensure you have a compatible Rust toolchain (Rust 1.65+).
 
