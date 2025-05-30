@@ -1,4 +1,4 @@
-# Ragent - Simple rust Agents
+# Ragent - Simple rust Agents with Ollama
 
 
 
