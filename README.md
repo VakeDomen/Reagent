@@ -1,3 +1,4 @@
+```rust
 
 use std::sync::Arc;
 
@@ -117,3 +118,6 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+
+```
