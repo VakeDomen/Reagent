@@ -1,7 +1,7 @@
 
 use std::sync::Arc;
 
-use agent::{models::AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError, Value};
+use agent::{models::AgentBuilder, AsyncToolFn, McpServerType, ToolBuilder, ToolExecutionError, Value};
 use anyhow::Result;
 use tokio::sync::Mutex;
 
@@ -98,7 +98,8 @@ async fn main() -> Result<()> {
         .set_ollama_endpoint("http://hivecore.famnit.upr.si")
         .set_ollama_port(6666)
         .add_tool(get_weather_tool)
-        .add_mcp_server(agent::McpServerType::stdio("npx -y @modelcontextprotocol/server-everything"))
+        .add_mcp_server(McpServerType::stdio("npx -y @modelcontextprotocol/server-everything"))
+        .add_mcp_server(McpServerType::streamable_http("http://localhost:8000/mcp"))
         .build()
         .await?;
 
@@ -108,7 +109,7 @@ async fn main() -> Result<()> {
 
     // let resp = agent.invoke("What is the current weather in Ljubljana?").await;
     // println!("Agent Resp: {:#?}", resp?.content);
-    let resp = agent.invoke("what is your current env?").await;
+    let resp = agent.invoke("can you increment 3 times and show the final value?").await;
 
 
     println!("Agen: {:#?}", resp);

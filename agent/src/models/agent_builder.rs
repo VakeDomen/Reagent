@@ -11,7 +11,7 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     tools: Option<Vec<Tool>>,
     response_format: Option<String>,
-    mcp_server: Option<McpServerType>,
+    mcp_servers: Option<Vec<McpServerType>>,
 }
 
 
@@ -49,8 +49,11 @@ impl AgentBuilder {
         self
     }
 
-    pub fn add_mcp_server(mut self, server_type: McpServerType) -> Self {
-        self.mcp_server = Some(server_type);
+    pub fn add_mcp_server(mut self, server: McpServerType) -> Self {
+        match self.mcp_servers.as_mut() {
+            Some(servers) => servers.push(server),
+            None => self.mcp_servers = Some(vec![server]),
+        }
         self
     }
 
@@ -89,17 +92,19 @@ impl AgentBuilder {
 
         let mut tools = self.tools.clone();
         
-        if let Some(mcp_server) = self.mcp_server {
-            let mcp_tools = match get_mcp_tools(mcp_server).await {
-                Ok(t) => t,
-                Err(e) => return Err(AgentBuildError::McpError(e)),
-            };
-
-            match tools.as_mut() {
-                Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
-                None => if mcp_tools.len() > 0 {
-                    tools = Some(mcp_tools)
-                },
+        if let Some(mcp_servers) = self.mcp_servers {
+            for mcp_server in mcp_servers {
+                let mcp_tools = match get_mcp_tools(mcp_server).await {
+                    Ok(t) => t,
+                    Err(e) => return Err(AgentBuildError::McpError(e)),
+                };
+    
+                match tools.as_mut() {
+                    Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
+                    None => if mcp_tools.len() > 0 {
+                        tools = Some(mcp_tools)
+                    },
+                }
             }
 
         }
