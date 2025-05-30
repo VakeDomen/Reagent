@@ -1,5 +1,5 @@
 
-use crate::services::ollama::models::tool::Tool;
+use crate::services::{mcp::mcp_tool_builder::{get_mcp_tools, McpServerType}, ollama::models::tool::Tool};
 
 use super::{Agent, AgentBuildError};
 
@@ -11,6 +11,7 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     tools: Option<Vec<Tool>>,
     response_format: Option<String>,
+    mcp_server: Option<String>,
 }
 
 
@@ -48,7 +49,12 @@ impl AgentBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Agent, AgentBuildError> {
+    pub fn add_mcp_server<T>(mut self, url: T) -> Self where T: Into<String> {
+        self.mcp_server = Some(url.into());
+        self
+    }
+
+    pub async fn build(self) -> Result<Agent, AgentBuildError> {
         let model = match self.model {
             Some(m) => m,
             None => return Err(AgentBuildError::ModelNotSet),
@@ -81,12 +87,29 @@ impl AgentBuilder {
             }
         }
 
+        let mut tools = self.tools.clone();
+        
+        if let Some(server_url) = self.mcp_server {
+            let mcp_tools = match get_mcp_tools(server_url, McpServerType::Sse).await {
+                Ok(t) => t,
+                Err(e) => return Err(AgentBuildError::McpError(e)),
+            };
+
+            match tools.as_mut() {
+                Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
+                None => if mcp_tools.len() > 0 {
+                    tools = Some(mcp_tools)
+                },
+            }
+
+        }
+
         Ok(Agent::new(
             &model, 
             &ollama_url, 
             ollama_port, 
             &system_prompt, 
-            self.tools,
+            tools,
             response_format,
         ))
     }

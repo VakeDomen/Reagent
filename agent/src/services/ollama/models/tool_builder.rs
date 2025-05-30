@@ -73,7 +73,7 @@ impl ToolBuilder {
     }
 
     /// Sets the description of the function for the tool. (Required)
-    pub fn function_description(mut self, description: impl Into<String>) -> Self {
+    pub fn function_description<T>(mut self, description: T) -> Self where T: Into<String> {
         self.function_description = Some(description.into());
         self
     }

@@ -1,6 +1,6 @@
 use std::fmt::write;
 
-use crate::services::ollama::models::errors::OllamaError;
+use crate::services::{mcp::error::McpIntegrationError, ollama::models::errors::OllamaError};
 
 
 
@@ -39,6 +39,7 @@ impl From<OllamaError> for AgentError {
 #[derive(Debug)]
 pub enum AgentBuildError {
     InvalidJsonSchema(String),
+    McpError(McpIntegrationError),
     ModelNotSet
 }
 
@@ -47,7 +48,8 @@ impl std::fmt::Display for AgentBuildError {
         match self {
             AgentBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {}", e),
             AgentBuildError::ModelNotSet => write!(f, "Model not set."),
-                    }
+            AgentBuildError::McpError(e) => write!(f, "Mcp error: {}", e),
+        }
     }
 }
 impl std::error::Error for AgentBuildError {}

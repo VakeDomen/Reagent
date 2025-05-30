@@ -59,10 +59,12 @@ impl Agent {
             let message = response.message.clone();
            
             let tool_calls = message.tool_calls.clone();
+            println!("{:#?}", message);
             self.history.push(message);
 
             if let Some(tc) = tool_calls {
                 for tool_message in self.call_tools(&tc).await {
+                    println!("{:#?}", tool_message);
                     self.history.push(tool_message);
                 }
             } else {

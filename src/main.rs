@@ -32,51 +32,52 @@ async fn main() -> Result<()> {
                 ]
             }"#
         )
-        .build()?;
+        .build()
+        .await?;
 
     let weather_agent_ref = Arc::new(Mutex::new(weather_agent));
 
     let weather_agent_tool_executor: AsyncToolFn = Arc::new(move |args: Value| {
         Box::pin({
-        let agent_arc_for_this_call = Arc::clone(&weather_agent_ref);
-        async move {
-            println!("Executing with args: {:?}", args);
-            let mut agent = agent_arc_for_this_call.lock().await;
+            let agent_arc_for_this_call = Arc::clone(&weather_agent_ref);
+            async move {
+                println!("Executing with args: {:?}", args);
+                let mut agent = agent_arc_for_this_call.lock().await;
 
-            if let Some(location) = args.get("location").and_then(|v| v.as_str()) {
-                let prompt = format!("/no_think What is the weather at: {}", location);
+                if let Some(location) = args.get("location").and_then(|v| v.as_str()) {
+                    let prompt = format!("/no_think What is the weather at: {}", location);
 
-                match agent.invoke(format!("What is the weather at: {}", location)).await {
-                    Ok(message_from_agent) => {
-                        match message_from_agent.content {
-                            Some(text_content) => {
-                                let tag = "</think>";
-                                if let Some((_before_tag, after_tag)) = text_content.rsplit_once(tag) {
-                                    Ok(after_tag.trim().to_string())
-                                } else {
-                                    Ok(text_content.trim().to_string())
+                    match agent.invoke(format!("What is the weather at: {}", location)).await {
+                        Ok(message_from_agent) => {
+                            match message_from_agent.content {
+                                Some(text_content) => {
+                                    let tag = "</think>";
+                                    if let Some((_before_tag, after_tag)) = text_content.rsplit_once(tag) {
+                                        Ok(after_tag.trim().to_string())
+                                    } else {
+                                        Ok(text_content.trim().to_string())
+                                    }
+                                }
+                                None => {
+                                    // The content was None to begin with.
+                                    Ok("Weather agent provided no specific content.".to_string())
                                 }
                             }
-                            None => {
-                                // The content was None to begin with.
-                                Ok("Weather agent provided no specific content.".to_string())
-                            }
+                        }
+                        Err(agent_error) => {
+                            // Convert your agent's specific error into ToolExecutionError
+                            Err(ToolExecutionError::ExecutionFailed(format!(
+                                "Weather agent invocation failed: {}",
+                                agent_error // Assuming YourAgentError implements Display
+                            )))
                         }
                     }
-                    Err(agent_error) => {
-                        // Convert your agent's specific error into ToolExecutionError
-                        Err(ToolExecutionError::ExecutionFailed(format!(
-                            "Weather agent invocation failed: {}",
-                            agent_error // Assuming YourAgentError implements Display
-                        )))
-                    }
+                } else {
+                    Err(ToolExecutionError::ArgumentParsingError(
+                        "Missing 'location' argument".to_string(),
+                    ))
                 }
-            } else {
-                Err(ToolExecutionError::ArgumentParsingError(
-                    "Missing 'location' argument".to_string(),
-                ))
             }
-        }
         })
     });
 
@@ -97,14 +98,18 @@ async fn main() -> Result<()> {
         .set_ollama_endpoint("http://hivecore.famnit.upr.si")
         .set_ollama_port(6666)
         .add_tool(get_weather_tool)
-        .build()?;
+        .add_mcp_server("http://localhost:8000/sse")
+        .build()
+        .await?;
 
     let resp = agent.invoke("Can you say 'Yeah'").await;
     // println!("Agent Resp: {:#?}", resp?.content);
 
 
-    let resp = agent.invoke("What is the current weather in Ljubljana?").await;
+    // let resp = agent.invoke("What is the current weather in Ljubljana?").await;
     // println!("Agent Resp: {:#?}", resp?.content);
+    let resp = agent.invoke("Can you increment the counter twice and tell me the new value?").await;
+
 
     println!("Agen: {:#?}", agent);
 
