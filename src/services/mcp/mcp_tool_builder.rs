@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use serde_json::Value;
 use tokio::{process::Command, sync::Mutex};
@@ -36,7 +36,7 @@ pub enum McpClientType {
 }
 
 impl McpClientType {
-    pub fn call_tool(&mut self, param: CallToolRequestParam) -> impl Future<Output = Result<rmcp::model::CallToolResult, ServiceError>> {
+    pub fn call_tool(&mut self, param: CallToolRequestParam) -> impl Future<Output = Result<rmcp::model::CallToolResult, ServiceError>> + '_ {
         match self {
             McpClientType::SseClient(running_service) => running_service.call_tool(param),
             McpClientType::StdioClient(running_service) => running_service.call_tool(param),

@@ -1,10 +1,19 @@
 [package]
-name = "agent"
+name = "reagent"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "A minimal-abstraction Rust library for building Ollama-powered AI agents with MCP & custom tools"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/VakeDomen/reagent"
+documentation = "https://docs.rs/reagent"
+homepage = "https://github.com/VakeDomen/reagent#readme"
+readme = "README.md"
+keywords = ["llm", "ollama", "agent", "rust", "mcp", "tool-calling"]
+categories = ["machine-learning", "asynchronous", "network-programming"]
+include = ["src/**", "Cargo.toml", "README.md", "LICENSE*"]
 
 [dependencies]
-reqwest = {version = "0.12.18", features = ["json"]}
+reqwest = { version = "0.12.18", features = ["json"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = [
@@ -16,3 +25,7 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "mai
     "tower",
 ] }
 tokio = {version ="1.45.1", features = ["rt-multi-thread"]}
+
+[[example]]
+name = "simple_agent"
+path = "examples/simple_agent.rs"

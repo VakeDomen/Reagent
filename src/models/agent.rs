@@ -12,6 +12,7 @@ pub struct Agent {
     pub tools: Option<Vec<Tool>>,
     pub response_format: Option<Value>,
     ollama_client: OllamaClient,
+    pub system_prompt: String,
 }
 
 impl Agent {
@@ -31,8 +32,13 @@ impl Agent {
             history,
             ollama_client: OllamaClient::new(base_url),
             tools,
-            response_format
+            response_format,
+            system_prompt: system_prompt.into()
         }
+    }
+
+    pub fn clear_history(&mut self) {
+        self.history = vec![Message::system(self.system_prompt.clone())];
     }
 
     pub async fn invoke<T>(&mut self, prompt: T) -> Result<Message, AgentError>
