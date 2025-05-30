@@ -1,4 +1,5 @@
-# Simple Rust AI Agent
+# Simple Rust AI Agent with Ollama
+
 
 ```rust
 
