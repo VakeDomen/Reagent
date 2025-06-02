@@ -12,6 +12,8 @@ pub struct AgentBuilder {
     tools: Option<Vec<Tool>>,
     response_format: Option<String>,
     mcp_servers: Option<Vec<McpServerType>>,
+    stop_prompt: Option<String>,
+    stopword: Option<String>,
 }
 
 
@@ -54,6 +56,16 @@ impl AgentBuilder {
             Some(servers) => servers.push(server),
             None => self.mcp_servers = Some(vec![server]),
         }
+        self
+    }
+
+    pub fn set_stop_prompt<T>(mut self, stop_prompt: T) -> Self where T: Into<String> {
+        self.stop_prompt = Some(stop_prompt.into());
+        self
+    }
+
+    pub fn set_stopword<T>(mut self, stopword: T) -> Self where T: Into<String> {
+        self.stopword = Some(stopword.into());
         self
     }
 
@@ -116,6 +128,8 @@ impl AgentBuilder {
             &system_prompt, 
             tools,
             response_format,
+            self.stop_prompt,
+            self.stopword
         ))
     }
 }

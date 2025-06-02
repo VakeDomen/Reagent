@@ -56,7 +56,7 @@ impl Message {
         Self::new(Role::Assistant, content)
     }
 
-    pub fn tool<T>(content: T, tool_call_id: T) -> Self where T: Into<String> {
+    pub fn tool<T, S>(content: T, tool_call_id: S) -> Self where T: Into<String>, S: Into<String> {
         Self {
             role: Role::Tool,
             content: Some(content.into()),

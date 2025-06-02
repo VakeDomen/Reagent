@@ -13,6 +13,8 @@ pub struct Agent {
     pub response_format: Option<Value>,
     ollama_client: OllamaClient,
     pub system_prompt: String,
+    pub stop_prompt: Option<String>,
+    pub stopword: Option<String>
 }
 
 impl Agent {
@@ -23,6 +25,8 @@ impl Agent {
         system_prompt: &str,
         tools: Option<Vec<Tool>>,
         response_format: Option<Value>,
+        stop_prompt: Option<String>,
+        stopword: Option<String>,
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
         let history = vec![Message::system(system_prompt.to_string())];
@@ -33,7 +37,9 @@ impl Agent {
             ollama_client: OllamaClient::new(base_url),
             tools,
             response_format,
-            system_prompt: system_prompt.into()
+            system_prompt: system_prompt.into(),
+            stop_prompt,
+            stopword,
         }
     }
 
@@ -62,9 +68,21 @@ impl Agent {
             };
     
             let response: ChatResponse = self.ollama_client.chat(request).await?;
-            let message = response.message.clone();
+            let mut message = response.message.clone();
            
             let tool_calls = message.tool_calls.clone();
+
+            if message.content.clone().unwrap().contains("<think>") {
+                message.content = Some(message
+                    .content
+                    .unwrap()
+                    .split("</think>")
+                    .nth(1)
+                    .unwrap()
+                    .to_string()
+                );
+            }
+
             self.history.push(message);
 
             if let Some(tc) = tool_calls {
@@ -72,8 +90,23 @@ impl Agent {
                     self.history.push(tool_message);
                 }
             } else {
-                return Ok(response.message);
-            }
+                if let Some(stopword) = &self.stopword {
+                    if response.message.clone().content.unwrap().contains(stopword) {
+                        return Ok(response.message);
+                    } else {
+                        let stop_prompt = if let Some(stop_prompt) = &self.stop_prompt {
+                            stop_prompt
+                        } else {
+                            "Your answer is only displayed to the user, if it is wrapped in <final>message</final>. \
+                            think if you have any more tasks to complete and continue or answer the user with message \
+                            wrapped in the tags."
+                        };
+                        self.history.push(Message::tool( stop_prompt, "0"));
+                    }
+                } else {
+                    return Ok(response.message);
+                }
+            } 
         }
     }
 

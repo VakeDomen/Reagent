@@ -29,3 +29,7 @@ tokio = {version ="1.45.1", features = ["rt-multi-thread"]}
 [[example]]
 name = "simple_agent"
 path = "examples/simple_agent.rs"
+
+[[example]]
+name = "mcp_agent"
+path = "examples/mcp_agent.rs"
