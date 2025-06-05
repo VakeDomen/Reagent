@@ -19,4 +19,4 @@ target/
 # Added by cargo
 
 /target
-examples/test
+examples/test.rs
