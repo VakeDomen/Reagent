@@ -5,7 +5,7 @@ use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest,
 use super::AgentError;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Agent {
     pub model: String,
     pub history: Vec<Message>,
