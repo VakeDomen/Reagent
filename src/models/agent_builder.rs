@@ -14,6 +14,7 @@ pub struct AgentBuilder {
     mcp_servers: Option<Vec<McpServerType>>,
     stop_prompt: Option<String>,
     stopword: Option<String>,
+    strip_thinking: Option<bool>,
 }
 
 
@@ -69,6 +70,11 @@ impl AgentBuilder {
         self
     }
 
+    pub fn strip_thinking(mut self, strip: bool) -> Self {
+        self.strip_thinking = Some(strip);
+        self
+    }
+
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
         let model = match self.model {
             Some(m) => m,
@@ -88,6 +94,11 @@ impl AgentBuilder {
         let system_prompt = match self.system_prompt {
             Some(m) => m,
             None => "You are a helpful agent.".into(),
+        };
+
+        let strip_thinking = match self.strip_thinking {
+            Some(s) => s,
+            None => true,
         };
         
         let mut response_format = None;
@@ -129,7 +140,8 @@ impl AgentBuilder {
             tools,
             response_format,
             self.stop_prompt,
-            self.stopword
+            self.stopword,
+            strip_thinking,
         ))
     }
 }

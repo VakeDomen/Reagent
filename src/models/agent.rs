@@ -15,7 +15,8 @@ pub struct Agent {
     ollama_client: OllamaClient,
     pub system_prompt: String,
     pub stop_prompt: Option<String>,
-    pub stopword: Option<String>
+    pub stopword: Option<String>,
+    pub strip_thinking: bool,
 }
 
 impl Agent {
@@ -28,6 +29,7 @@ impl Agent {
         response_format: Option<Value>,
         stop_prompt: Option<String>,
         stopword: Option<String>,
+        strip_thinking: bool,
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
         let history = vec![Message::system(system_prompt.to_string())];
@@ -41,6 +43,7 @@ impl Agent {
             system_prompt: system_prompt.into(),
             stop_prompt,
             stopword,
+            strip_thinking
         }
     }
 
@@ -74,15 +77,17 @@ impl Agent {
            
             let tool_calls = message.tool_calls.clone();
 
-            if message.content.clone().unwrap().contains("</think>") {
-                message.content = Some(message
-                    .content
-                    .unwrap()
-                    .split("</think>")
-                    .nth(1)
-                    .unwrap()
-                    .to_string()
-                );
+            if self.strip_thinking {
+                if message.content.clone().unwrap().contains("</think>") {
+                    message.content = Some(message
+                        .content
+                        .unwrap()
+                        .split("</think>")
+                        .nth(1)
+                        .unwrap()
+                        .to_string()
+                    );
+                }
             }
 
             self.history.push(message);
