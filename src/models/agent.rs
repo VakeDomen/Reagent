@@ -95,14 +95,7 @@ impl Agent {
                 if let Some(stopword) = &self.stopword {
                     if response.message.clone().content.unwrap().contains(stopword) {
                         return Ok(response.message);
-                    } else {
-                        let stop_prompt = if let Some(stop_prompt) = &self.stop_prompt {
-                            stop_prompt
-                        } else {
-                            "Your answer is only displayed to the user, if it is wrapped in <final>message</final>. \
-                            think if you have any more tasks to complete and continue or answer the user with message \
-                            wrapped in the tags."
-                        };
+                    } else if let Some(stop_prompt) = &self.stop_prompt {
                         self.history.push(Message::tool( stop_prompt, "0"));
                     }
                 } else {
@@ -124,17 +117,20 @@ impl Agent {
                     args = ?tool_call.function.arguments,
                     "executing tool call"
                 );
+                let mut tool_found = false;
                 for avalible_tool in avalible_tools {
                     if !avalible_tool.function.name.eq(&tool_call.function.name) {
                         continue;
                     }
+
+                    tool_found = true;
                     match avalible_tool.execute(tool_call.function.arguments.clone()).await {
                         Ok(tool_result_content) => {
                             let response_tool_call_id = tool_call.id
                                 .clone()
                                 .unwrap_or_else(|| tool_call.function.name.clone());
     
-    
+                            
                             messages.push(Message::tool(
                                 tool_result_content,
                                 response_tool_call_id, 
@@ -145,19 +141,27 @@ impl Agent {
                             let error_content = format!("Error executing tool {}: {}", tool_call.function.name, e);
                             let response_tool_call_id = tool_call.id.clone().unwrap_or_else(|| tool_call.function.name.clone());
                             messages.push(Message::tool(
-                                response_tool_call_id,
                                 error_content,
+                                response_tool_call_id,
                             ));
                         }
                     }
                 }
+                if !tool_found {
+                    tracing::error!("No corresponding tool found.");
+                    messages.push(Message::tool(
+                        format!("Could not find tool: {}", tool_call.function.name), 
+                        "0"
+                    ));
+                }
+
             }
             messages
         } else {
-            tracing::error!("No corresponding tool found.");
+            tracing::error!("No tools specified");
             vec![Message::tool(
+                "If you want to use a tool specifiy the name of the avalible tool.",
                 "Tool",
-                "Could not find tool with same name. Try again.",
             )]
         }
     }

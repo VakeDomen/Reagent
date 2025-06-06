@@ -60,7 +60,7 @@ impl OllamaClient {
         // Attach a child span for the HTTP call itself
         let span = info_span!("http.request", %url);
         async {
-            // debug!(?request_body, "sending request");
+            // debug!("{} {:?}", "sending request", serde_json::to_string(request_body));
 
             // Perform the POST
             let response = self
@@ -83,7 +83,7 @@ impl OllamaClient {
 
                 match serde_json::from_str::<R>(&response_text) {
                     Ok(parsed) => {
-                        // debug!(?parsed, "deserialized response");
+                        debug!(?parsed, "deserialized response");
                         Ok(parsed)
                     }
                     Err(e) => {
