@@ -2,6 +2,7 @@ use std::{future::Future, sync::Arc};
 
 use serde_json::Value;
 use tokio::{process::Command, sync::Mutex};
+use tracing::info;
 
 use crate::{services::ollama::models::tool::Tool, ToolBuilder, ToolExecutionError};
 
@@ -55,7 +56,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType) -> Result<Vec<Tool>, 
 
     
 
-    println!(
+    info!(
         "[MCP] Discovered {} raw tools from MCP server. Converting...",
         mcp_raw_tools.len()
     );
@@ -153,7 +154,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType) -> Result<Vec<Tool>, 
 
        
         agent_tools.push(created_tool);
-        println!("[MCP] Registered agent tool for MCP action: {}", mcp_tool_def.name);
+        info!("[MCP] Registered agent tool for MCP action: {}", mcp_tool_def.name);
     }
 
     Ok(agent_tools)
