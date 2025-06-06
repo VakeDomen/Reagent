@@ -118,9 +118,10 @@ impl Agent {
             let mut messages = vec![];
             for tool_call in tool_calls {
                 tracing::info!(
-                    target: "tool",                     // custom target so we can filter easily
+                    target: "tool",                    
                     tool = %tool_call.function.name,
                     id   = ?tool_call.id,
+                    args = ?tool_call.function.arguments,
                     "executing tool call"
                 );
                 for avalible_tool in avalible_tools {
