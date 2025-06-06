@@ -25,6 +25,9 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "mai
     "tower",
 ] }
 tokio = {version ="1.45.1", features = ["rt-multi-thread"]}
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+
 
 [[example]]
 name = "simple_agent"

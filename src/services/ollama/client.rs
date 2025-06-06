@@ -1,5 +1,6 @@
 use reqwest::{Client, Error as ReqwestError};
 use serde::de::DeserializeOwned;
+use tracing::{debug, error, info_span, instrument, Instrument};
 use std::fmt;
 
 use super::models::{chat::{ChatRequest, ChatResponse}, embedding::{EmbeddingsRequest, EmbeddingsResponse}, errors::OllamaError, generate::{GenerateRequest, GenerateResponse}};
@@ -40,55 +41,72 @@ impl OllamaClient {
     /// # Returns
     ///
     /// A `Result` containing the deserialized response or an `OllamaError`.
+    /// 
+    #[instrument(
+        name = "ollama.post",
+        skip_all,
+        fields(
+            endpoint,
+        )
+    )]
     async fn post<T, R>(&self, endpoint: &str, request_body: &T) -> Result<R, OllamaError>
     where
         T: serde::Serialize + fmt::Debug,
         R: DeserializeOwned + fmt::Debug,
     {
+        // Build full URL once so we can record it
         let url = format!("{}{}", self.base_url, endpoint);
-        // println!("Sending request to: {}", url);
-        // println!("Request body: {:?}", serde_json::to_string(request_body));
 
-        let response = match self
-            .client
-            .post(&url)
-            .json(request_body)
-            .send()
-            .await {
-                Ok(r) => r,
-                Err(e) => return Err(OllamaError::ApiError(e.to_string())),
-            };
+        // Attach a child span for the HTTP call itself
+        let span = info_span!("http.request", %url);
+        async {
+            // debug!(?request_body, "sending request");
 
-        let status = response.status();
-        if status.is_success() {
-            let response_text = response.text().await.map_err(|e| {
-                OllamaError::ApiError(format!("Failed to read response text: {}", e))
-            })?;
-        
-            
-            match serde_json::from_str::<R>(&response_text) {
-                Ok(result) => {
-                    Ok(result)
+            // Perform the POST
+            let response = self
+                .client
+                .post(&url)
+                .json(request_body)
+                .send()
+                .await
+                .map_err(|e| OllamaError::ApiError(e.to_string()))?;
+
+            let status = response.status();
+            debug!(%status, "received response");
+
+            // Successful status path
+            if status.is_success() {
+                let response_text = response
+                    .text()
+                    .await
+                    .map_err(|e| OllamaError::ApiError(format!("Failed to read response text: {e}")))?;
+
+                match serde_json::from_str::<R>(&response_text) {
+                    Ok(parsed) => {
+                        // debug!(?parsed, "deserialized response");
+                        Ok(parsed)
+                    }
+                    Err(e) => {
+                        error!(%e, raw = %response_text, "deserialization error");
+                        Err(OllamaError::SerializationError(format!(
+                            "Error decoding response body: {e}. Raw JSON was: '{response_text}'"
+                        )))
+                    }
                 }
-                Err(e) => {
-                    let deserialization_error_message = format!(
-                        "Error decoding response body: {}. Raw JSON was: '{}'",
-                        e, response_text
-                    );
-                    println!("Deserialization failed: {}", deserialization_error_message);
-                    Err(OllamaError::SerializationError(deserialization_error_message))
-                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Failed to read error body".into());
+
+                error!(%status, body = %error_text, "request failed");
+                Err(OllamaError::ApiError(format!(
+                    "Request failed: {status} - {error_text}"
+                )))
             }
-        } else {
-            let status_code = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Failed to read error body".to_string());
-            println!("Request failed with status: {}", status_code);
-            println!("Error body: {}", error_text);
-            Err(OllamaError::ApiError(format!(
-                "Request failed: {} - {}",
-                status_code, error_text
-            )))
         }
+        .instrument(span)
+        .await
     }
 
     /// Sends a generation request to the Ollama API.

@@ -1,4 +1,5 @@
 use serde_json::Value;
+use tracing::instrument;
 
 use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}};
 
@@ -47,6 +48,7 @@ impl Agent {
         self.history = vec![Message::system(self.system_prompt.clone())];
     }
 
+    #[instrument(level = "debug", skip(self, prompt))]
     pub async fn invoke<T>(&mut self, prompt: T) -> Result<Message, AgentError>
     where
         T: Into<String>,
@@ -72,7 +74,7 @@ impl Agent {
            
             let tool_calls = message.tool_calls.clone();
 
-            if message.content.clone().unwrap().contains("<think>") {
+            if message.content.clone().unwrap().contains("</think>") {
                 message.content = Some(message
                     .content
                     .unwrap()
@@ -115,6 +117,12 @@ impl Agent {
         if let Some(avalible_tools) = &self.tools {
             let mut messages = vec![];
             for tool_call in tool_calls {
+                tracing::info!(
+                    target: "tool",                     // custom target so we can filter easily
+                    tool = %tool_call.function.name,
+                    id   = ?tool_call.id,
+                    "executing tool call"
+                );
                 for avalible_tool in avalible_tools {
                     if !avalible_tool.function.name.eq(&tool_call.function.name) {
                         continue;
@@ -132,7 +140,7 @@ impl Agent {
                             ));
                         }
                         Err(e) => {
-                            eprintln!("Tool {} execution failed: {}", tool_call.function.name, e);
+                            tracing::error!(error = %e, "Tool execution failed");
                             let error_content = format!("Error executing tool {}: {}", tool_call.function.name, e);
                             let response_tool_call_id = tool_call.id.clone().unwrap_or_else(|| tool_call.function.name.clone());
                             messages.push(Message::tool(
@@ -145,6 +153,7 @@ impl Agent {
             }
             messages
         } else {
+            tracing::error!("No corresponding tool found.");
             vec![Message::tool(
                 "Tool",
                 "Could not find tool with same name. Try again.",
