@@ -1,3 +1,5 @@
+use std::{fs, path::Path};
+
 use serde_json::Value;
 use tracing::instrument;
 
@@ -169,5 +171,11 @@ impl Agent {
                 "Tool",
             )]
         }
+    }
+
+    pub fn save_history<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+        let json_string = serde_json::to_string_pretty(&self.history)?;
+        fs::write(path, json_string)?;
+        Ok(())
     }
 }
