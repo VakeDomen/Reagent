@@ -7,5 +7,5 @@ pub use services::ollama::AsyncToolFn;
 pub use services::ollama::models::errors::ToolExecutionError;
 pub use services::mcp::mcp_tool_builder::McpServerType;
 pub use serde_json::*;
-pub use services::ollama::models::base::Message;
+pub use services::ollama::models::base::{Message, Role};
 pub use services::logging::init_default_tracing;
