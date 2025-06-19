@@ -15,10 +15,37 @@ pub struct AgentBuilder {
     stop_prompt: Option<String>,
     stopword: Option<String>,
     strip_thinking: Option<bool>,
+    temperature: Option<f32>,
+    top_p: Option<f32>,
+    presence_penalty: Option<f32>,
+    frequency_penalty: Option<f32>,
+    num_ctx: Option<u32>,
+    repeat_last_n: Option<i32>,
+    repeat_penalty: Option<f32>,
+    seed: Option<i32>,
+    stop: Option<String>,
+    num_predict: Option<i32>,
+    top_k: Option<u32>,
+    min_p: Option<f32>,
 }
 
 
 impl AgentBuilder { 
+
+    pub fn set_temperature(mut self, v: f32) -> Self { self.temperature = Some(v); self }
+    pub fn set_top_p(mut self, v: f32) -> Self { self.top_p = Some(v); self }
+    pub fn set_presence_penalty(mut self, v: f32) -> Self { self.presence_penalty = Some(v); self }
+    pub fn set_frequency_penalty(mut self, v: f32) -> Self { self.frequency_penalty = Some(v); self }
+    pub fn set_num_ctx(mut self, v: u32) -> Self { self.num_ctx = Some(v); self }
+    pub fn set_repeat_last_n(mut self, v: i32) -> Self { self.repeat_last_n = Some(v); self }
+    pub fn set_repeat_penalty(mut self, v: f32) -> Self { self.repeat_penalty = Some(v); self }
+    pub fn set_seed(mut self, v: i32) -> Self { self.seed = Some(v); self }
+    pub fn set_stop<T: Into<String>>(mut self, v: T) -> Self { self.stop = Some(v.into()); self }
+    pub fn set_num_predict(mut self, v: i32) -> Self { self.num_predict = Some(v); self }
+    pub fn set_top_k(mut self, v: u32) -> Self { self.top_k = Some(v); self }
+    pub fn set_min_p(mut self, v: f32) -> Self { self.min_p = Some(v); self }
+
+
     pub fn set_model<T>(mut self, model: T) -> Self where T: Into<String> {
         self.model = Some(model.into());
         self
@@ -142,6 +169,18 @@ impl AgentBuilder {
             self.stop_prompt,
             self.stopword,
             strip_thinking,
+            self.temperature,
+            self.top_p,
+            self.presence_penalty,
+            self.frequency_penalty,
+            self.num_ctx,
+            self.repeat_last_n,
+            self.repeat_penalty,
+            self.seed,
+            self.stop,
+            self.num_predict,
+            self.top_k,
+            self.min_p,
         ))
     }
 }

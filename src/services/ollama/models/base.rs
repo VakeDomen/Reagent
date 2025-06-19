@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use super::tool::ToolCall;
@@ -73,10 +73,73 @@ pub struct BaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub options: Option<HashMap<String, serde_json::Value>>,
+    #[serde(rename = "options")]
+    #[serde(serialize_with = "serialize_options_as_map")]
+    pub options: Option<OllamaOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keep_alive: Option<String>, // e.g., "5m"
 }
 
+
+/// Structured options for customizing Ollama request behavior.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OllamaOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_ctx: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_last_n: Option<i32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_predict: Option<i32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_p: Option<f32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+}
+
+fn serialize_options_as_map<S>(
+    options: &Option<OllamaOptions>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match options {
+        Some(opts) => {
+            let map = serde_json::to_value(opts)
+                .map_err(serde::ser::Error::custom)?
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+
+            map.serialize(serializer)
+        }
+        None => serializer.serialize_none(),
+    }
+}

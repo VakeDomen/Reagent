@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use serde_json::Value;
 use tracing::instrument;
 
-use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}};
+use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}};
 
 use super::AgentError;
 
@@ -19,6 +19,18 @@ pub struct Agent {
     pub stop_prompt: Option<String>,
     pub stopword: Option<String>,
     pub strip_thinking: bool,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+    pub num_ctx: Option<u32>,
+    pub repeat_last_n: Option<i32>,
+    pub repeat_penalty: Option<f32>,
+    pub seed: Option<i32>,
+    pub stop: Option<String>,
+    pub num_predict: Option<i32>,
+    pub top_k: Option<u32>,
+    pub min_p: Option<f32>,
 }
 
 impl Agent {
@@ -32,6 +44,18 @@ impl Agent {
         stop_prompt: Option<String>,
         stopword: Option<String>,
         strip_thinking: bool,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
+        presence_penalty: Option<f32>,
+        frequency_penalty: Option<f32>,
+        num_ctx: Option<u32>,
+        repeat_last_n: Option<i32>,
+        repeat_penalty: Option<f32>,
+        seed: Option<i32>,
+        stop: Option<String>,
+        num_predict: Option<i32>,
+        top_k: Option<u32>,
+        min_p: Option<f32>,
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
         let history = vec![Message::system(system_prompt.to_string())];
@@ -45,7 +69,19 @@ impl Agent {
             system_prompt: system_prompt.into(),
             stop_prompt,
             stopword,
-            strip_thinking
+            strip_thinking,
+            temperature,
+            top_p,
+            presence_penalty,
+            frequency_penalty,
+            num_ctx,
+            repeat_last_n,
+            repeat_penalty,
+            seed,
+            stop,
+            num_predict,
+            top_k,
+            min_p,
         }
     }
 
@@ -66,7 +102,20 @@ impl Agent {
                 base: BaseRequest {
                     model: self.model.clone(),
                     format: self.response_format.clone(),
-                    options: None,
+                    options:  Some(OllamaOptions {
+                        num_ctx: self.num_ctx,
+                        repeat_last_n: self.repeat_last_n,
+                        repeat_penalty: self.repeat_penalty,
+                        temperature: self.temperature,
+                        seed: self.seed,
+                        stop: self.stop.clone(),
+                        num_predict: self.num_predict,
+                        top_k: self.top_k,
+                        top_p: self.top_p,
+                        min_p: self.min_p,
+                        presence_penalty: self.presence_penalty,
+                        frequency_penalty: self.frequency_penalty,
+                    }),
                     stream: Some(false), 
                     keep_alive: Some("5m".to_string()),
                 },
