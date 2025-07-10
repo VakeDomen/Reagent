@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::tool::{AsyncToolFn, Function, FunctionArguments, Property, Tool, ToolType};
+use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,9 +79,9 @@ impl ToolBuilder {
     }
 
 
-    /// Adds a property to the function's arguments.
+    /// Adds a property to the function's parameters.
     ///
-    /// # Arguments
+    /// # parameters
     /// * `name` - The name of the property.
     /// * `property_type` - The JSON schema type of the property (e.g., "string", "number", "boolean").
     /// * `description` - A description of what the property represents.
@@ -126,7 +126,7 @@ impl ToolBuilder {
         let function_description = self.function_description.ok_or(ToolBuilderError::MissingFunctionDescription)?;
         let executor = self.executor.ok_or(ToolBuilderError::MissingExecutor)?; // Check for executor
 
-        let arguments = FunctionArguments {
+        let parameters = FunctionParameters {
             param_type:"object".to_string(),
             properties: self.function_properties,
             required: self.function_required,
@@ -135,7 +135,7 @@ impl ToolBuilder {
         let function = Function {
             name: function_name,
             description: function_description,
-            parameters: arguments,
+            parameters: parameters,
         };
 
         Ok(Tool {
@@ -151,7 +151,7 @@ impl ToolBuilder {
 #[cfg(test)]
 mod tests {
     use super::*; // Imports ToolBuilder, ToolBuilderError
-    use crate::services::ollama::models::tool::{Tool, ToolType, Function, FunctionArguments, Property, AsyncToolFn};
+    use crate::services::ollama::models::tool::{Tool, ToolType, Function, Property, AsyncToolFn};
     use std::sync::Arc;
     use serde_json::Value;
 

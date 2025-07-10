@@ -58,12 +58,12 @@ impl Tool {
 pub struct Function {
     pub name: String,
     pub description: String,
-    pub parameters: FunctionArguments,
+    pub parameters: FunctionParameters,
 }
 
 /// Defines the arguments for a function using a JSON schema-like structure.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FunctionArguments {
+pub struct FunctionParameters {
     #[serde(rename = "type")]
     pub param_type: String, // Typically "object"
     pub properties: HashMap<String, Property>,
@@ -108,4 +108,3 @@ pub struct ToolCallFunction {
     pub name: String,
     pub arguments: serde_json::Value,
 }
-
