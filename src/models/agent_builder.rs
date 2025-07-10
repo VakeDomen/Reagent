@@ -1,5 +1,7 @@
 
-use crate::services::{mcp::mcp_tool_builder::{get_mcp_tools, McpServerType}, ollama::models::tool::Tool};
+use tokio::{sync::mpsc};
+
+use crate::{models::notification::Notification, services::{mcp::mcp_tool_builder::{get_mcp_tools, McpServerType}, ollama::models::tool::Tool}};
 
 use super::{Agent, AgentBuildError};
 
@@ -27,6 +29,7 @@ pub struct AgentBuilder {
     num_predict: Option<i32>,
     top_k: Option<u32>,
     min_p: Option<f32>,
+    notification_channel: Option<mpsc::Sender<Notification>>
 }
 
 
@@ -44,32 +47,14 @@ impl AgentBuilder {
     pub fn set_num_predict(mut self, v: i32) -> Self { self.num_predict = Some(v); self }
     pub fn set_top_k(mut self, v: u32) -> Self { self.top_k = Some(v); self }
     pub fn set_min_p(mut self, v: f32) -> Self { self.min_p = Some(v); self }
-
-
-    pub fn set_model<T>(mut self, model: T) -> Self where T: Into<String> {
-        self.model = Some(model.into());
-        self
-    }
-
-    pub fn set_ollama_endpoint<T>(mut self, url: T) -> Self where T: Into<String> {
-        self.ollama_url = Some(url.into());
-        self
-    }
-
-    pub fn set_ollama_port(mut self, port: u16) -> Self {
-        self.ollama_port = Some(port);
-        self
-    }
-
-    pub fn set_system_prompt<T>(mut self, prompt: T) -> Self where T: Into<String> {
-        self.system_prompt = Some(prompt.into());
-        self
-    }
-
-    pub fn set_response_format<T>(mut self, format: T) -> Self where T: Into<String> {
-        self.response_format = Some(format.into());
-        self
-    }
+    pub fn set_model<T>(mut self, model: T) -> Self where T: Into<String> { self.model = Some(model.into()); self }
+    pub fn set_ollama_endpoint<T>(mut self, url: T) -> Self where T: Into<String> { self.ollama_url = Some(url.into()); self }
+    pub fn set_ollama_port(mut self, port: u16) -> Self { self.ollama_port = Some(port); self }
+    pub fn set_system_prompt<T>(mut self, prompt: T) -> Self where T: Into<String> { self.system_prompt = Some(prompt.into()); self }
+    pub fn set_response_format<T>(mut self, format: T) -> Self where T: Into<String> { self.response_format = Some(format.into()); self }
+    pub fn set_stop_prompt<T>(mut self, stop_prompt: T) -> Self where T: Into<String> { self.stop_prompt = Some(stop_prompt.into()); self }
+    pub fn set_stopword<T>(mut self, stopword: T) -> Self where T: Into<String> { self.stopword = Some(stopword.into()); self }
+    pub fn strip_thinking(mut self, strip: bool) -> Self { self.strip_thinking = Some(strip); self }
     
     pub fn add_tool(mut self, tool: Tool) -> Self {
         match self.tools.as_mut() {
@@ -87,19 +72,11 @@ impl AgentBuilder {
         self
     }
 
-    pub fn set_stop_prompt<T>(mut self, stop_prompt: T) -> Self where T: Into<String> {
-        self.stop_prompt = Some(stop_prompt.into());
-        self
-    }
-
-    pub fn set_stopword<T>(mut self, stopword: T) -> Self where T: Into<String> {
-        self.stopword = Some(stopword.into());
-        self
-    }
-
-    pub fn strip_thinking(mut self, strip: bool) -> Self {
-        self.strip_thinking = Some(strip);
-        self
+    pub async fn build_with_notification(mut self) -> Result<(Agent, mpsc::Receiver<Notification>), AgentBuildError> {
+        let (s, r) = mpsc::channel::<Notification>(100);
+        self.notification_channel = Some(s);
+        let agent = self.build().await?;
+        Ok((agent, r))
     }
 
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
@@ -181,6 +158,7 @@ impl AgentBuilder {
             self.num_predict,
             self.top_k,
             self.min_p,
+            self.notification_channel,
         ))
     }
 }

@@ -1,9 +1,10 @@
 use std::{fs, path::Path};
 
 use serde_json::Value;
+use tokio::sync::mpsc::Sender;
 use tracing::instrument;
 
-use crate::services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}};
+use crate::{models::notification::Notification, services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}}};
 
 use super::AgentError;
 
@@ -31,6 +32,7 @@ pub struct Agent {
     pub num_predict: Option<i32>,
     pub top_k: Option<u32>,
     pub min_p: Option<f32>,
+    pub notification_channel: Option<Sender<Notification>>,
 }
 
 impl Agent {
@@ -56,6 +58,7 @@ impl Agent {
         num_predict: Option<i32>,
         top_k: Option<u32>,
         min_p: Option<f32>,
+        notification_channel: Option<Sender<Notification>>,
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
         let history = vec![Message::system(system_prompt.to_string())];
@@ -82,6 +85,7 @@ impl Agent {
             num_predict,
             top_k,
             min_p,
+            notification_channel,
         }
     }
 
@@ -97,6 +101,7 @@ impl Agent {
         self.history.push(Message::user(prompt.into()));
 
         loop {
+
             
             let request = ChatRequest {
                 base: BaseRequest {
@@ -123,8 +128,19 @@ impl Agent {
                 tools: self.tools.clone(), 
             };
     
-            let response: ChatResponse = self.ollama_client.chat(request).await?;
+            self.notify(Notification::PromptRequest(request.clone())).await;
+            let response = match self.ollama_client.chat(request).await {
+              Ok(resp) => {
+                self.notify(Notification::PromptSuccessResult(resp.clone())).await;
+                resp
+              }
+              Err(e) => {
+                self.notify(Notification::PromptErrorResult(e.to_string())).await;
+                return Err(e.into());
+              } 
+            };
             let mut message = response.message.clone();
+
            
             let tool_calls = message.tool_calls.clone();
 
@@ -150,11 +166,13 @@ impl Agent {
             } else {
                 if let Some(stopword) = &self.stopword {
                     if response.message.clone().content.unwrap().contains(stopword) {
+                        self.notify(Notification::Done(true)).await;
                         return Ok(response.message);
                     } else if let Some(stop_prompt) = &self.stop_prompt {
                         self.history.push(Message::tool( stop_prompt, "0"));
                     }
                 } else {
+                    self.notify(Notification::Done(true)).await;
                     return Ok(response.message);
                 }
             } 
@@ -180,13 +198,15 @@ impl Agent {
                     }
 
                     tool_found = true;
+                    self.notify(Notification::ToolCallRequest(tool_call.clone())).await;
+
                     match avalible_tool.execute(tool_call.function.arguments.clone()).await {
                         Ok(tool_result_content) => {
                             let response_tool_call_id = tool_call.id
                                 .clone()
                                 .unwrap_or_else(|| tool_call.function.name.clone());
     
-                            
+                            self.notify(Notification::ToolCallSuccessResult(tool_result_content.clone())).await;
                             messages.push(Message::tool(
                                 tool_result_content,
                                 response_tool_call_id, 
@@ -196,6 +216,8 @@ impl Agent {
                             tracing::error!(error = %e, "Tool execution failed");
                             let error_content = format!("Error executing tool {}: {}", tool_call.function.name, e);
                             let response_tool_call_id = tool_call.id.clone().unwrap_or_else(|| tool_call.function.name.clone());
+                            
+                            self.notify(Notification::ToolCallErrorResult(e.to_string())).await;
                             messages.push(Message::tool(
                                 error_content,
                                 response_tool_call_id,
@@ -205,8 +227,10 @@ impl Agent {
                 }
                 if !tool_found {
                     tracing::error!("No corresponding tool found.");
+                    let message = format!("Could not find tool: {}", tool_call.function.name);
+                    self.notify(Notification::ToolCallErrorResult(message.clone())).await;
                     messages.push(Message::tool(
-                        format!("Could not find tool: {}", tool_call.function.name), 
+                        message, 
                         "0"
                     ));
                 }
@@ -215,6 +239,7 @@ impl Agent {
             messages
         } else {
             tracing::error!("No tools specified");
+            self.notify(Notification::ToolCallErrorResult("Empty tool call".to_string())).await;
             vec![Message::tool(
                 "If you want to use a tool specifiy the name of the avalible tool.",
                 "Tool",
@@ -226,5 +251,19 @@ impl Agent {
         let json_string = serde_json::to_string_pretty(&self.history)?;
         fs::write(path, json_string)?;
         Ok(())
+    }
+
+    async fn notify(&self, msg: Notification) -> bool {
+        if let None = self.notification_channel {
+            return false;
+        }
+        let notification_channel = self.notification_channel.as_ref().unwrap();
+        match notification_channel.send(msg).await {
+            Ok(_) => true,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed sending notification");
+                false
+            },
+        }
     }
 }

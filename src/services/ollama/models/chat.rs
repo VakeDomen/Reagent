@@ -20,7 +20,7 @@ pub struct ChatRequest {
 /// it contains the full message. If streaming is enabled, multiple `ChatResponse`
 /// objects will be received (each containing a chunk of the message), with the
 /// final one containing the performance statistics.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatResponse {
     /// The model name used for the chat.
     pub model: String,
