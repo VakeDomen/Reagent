@@ -1,10 +1,10 @@
 use std::{fs, path::Path};
 
 use serde_json::Value;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{self, Sender};
 use tracing::instrument;
 
-use crate::{models::notification::Notification, services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}}};
+use crate::{models::notification::Notification, services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::ChatRequest, tool::{Tool, ToolCall}}}};
 
 use super::AgentError;
 
@@ -251,6 +251,12 @@ impl Agent {
         let json_string = serde_json::to_string_pretty(&self.history)?;
         fs::write(path, json_string)?;
         Ok(())
+    }
+
+    pub fn new_notification_channel(&mut self) -> mpsc::Receiver<Notification> {
+        let (s, r) = mpsc::channel::<Notification>(100);
+        self.notification_channel = Some(s);
+        r
     }
 
     async fn notify(&self, msg: Notification) -> bool {
