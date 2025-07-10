@@ -58,7 +58,7 @@ impl Tool {
 pub struct Function {
     pub name: String,
     pub description: String,
-    pub arguments: FunctionArguments,
+    pub parameters: FunctionArguments,
 }
 
 /// Defines the arguments for a function using a JSON schema-like structure.

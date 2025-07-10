@@ -135,7 +135,7 @@ impl ToolBuilder {
         let function = Function {
             name: function_name,
             description: function_description,
-            arguments,
+            parameters: arguments,
         };
 
         Ok(Tool {
@@ -175,8 +175,8 @@ mod tests {
         assert!(tool_result.is_ok());
         let tool = tool_result.unwrap();
         assert_eq!(tool.function.name, "test_tool");
-        assert_eq!(tool.function.arguments.properties.get("param1").unwrap().property_type, "string");
-        assert!(tool.function.arguments.required.contains(&"param1".to_string()));
+        assert_eq!(tool.function.parameters.properties.get("param1").unwrap().property_type, "string");
+        assert!(tool.function.parameters.required.contains(&"param1".to_string()));
     }
 
     #[test]
