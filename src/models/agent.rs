@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 use tracing::instrument;
 
-use crate::{models::notification::Notification, services::ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::ChatRequest, tool::{Tool, ToolCall}}}};
+use crate::{models::{notification::Notification, AgentBuildError}, services::{mcp::mcp_tool_builder::get_mcp_tools, ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::ChatRequest, tool::{Tool, ToolCall}}}}, McpServerType};
 
 use super::AgentError;
 
@@ -33,6 +33,7 @@ pub struct Agent {
     pub top_k: Option<u32>,
     pub min_p: Option<f32>,
     pub notification_channel: Option<Sender<Notification>>,
+    pub mcp_servers: Option<Vec<McpServerType>>,
 }
 
 impl Agent {
@@ -59,6 +60,7 @@ impl Agent {
         top_k: Option<u32>,
         min_p: Option<f32>,
         notification_channel: Option<Sender<Notification>>,
+        mcp_servers: Option<Vec<McpServerType>>
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
         let history = vec![Message::system(system_prompt.to_string())];
@@ -86,6 +88,7 @@ impl Agent {
             top_k,
             min_p,
             notification_channel,
+            mcp_servers
         }
     }
 
@@ -98,7 +101,26 @@ impl Agent {
     where
         T: Into<String>,
     {
+        let mut running_tools = self.tools.clone();
+        if let Some(mcp_servers) = &self.mcp_servers {
+            for mcp_server in mcp_servers {
+                let mcp_tools = match get_mcp_tools(mcp_server.clone(), self.notification_channel.clone()).await {
+                    Ok(t) => t,
+                    Err(e) => return Err(AgentError::AgentBuildError(AgentBuildError::McpError(e))),
+                };
+    
+                match running_tools.as_mut() {
+                    Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
+                    None => if mcp_tools.len() > 0 {
+                        running_tools = Some(mcp_tools)
+                    },
+                }
+            }
+        }
+        
         self.history.push(Message::user(prompt.into()));
+
+        println!("{:#?}", running_tools);
 
         loop {
 
@@ -125,7 +147,7 @@ impl Agent {
                     keep_alive: Some("5m".to_string()),
                 },
                 messages: self.history.clone(),
-                tools: self.tools.clone(), 
+                tools: running_tools.clone(), 
             };
     
             self.notify(Notification::PromptRequest(request.clone())).await;
@@ -160,7 +182,7 @@ impl Agent {
             self.history.push(message);
 
             if let Some(tc) = tool_calls {
-                for tool_message in self.call_tools(&tc).await {
+                for tool_message in self.call_tools(&tc, &running_tools).await {
                     self.history.push(tool_message);
                 }
             } else {
@@ -180,8 +202,8 @@ impl Agent {
     }
 
 
-    async fn call_tools(&self, tool_calls: &Vec<ToolCall>) -> Vec<Message> {
-        if let Some(avalible_tools) = &self.tools {
+    async fn call_tools(&self, tool_calls: &Vec<ToolCall>, running_tools: &Option<Vec<Tool>>) -> Vec<Message> {
+        if let Some(avalible_tools) = running_tools {
             let mut messages = vec![];
             for tool_call in tool_calls {
                 tracing::info!(

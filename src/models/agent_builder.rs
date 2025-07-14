@@ -117,24 +117,7 @@ impl AgentBuilder {
             }
         }
 
-        let mut tools = self.tools.clone();
-        
-        if let Some(mcp_servers) = self.mcp_servers {
-            for mcp_server in mcp_servers {
-                let mcp_tools = match get_mcp_tools(mcp_server, self.notification_channel.clone()).await {
-                    Ok(t) => t,
-                    Err(e) => return Err(AgentBuildError::McpError(e)),
-                };
-    
-                match tools.as_mut() {
-                    Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
-                    None => if mcp_tools.len() > 0 {
-                        tools = Some(mcp_tools)
-                    },
-                }
-            }
-
-        }
+        let tools = self.tools.clone();
 
         Ok(Agent::new(
             &model, 
@@ -159,6 +142,7 @@ impl AgentBuilder {
             self.top_k,
             self.min_p,
             self.notification_channel,
+            self.mcp_servers,
         ))
     }
 }
