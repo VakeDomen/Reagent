@@ -121,7 +121,7 @@ impl AgentBuilder {
         
         if let Some(mcp_servers) = self.mcp_servers {
             for mcp_server in mcp_servers {
-                let mcp_tools = match get_mcp_tools(mcp_server).await {
+                let mcp_tools = match get_mcp_tools(mcp_server, self.notification_channel.clone()).await {
                     Ok(t) => t,
                     Err(e) => return Err(AgentBuildError::McpError(e)),
                 };

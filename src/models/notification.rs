@@ -13,4 +13,5 @@ pub enum Notification {
     ToolCallRequest(ToolCall),
     ToolCallSuccessResult(String),
     ToolCallErrorResult(String),
+    McpToolNotification(String),
 }

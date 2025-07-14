@@ -1,7 +1,7 @@
 mod agent;
 mod agent_builder;
 mod error;
-mod notification;
+pub mod notification;
 
 pub use agent::Agent;
 pub use agent_builder::AgentBuilder;

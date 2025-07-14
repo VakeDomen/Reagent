@@ -1,13 +1,13 @@
 use std::{future::Future, sync::Arc};
 
 use serde_json::Value;
-use tokio::{process::Command, sync::Mutex};
+use tokio::{process::Command, sync::{mpsc::Sender, Mutex}};
 use tracing::info;
 
-use crate::{services::ollama::models::tool::Tool, ToolBuilder, ToolExecutionError};
+use crate::{services::ollama::models::tool::Tool, Notification, ToolBuilder, ToolExecutionError};
 
 use super::error::McpIntegrationError;
-use rmcp::{model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ServiceError, ServiceExt};
+use rmcp::{model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceError, ServiceExt};
 use crate::AsyncToolFn;
 
 
@@ -25,33 +25,54 @@ impl McpServerType {
 }
 
 
+pub type ArcMcpClient = RunningService<rmcp::RoleClient, AgentMcpHandler>;
+pub type McpClient = Arc<Mutex<ArcMcpClient>>;
 
-pub type McpClient = Arc<Mutex<McpClientType>>;
 
-
-
-pub enum McpClientType {
-    SseClient(ArcMcpSseClient),
-    StdioClient(ArcMcpStdioClient),
-    StreamableHttp(ArcMcpStreamableHttpClient)
+#[derive(Clone)]
+pub struct AgentMcpHandler {
+    /// The channel to send notifications back to the main agent.
+    agent_notification_tx: Option<Sender<Notification>>,
+    client_info: ClientInfo,
 }
 
-impl McpClientType {
-    pub fn call_tool(&mut self, param: CallToolRequestParam) -> impl Future<Output = Result<rmcp::model::CallToolResult, ServiceError>> + '_ {
-        match self {
-            McpClientType::SseClient(running_service) => running_service.call_tool(param),
-            McpClientType::StdioClient(running_service) => running_service.call_tool(param),
-            McpClientType::StreamableHttp(running_service) => running_service.call_tool(param),
-        }
+impl AgentMcpHandler {
+    pub fn new(agent_notification_tx: Option<Sender<Notification>>, client_info: ClientInfo) -> Self {
+        Self { agent_notification_tx, client_info }
     }
 }
 
-pub async fn get_mcp_tools(mcp_server_type: McpServerType) -> Result<Vec<Tool>, McpIntegrationError> {
+impl ClientHandler for AgentMcpHandler {
+    async fn on_progress(
+        &self,
+        params: rmcp::model::ProgressNotificationParam,
+        _context: rmcp::service::NotificationContext<rmcp::RoleClient>,
+    ) {
+        tracing::info!("Received progress notification: {:?}", params);
+        if self.agent_notification_tx.is_none() {
+            return;
+        }
+        let tx = self.agent_notification_tx.clone().unwrap();
+        let notification_string = serde_json::to_string(&params)
+            .unwrap_or_else(|e| format!("Failed to serialize MCP notification: {}", e));
+
+        let agent_notification = Notification::McpToolNotification(notification_string);
+
+        if tx.send(agent_notification).await.is_err() {
+            tracing::warn!("Agent notification channel closed. Cannot forward MCP notification.");
+        }
+    }
+
+}
+
+
+
+pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel: Option<Sender<Notification>>) -> Result<Vec<Tool>, McpIntegrationError> {
     
     let (mcp_client_arc, mcp_raw_tools) = match mcp_server_type {
-        McpServerType::Sse(url) => get_mcp_sse_tools(url).await?,
-        McpServerType::StreamableHttp(url) => get_mcp_streamable_http_tools(url).await?,
-        McpServerType::Stdio(command) => get_mcp_stdio_tools(command).await?,
+        McpServerType::Sse(url) => get_mcp_sse_tools(url, notification_channel).await?,
+        McpServerType::StreamableHttp(url) => get_mcp_streamable_http_tools(url, notification_channel).await?,
+        McpServerType::Stdio(command) => get_mcp_stdio_tools(command, notification_channel).await?,
     };
 
     
@@ -73,7 +94,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType) -> Result<Vec<Tool>, 
             let client_captured_arc = Arc::clone(&client_for_executor);
             let action_name_captured = action_name_for_executor.clone().into_owned();
             Box::pin(async move {
-                let mut client_captured = client_captured_arc.lock().await;
+                let client_captured = client_captured_arc.lock().await;
                 match client_captured
                     .call_tool(CallToolRequestParam {
                         name: action_name_captured.clone().into(),
@@ -161,24 +182,19 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType) -> Result<Vec<Tool>, 
 }
 
 
-pub type ArcMcpSseClient = RunningService<rmcp::RoleClient, rmcp::model::InitializeRequestParam>;
-pub type ArcMcpStreamableHttpClient = RunningService<rmcp::RoleClient, rmcp::model::InitializeRequestParam>;
-pub type ArcMcpStdioClient = RunningService<rmcp::RoleClient, ()>;
 
-pub async fn get_mcp_sse_tools<T>(url: T) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
+pub async fn get_mcp_sse_tools<T>(url: T, notification_channel: Option<Sender<Notification>>) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let transport = match  SseClientTransport::start(url.into()).await {
         Ok(t) => t,
         Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
     };
-    let client_info = ClientInfo {
-        protocol_version: Default::default(),
-        capabilities: ClientCapabilities::default(),
-        client_info: Implementation {
-            name: "test sse client".to_string(),
-            version: "0.0.1".to_string(),
-        },
+    
+    let handler = AgentMcpHandler {
+        agent_notification_tx: notification_channel,
+        client_info: ClientInfo::default(),
     };
-    let client = match client_info.serve(transport).await {
+
+    let client = match handler.serve(transport).await {
         Ok(c) =>c,
         Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
     };
@@ -187,34 +203,26 @@ pub async fn get_mcp_sse_tools<T>(url: T) -> Result<(McpClient, Vec<rmcp::model:
         Ok(l) => l,
         Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
     };
-    Ok((Arc::new(Mutex::new(McpClientType::SseClient(client))), tool_list.tools))
+    Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }
 
 
-pub async fn get_mcp_streamable_http_tools<T>(url: T) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
+pub async fn get_mcp_streamable_http_tools<T>(url: T, notification_channel: Option<Sender<Notification>>) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let transport = StreamableHttpClientTransport::from_uri(url.into());
-    let client_info = ClientInfo {
-        protocol_version: Default::default(),
-        capabilities: ClientCapabilities::default(),
-        client_info: Implementation {
-            name: "test sse client".to_string(),
-            version: "0.0.1".to_string(),
-        },
-    };
-    let client = match client_info.serve(transport).await {
-        Ok(c) =>c,
-        Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+
+    let handler = AgentMcpHandler {
+        agent_notification_tx: notification_channel,
+        client_info: ClientInfo::default(),
     };
 
-    let tool_list = match client.list_tools(Default::default()).await {
-        Ok(l) => l,
-        Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
-    };
-    Ok((Arc::new(Mutex::new(McpClientType::StreamableHttp(client))), tool_list.tools))
+    let client = handler.serve(transport).await.map_err(|e| McpIntegrationError::ConnectionError(e.to_string()))?;
+    let tool_list = client.list_tools(Default::default()).await.map_err(|e| McpIntegrationError::DiscoveryError(e.to_string()))?;
+    
+    Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }
 
 
-pub async fn get_mcp_stdio_tools<T>(full_command: T) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
+pub async fn get_mcp_stdio_tools<T>(full_command: T, notification_channel: Option<Sender<Notification>>) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let full_command_string = full_command.into();
     let mut command_args = full_command_string.split(" ");
     let first = command_args.next();
@@ -232,7 +240,12 @@ pub async fn get_mcp_stdio_tools<T>(full_command: T) -> Result<(McpClient, Vec<r
         Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
     };
 
-    let client = match ().serve(transport)
+    let handler = AgentMcpHandler {
+        agent_notification_tx: notification_channel,
+        client_info: ClientInfo::default(),
+    };
+
+    let client = match handler.serve(transport)
         .await {
             Ok(c) =>c,
             Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
@@ -242,5 +255,5 @@ pub async fn get_mcp_stdio_tools<T>(full_command: T) -> Result<(McpClient, Vec<r
         Ok(l) => l,
         Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
     };
-    Ok((Arc::new(Mutex::new(McpClientType::StdioClient(client))), tool_list.tools))
+    Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }
