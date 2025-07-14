@@ -7,7 +7,7 @@ use tracing::info;
 use crate::{services::ollama::models::tool::Tool, Notification, ToolBuilder, ToolExecutionError};
 
 use super::error::McpIntegrationError;
-use rmcp::{model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceError, ServiceExt};
+use rmcp::{model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceError, ServiceExt};
 use crate::AsyncToolFn;
 
 
@@ -103,16 +103,20 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
                     .await
                 {
                     Ok(result) => {
-                        if result.is_error.is_some_and(|b| b) {
-                            Err(ToolExecutionError::ExecutionFailed("tool call failed, mcp call error".into()))
-                        } else {
-                            let mut out_result = "".to_string();
-                            for content in result.content.iter() {
-                                if let Some(content_text) = content.as_text() {
-                                    out_result = format!("{}\n{}", out_result, content_text.text);
-                                }
+                        let CallToolResult {content, is_error } = result;
+                        match (content, is_error) {
+                            (content, Some(true))  => {
+                                Err(ToolExecutionError::ExecutionFailed(format!("tool call failed, mcp call error: {:#?}", content)))
                             }
-                            Ok(out_result.to_string())
+                            (content, _) => {
+                                let mut out_result = "".to_string();
+                                for content in content.iter() {
+                                    if let Some(content_text) = content.as_text() {
+                                        out_result = format!("{}\n{}", out_result, content_text.text);
+                                    }
+                                }
+                                Ok(out_result.to_string())
+                            }
                         }
                     }
                     Err(e) => Err(ToolExecutionError::ExecutionFailed(format!(
