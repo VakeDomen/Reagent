@@ -1065,6 +1065,7 @@ dependencies = [
 name = "reagent"
 version = "0.1.1"
 dependencies = [
+ "futures",
  "reqwest",
  "rmcp",
  "serde",

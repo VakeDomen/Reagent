@@ -28,11 +28,6 @@ tokio = {version ="1.45.1", features = ["rt-multi-thread"]}
 tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 
+[dev-dependencies]
+futures = "0.3.31"
 
-[[example]]
-name = "simple_agent"
-path = "examples/simple_agent.rs"
-
-[[example]]
-name = "mcp_agent"
-path = "examples/mcp_agent.rs"

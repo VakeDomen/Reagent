@@ -1,11 +1,36 @@
-
-use tokio::{sync::mpsc};
-
-use crate::{models::{invocation::{invocation_handler::Flow}, notification::Notification}, services::{mcp::mcp_tool_builder::McpServerType, ollama::models::tool::Tool}};
-
+use tokio::sync::mpsc;
+use crate::{
+    models::{
+        invocation::invocation_handler::Flow,
+        notification::Notification
+    },
+    services::{
+        mcp::mcp_tool_builder::McpServerType,
+        ollama::models::tool::Tool
+    }
+};
 use super::{Agent, AgentBuildError};
 
-
+/// A builder for [`Agent`].
+///
+/// Allows configuration of model, endpoint, tools, penalties, flow, etc.
+/// All methods take `self` and return `Self`, so you can chain calls.
+///
+/// # Examples
+///
+/// ```rust
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// use reagent::AgentBuilder;
+/// let agent = AgentBuilder::default()
+///     .set_model("mistral-nemo")
+///     .set_ollama_port(8000)
+///     .set_system_prompt("Be concise")
+///     .strip_thinking(false)
+///     .build()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Default)]
 pub struct AgentBuilder {
     model: Option<String>,
@@ -34,105 +59,196 @@ pub struct AgentBuilder {
     flow: Option<Flow>,
 }
 
+impl AgentBuilder {
+    /// Set the sampling temperature.
+    pub fn set_temperature(mut self, v: f32) -> Self {
+        self.temperature = Some(v);
+        self
+    }
 
-impl AgentBuilder { 
+    /// Set nucleus sampling probability.
+    pub fn set_top_p(mut self, v: f32) -> Self {
+        self.top_p = Some(v);
+        self
+    }
 
-    pub fn set_temperature(mut self, v: f32) -> Self { self.temperature = Some(v); self }
-    pub fn set_top_p(mut self, v: f32) -> Self { self.top_p = Some(v); self }
-    pub fn set_presence_penalty(mut self, v: f32) -> Self { self.presence_penalty = Some(v); self }
-    pub fn set_frequency_penalty(mut self, v: f32) -> Self { self.frequency_penalty = Some(v); self }
-    pub fn set_num_ctx(mut self, v: u32) -> Self { self.num_ctx = Some(v); self }
-    pub fn set_repeat_last_n(mut self, v: i32) -> Self { self.repeat_last_n = Some(v); self }
-    pub fn set_repeat_penalty(mut self, v: f32) -> Self { self.repeat_penalty = Some(v); self }
-    pub fn set_seed(mut self, v: i32) -> Self { self.seed = Some(v); self }
-    pub fn set_stop<T: Into<String>>(mut self, v: T) -> Self { self.stop = Some(v.into()); self }
-    pub fn set_num_predict(mut self, v: i32) -> Self { self.num_predict = Some(v); self }
-    pub fn set_top_k(mut self, v: u32) -> Self { self.top_k = Some(v); self }
-    pub fn set_min_p(mut self, v: f32) -> Self { self.min_p = Some(v); self }
-    pub fn set_model<T>(mut self, model: T) -> Self where T: Into<String> { self.model = Some(model.into()); self }
-    pub fn set_ollama_endpoint<T>(mut self, url: T) -> Self where T: Into<String> { self.ollama_url = Some(url.into()); self }
-    pub fn set_ollama_port(mut self, port: u16) -> Self { self.ollama_port = Some(port); self }
-    pub fn set_system_prompt<T>(mut self, prompt: T) -> Self where T: Into<String> { self.system_prompt = Some(prompt.into()); self }
-    pub fn set_response_format<T>(mut self, format: T) -> Self where T: Into<String> { self.response_format = Some(format.into()); self }
-    pub fn set_stop_prompt<T>(mut self, stop_prompt: T) -> Self where T: Into<String> { self.stop_prompt = Some(stop_prompt.into()); self }
-    pub fn set_stopword<T>(mut self, stopword: T) -> Self where T: Into<String> { self.stopword = Some(stopword.into()); self }
-    pub fn strip_thinking(mut self, strip: bool) -> Self { self.strip_thinking = Some(strip); self }
-    pub fn set_flow(mut self, flow: Flow) -> Self { self.flow = Some(flow); self }
-    
+    /// Set presence penalty.
+    pub fn set_presence_penalty(mut self, v: f32) -> Self {
+        self.presence_penalty = Some(v);
+        self
+    }
+
+    /// Set frequency penalty.
+    pub fn set_frequency_penalty(mut self, v: f32) -> Self {
+        self.frequency_penalty = Some(v);
+        self
+    }
+
+    /// Set maximum context length (in tokens/chunks).
+    pub fn set_num_ctx(mut self, v: u32) -> Self {
+        self.num_ctx = Some(v);
+        self
+    }
+
+    /// Repeat penalty for the last N tokens.
+    pub fn set_repeat_last_n(mut self, v: i32) -> Self {
+        self.repeat_last_n = Some(v);
+        self
+    }
+
+    /// Set penalty for repeated tokens.
+    pub fn set_repeat_penalty(mut self, v: f32) -> Self {
+        self.repeat_penalty = Some(v);
+        self
+    }
+
+    /// Set RNG seed for sampling.
+    pub fn set_seed(mut self, v: i32) -> Self {
+        self.seed = Some(v);
+        self
+    }
+
+    /// Set the hard stop string.
+    pub fn set_stop<T: Into<String>>(mut self, v: T) -> Self {
+        self.stop = Some(v.into());
+        self
+    }
+
+    /// Number of tokens to predict.
+    pub fn set_num_predict(mut self, v: i32) -> Self {
+        self.num_predict = Some(v);
+        self
+    }
+
+    /// Top-K sampling.
+    pub fn set_top_k(mut self, v: u32) -> Self {
+        self.top_k = Some(v);
+        self
+    }
+
+    /// Minimum probability threshold.
+    pub fn set_min_p(mut self, v: f32) -> Self {
+        self.min_p = Some(v);
+        self
+    }
+
+    /// Select the underlying model name.
+    pub fn set_model<T: Into<String>>(mut self, model: T) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    /// URL of the Ollama service. Note port is set separately in `set_ollama_port`
+    pub fn set_ollama_endpoint<T: Into<String>>(mut self, url: T) -> Self {
+        self.ollama_url = Some(url.into());
+        self
+    }
+
+    /// Port number of the Ollama service.
+    pub fn set_ollama_port(mut self, port: u16) -> Self {
+        self.ollama_port = Some(port);
+        self
+    }
+
+    /// System prompt that initializes conversation history.
+    pub fn set_system_prompt<T: Into<String>>(mut self, prompt: T) -> Self {
+        self.system_prompt = Some(prompt.into());
+        self
+    }
+
+    /// JSON schema string to constrain response format.
+    pub fn set_response_format<T: Into<String>>(mut self, format: T) -> Self {
+        self.response_format = Some(format.into());
+        self
+    }
+
+    /// Optional prompt to insert on each tool‐call branch.
+    pub fn set_stop_prompt<T: Into<String>>(mut self, stop_prompt: T) -> Self {
+        self.stop_prompt = Some(stop_prompt.into());
+        self
+    }
+
+    /// Optional stopword to detect end of generation.
+    pub fn set_stopword<T: Into<String>>(mut self, stopword: T) -> Self {
+        self.stopword = Some(stopword.into());
+        self
+    }
+
+    /// Whether to strip `<think>` blocks from model output.
+    pub fn strip_thinking(mut self, strip: bool) -> Self {
+        self.strip_thinking = Some(strip);
+        self
+    }
+
+    /// Choose the high‐level control flow policy.
+    pub fn set_flow(mut self, flow: Flow) -> Self {
+        self.flow = Some(flow);
+        self
+    }
+
+    /// Add a local tool.
     pub fn add_tool(mut self, tool: Tool) -> Self {
-        match self.tools.as_mut() {
-            Some(vec_tools) => vec_tools.push(tool),
-            None => self.tools = Some(vec![tool]),
-        };
+        if let Some(ref mut vec) = self.tools {
+            vec.push(tool);
+        } else {
+            self.tools = Some(vec![tool]);
+        }
         self
     }
 
+    /// Add an MCP server endpoint.
     pub fn add_mcp_server(mut self, server: McpServerType) -> Self {
-        match self.mcp_servers.as_mut() {
-            Some(servers) => servers.push(server),
-            None => self.mcp_servers = Some(vec![server]),
+        if let Some(ref mut svs) = self.mcp_servers {
+            svs.push(server);
+        } else {
+            self.mcp_servers = Some(vec![server]);
         }
         self
     }
 
-    pub async fn build_with_notification(mut self) -> Result<(Agent, mpsc::Receiver<Notification>), AgentBuildError> {
-        let (s, r) = mpsc::channel::<Notification>(100);
-        self.notification_channel = Some(s);
+    /// Build an [`Agent`] and return also the notification receiver.
+    ///
+    /// Creates an internal mpsc channel of size 100.
+    pub async fn build_with_notification(
+        mut self
+    ) -> Result<(Agent, mpsc::Receiver<Notification>), AgentBuildError> {
+        let (sender, receiver) = mpsc::channel(100);
+        self.notification_channel = Some(sender);
         let agent = self.build().await?;
-        Ok((agent, r))
+        Ok((agent, receiver))
     }
 
+    /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
-        let model = match self.model {
-            Some(m) => m,
-            None => return Err(AgentBuildError::ModelNotSet),
-        };
-        
-        let ollama_url = match self.ollama_url {
-            Some(m) => m,
-            None => "http://localhost".into(),
-        };
-        
-        let ollama_port = match self.ollama_port {
-            Some(m) => m,
-            None => 11434,
-        };
-        
-        let system_prompt = match self.system_prompt {
-            Some(m) => m,
-            None => "You are a helpful agent.".into(),
-        };
+        let model = self.model.ok_or(AgentBuildError::ModelNotSet)?;
+        let ollama_url = self.ollama_url.unwrap_or_else(|| "http://localhost".into());
+        let ollama_port = self.ollama_port.unwrap_or(11434);
+        let system_prompt = self.system_prompt.unwrap_or_else(|| "You are a helpful agent.".into());
+        let strip_thinking = self.strip_thinking.unwrap_or(true);
 
-        let strip_thinking = match self.strip_thinking {
-            Some(s) => s,
-            None => true,
-        };
-        
-        let mut response_format = None;
-        if let Some(schema_str) = self.response_format {
-            let trimmed_schema_str = schema_str.trim();
-            match serde_json::from_str(trimmed_schema_str) {
-                Ok(parsed_schema_object) => response_format = Some(parsed_schema_object),
-                Err(e) => return Err(AgentBuildError::InvalidJsonSchema(format!(
-                        "Failed to parse provided JSON schema string: {}. Error: {}",
-                        trimmed_schema_str, e
-                )))
+        let response_format = if let Some(schema) = self.response_format {
+            let trimmed = schema.trim();
+            match serde_json::from_str(trimmed) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    return Err(AgentBuildError::InvalidJsonSchema(format!(
+                        "Failed to parse JSON schema `{}`: {}",
+                        trimmed, e
+                    )))
+                }
             }
-        }
-
-        let tools = self.tools.clone();
-
-
-        let flow = match self.flow {
-            Some(flow) => flow,
-            None => Flow::Simple,
+        } else {
+            None
         };
+
+        let flow = self.flow.unwrap_or(Flow::Simple);
+
         Ok(Agent::new(
-            &model, 
-            &ollama_url, 
-            ollama_port, 
-            &system_prompt, 
-            tools,
+            &model,
+            &ollama_url,
+            ollama_port,
+            &system_prompt,
+            self.tools.clone(),
             response_format,
             self.stop_prompt,
             self.stopword,
@@ -156,48 +272,148 @@ impl AgentBuilder {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*; 
+    use std::sync::Arc;
+
+    use serde_json::Value;
+
+    use super::*;
+    use crate::{models::invocation::invocation_handler::{Flow, FlowFuture}, Agent, AsyncToolFn, Message, ToolBuilder};
 
     #[tokio::test]
-    async fn agent_builder_defaults() {
-        // Assuming ModelNotSet is an error if set_model is not called
-        let builder_result = AgentBuilder::default().build().await;
-        assert!(builder_result.is_err());
-        match builder_result.unwrap_err() {
-            AgentBuildError::ModelNotSet => {} // Expected
-            _ => panic!("Expected ModelNotSet error"),
-        }
+    async fn defaults_fail_without_model() {
+        let err = AgentBuilder::default().build().await.unwrap_err();
+        assert!(matches!(err, AgentBuildError::ModelNotSet));
+    }
 
+    #[tokio::test]
+    async fn build_minimal_succeeds() {
         let agent = AgentBuilder::default()
             .set_model("test-model")
             .build()
             .await
-            .expect("Agent build failed with default settings");
-
-        assert_eq!(agent.model, "test-model"); // Add a getter for model name in Agent
-        assert!(agent.response_format.is_none()); // Add getter
-        assert!(agent.local_tools.is_none() || agent.local_tools.unwrap().is_empty()); // Add getter
+            .expect("build should succeed");
+        assert_eq!(agent.model, "test-model");
+        // history initialized with system prompt
+        assert_eq!(
+            agent.history.len(),
+            1,
+            "history should contain exactly the system prompt"
+        );
     }
 
     #[tokio::test]
-    async fn agent_builder_custom_settings() {
+    async fn custom_system_prompt_and_response_format() {
+        let json = r#"{"type":"object"}"#;
         let agent = AgentBuilder::default()
-            .set_model("custom-model")
-            .set_ollama_endpoint("http://custom-ollama")
-            .set_ollama_port(12345)
-            .set_system_prompt("Custom prompt")
-            .set_response_format(r#"{"type": "object", "properties": {"key": {"type": "string"}}}"#)
+            .set_model("m")
+            .set_system_prompt("Hello world")
+            .set_response_format(json)
             .build()
             .await
-            .expect("Agent build failed with custom settings");
-
-        assert_eq!(agent.model, "custom-model");
-        assert_eq!(agent.history.first().unwrap().content.clone().unwrap(), "Custom prompt"); // Add getter
+            .unwrap();
+        assert_eq!(agent.history[0].content.as_ref().unwrap(), "Hello world");
         assert!(agent.response_format.is_some());
-        assert_eq!(agent.response_format.unwrap().get("type").unwrap().as_str().unwrap(), "object");
+        assert_eq!(
+            agent
+                .response_format
+                .as_ref()
+                .unwrap()
+                .get("type")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "object"
+        );
     }
 
+    #[tokio::test]
+    async fn invalid_json_schema_errors() {
+        let bad = "not json";
+        let err = AgentBuilder::default()
+            .set_model("m")
+            .set_response_format(bad)
+            .build()
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AgentBuildError::InvalidJsonSchema(_)));
+    }
+
+    #[tokio::test]
+    async fn add_tools() {
+        let weather_exec: AsyncToolFn = {
+            Arc::new(move |_model_args_json: Value| {
+                Box::pin(async move {
+                    Ok(r#"
+                    {
+                    "type":"object",
+                    "properties":{
+                        "windy":{"type":"boolean"},
+                        "temperature":{"type":"integer"},
+                        "description":{"type":"string"}
+                    },
+                    "required":["windy","temperature","description"]
+                    }
+                    "#.into())
+                })
+            })
+        };
+
+        let weather_tool = ToolBuilder::new()
+            .function_name("get_current_weather")
+            .function_description("Returns a weather forecast for a given location")
+            .add_property("location", "string", "City name")
+            .add_required_property("location")
+            .executor(weather_exec)
+            .build()
+            .unwrap();
+
+        let agent = AgentBuilder::default()
+            .set_model("x")
+            .add_tool(weather_tool.clone())
+            .build()
+            .await
+            .unwrap();
+        assert_eq!(agent.local_tools.unwrap()[0].name(), weather_tool.name());
+    }
+
+    #[tokio::test]
+    async fn build_with_notification_channel() {
+        let (agent, mut rx) = AgentBuilder::default()
+            .set_model("foo")
+            .build_with_notification()
+            .await
+            .unwrap();
+        // send a notification
+        agent
+            .notification_channel
+            .as_ref()
+            .unwrap()
+            .send(Notification::Done(false))
+            .await
+            .unwrap();
+        let notified = rx.recv().await.unwrap();
+        assert!(matches!(notified, Notification::Done(false)));
+    }
+
+    #[tokio::test]
+    async fn custom_flow_invocation() {
+        
+        fn echo_flow<'a>(_agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
+            Box::pin(async move {
+                    Ok(Message::system(format!("ECHO: {}", prompt)))
+            })    
+        }
+
+        let agent = AgentBuilder::default()
+            .set_model("m")
+            .set_flow(Flow::Custom(echo_flow))
+            .build()
+            .await
+            .unwrap();
+        let mut a = agent.clone();
+        let resp = a.invoke_flow("abc").await.unwrap();
+        assert_eq!(resp.content.unwrap(), "ECHO: abc");
+    }
 }
