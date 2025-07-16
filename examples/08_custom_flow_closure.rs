@@ -8,6 +8,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     
     let api_key = "secret-key-123".to_string();
 
+    // closure must me defined inline
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:4b")
         .set_flow(Flow::new_closure(move |_: &mut Agent, _: String| -> FlowFuture<'_> {

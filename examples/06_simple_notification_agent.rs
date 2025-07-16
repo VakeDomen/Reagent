@@ -1,7 +1,7 @@
 
 use std::{error::Error, sync::Arc};
 use tokio::sync::Mutex;
-use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, McpServerType, ToolBuilder, ToolExecutionError};
+use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, Notification, ToolBuilder, ToolExecutionError};
 use serde_json::Value;
 
 #[tokio::main]
@@ -56,22 +56,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .executor(weather_exec)
         .build()?;
 
-    let mut agent = AgentBuilder::default()
+    let (mut agent, mut notification_reciever) = AgentBuilder::default()
         .set_model("qwen3:30b")
         .set_system_prompt("You are a helpful, assistant.")
-        .add_mcp_server(McpServerType::stdio("npx -y @modelcontextprotocol/server-memory"))
         .add_tool(weather_tool)
-        .build()
+        .build_with_notification()
         .await?;
 
-    let resp = agent.invoke_flow("Say hello").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    tokio::spawn(async move {
+        while let Some(msg) = notification_reciever.recv().await {
+            match msg {
+                Notification::ToolCallRequest(notification)=>println!("Recieved tool call reuqest notification: {:#?}",notification),
+                Notification::ToolCallSuccessResult(notification)=>println!("Recieved tool call Success notification: {:#?}",notification),
+                Notification::ToolCallErrorResult(notification)=>println!("Recieved tool call Error notification: {:#?}",notification),
+                Notification::Done(success) => println!("Done with generation: {}", success),
+                _ => ()
+            }
+  
+        }
+    });
 
-    let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
-
-    let resp = agent.invoke_flow("What do you remember?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    let _resp = agent.invoke_flow("Say hello").await?;
+    let _resp = agent.invoke_flow("What is the current weather in Koper?").await?;
+    let _resp = agent.invoke_flow("What do you remember?").await?;
 
     Ok(())
 }

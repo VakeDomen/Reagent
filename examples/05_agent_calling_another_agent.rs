@@ -1,15 +1,17 @@
 
 use std::{error::Error, sync::Arc};
 use tokio::sync::Mutex;
-use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, McpServerType, Notification, ToolBuilder, ToolExecutionError};
+use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
 use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
+
+    // another agent inside a local tool
     let weather_agent = AgentBuilder::default()
-        .set_model("granite3-moe")
-        .set_system_prompt("/no_think \nYou make up weather info in JSON. You always say it's sowing")
+        .set_model("qwen3:0.6b")
+        .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
         .set_response_format(
             r#"
             {
@@ -26,6 +28,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
+    
+    // pass the model ref into the closure, so when the funcion is called adn
+    // the closure triggers the model is invoked
     let weather_ref = Arc::new(Mutex::new(weather_agent));
     let weather_exec: AsyncToolFn = {
         let weather_ref = weather_ref.clone();
@@ -48,6 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         })
     };
 
+    // build the tool
     let weather_tool = ToolBuilder::new()
         .function_name("get_current_weather")
         .function_description("Returns a weather forecast for a given location")
@@ -56,30 +62,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .executor(weather_exec)
         .build()?;
 
-    let (mut agent, mut notification_reciever) = AgentBuilder::default()
-        .set_model("qwen3:30b")
+    // build the agent
+    let mut agent = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
         .set_system_prompt("You are a helpful, assistant.")
-        .add_mcp_server(McpServerType::stdio("npx -y @modelcontextprotocol/server-memory"))
         .add_tool(weather_tool)
-        .build_with_notification()
+        .build()
         .await?;
 
-    tokio::spawn(async move {
-        while let Some(msg) = notification_reciever.recv().await {
-            match msg {
-                Notification::ToolCallRequest(notification)=>println!("Recieved tool call reuqest notification: {:#?}",notification),
-                Notification::ToolCallSuccessResult(notification)=>println!("Recieved tool call Success notification: {:#?}",notification),
-                Notification::ToolCallErrorResult(notification)=>println!("Recieved tool call Error notification: {:#?}",notification),
-                Notification::Done(success) => println!("Done with generation: {}", success),
-                _ => ()
-            }
-  
-        }
-    });
+    let resp = agent.invoke_flow("Say hello").await?;
+    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
-    let _resp = agent.invoke_flow("Say hello").await?;
-    let _resp = agent.invoke_flow("What is the current weather in Koper?").await?;
-    let _resp = agent.invoke_flow("What do you remember?").await?;
+    let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
+    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+
+    let resp = agent.invoke_flow("What do you remember?").await?;
+    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
     Ok(())
 }
