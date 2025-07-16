@@ -1,14 +1,10 @@
-use std::fmt::write;
-
 use crate::services::{mcp::error::McpIntegrationError, ollama::models::errors::OllamaError};
-
-
 
 #[derive(Debug)]
 pub enum AgentError {
     OllamaError(OllamaError),
-    AgentBuildError(AgentBuildError)
-    // Add other potential agent-specific errors here
+    AgentBuildError(AgentBuildError),
+    McpError(McpIntegrationError),
 }
 
 // Implement Display and Error for AgentError
@@ -17,7 +13,8 @@ impl std::fmt::Display for AgentError {
         match self {
             AgentError::OllamaError(e) => write!(f, "Ollama API Error: {}", e),
             AgentError::AgentBuildError(agent_build_error) => write!(f, "Agent Build Error: {}", agent_build_error),
-                    }
+            AgentError::McpError(mcp_integration_error) => write!(f, "Mcp Error: {}", mcp_integration_error),
+        }
     }
 }
 
@@ -26,19 +23,30 @@ impl std::error::Error for AgentError {
         match self {
             AgentError::OllamaError(e) => Some(e),
             AgentError::AgentBuildError(agent_build_error) => Some(agent_build_error),
-                    }
+            AgentError::McpError(mcp_integration_error) => Some(mcp_integration_error),
+        }
     }
 }
 
-// Implement From<OllamaError> for easy conversion with `?`
 impl From<OllamaError> for AgentError {
     fn from(err: OllamaError) -> Self {
         AgentError::OllamaError(err)
     }
 }
 
+impl From<AgentBuildError> for AgentError {
+    fn from(err: AgentBuildError) -> Self {
+        AgentError::AgentBuildError(err)
+    }
+}
 
-// Define a specific error type for builder configuration if parsing fails
+impl From<McpIntegrationError> for AgentError {
+    fn from(err: McpIntegrationError) -> Self {
+        AgentError::McpError(err)
+    }
+}
+
+
 #[derive(Debug)]
 pub enum AgentBuildError {
     InvalidJsonSchema(String),

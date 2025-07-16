@@ -165,7 +165,6 @@ impl OllamaClient {
     /// A `Result` containing `true` if the server is up, or an `OllamaError`.
     pub async fn heartbeat(&self) -> Result<bool, OllamaError> {
         let url = &self.base_url;
-        println!("Sending GET request to: {}", url);
         match self.client.get(url).send().await {
             Ok(response) => Ok(response.status().is_success()),
             Err(e) => Err(OllamaError::RequestError(e.to_string())),

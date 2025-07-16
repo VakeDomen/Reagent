@@ -170,7 +170,7 @@ mod tests {
 
         assert_eq!(agent.model, "test-model"); // Add a getter for model name in Agent
         assert!(agent.response_format.is_none()); // Add getter
-        assert!(agent.tools.is_none() || agent.tools.unwrap().is_empty()); // Add getter
+        assert!(agent.local_tools.is_none() || agent.local_tools.unwrap().is_empty()); // Add getter
     }
 
     #[tokio::test]

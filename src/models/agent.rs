@@ -4,7 +4,20 @@ use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 use tracing::instrument;
 
-use crate::{models::{notification::Notification, AgentBuildError}, services::{mcp::mcp_tool_builder::get_mcp_tools, ollama::{client::OllamaClient, models::{base::{BaseRequest, Message, OllamaOptions}, chat::ChatRequest, tool::{Tool, ToolCall}}}}, McpServerType};
+use crate::{
+    models::notification::Notification, 
+    services::{
+        mcp::mcp_tool_builder::get_mcp_tools, 
+        ollama::{
+            client::OllamaClient, 
+            models::{
+                base::{BaseRequest, Message, OllamaOptions}, 
+                chat::{ChatRequest, ChatResponse}, 
+                tool::{Tool, ToolCall}}
+            }
+        }, 
+        McpServerType
+    };
 
 use super::AgentError;
 
@@ -13,7 +26,9 @@ use super::AgentError;
 pub struct Agent {
     pub model: String,
     pub history: Vec<Message>,
-    pub tools: Option<Vec<Tool>>,
+
+    pub local_tools: Option<Vec<Tool>>,
+
     pub response_format: Option<Value>,
     ollama_client: OllamaClient,
     pub system_prompt: String,
@@ -42,7 +57,7 @@ impl Agent {
         ollama_host: &str,
         ollama_port: u16,
         system_prompt: &str,
-        tools: Option<Vec<Tool>>,
+        local_tools: Option<Vec<Tool>>,
         response_format: Option<Value>,
         stop_prompt: Option<String>,
         stopword: Option<String>,
@@ -69,7 +84,6 @@ impl Agent {
             model: model.into(),
             history,
             ollama_client: OllamaClient::new(base_url),
-            tools,
             response_format,
             system_prompt: system_prompt.into(),
             stop_prompt,
@@ -88,7 +102,8 @@ impl Agent {
             top_k,
             min_p,
             notification_channel,
-            mcp_servers
+            mcp_servers,
+            local_tools,
         }
     }
 
@@ -101,74 +116,19 @@ impl Agent {
     where
         T: Into<String>,
     {
-        let mut running_tools = self.tools.clone();
-        if let Some(mcp_servers) = &self.mcp_servers {
-            for mcp_server in mcp_servers {
-                let mcp_tools = match get_mcp_tools(mcp_server.clone(), self.notification_channel.clone()).await {
-                    Ok(t) => t,
-                    Err(e) => return Err(AgentError::AgentBuildError(AgentBuildError::McpError(e))),
-                };
-    
-                match running_tools.as_mut() {
-                    Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
-                    None => if mcp_tools.len() > 0 {
-                        running_tools = Some(mcp_tools)
-                    },
-                }
-            }
-        }
+        
         
         self.history.push(Message::user(prompt.into()));
-
-        println!("{:#?}", running_tools);
+        let running_tools = self.get_compiled_tools().await?;
 
         loop {
 
-            
-            let request = ChatRequest {
-                base: BaseRequest {
-                    model: self.model.clone(),
-                    format: self.response_format.clone(),
-                    options:  Some(OllamaOptions {
-                        num_ctx: self.num_ctx,
-                        repeat_last_n: self.repeat_last_n,
-                        repeat_penalty: self.repeat_penalty,
-                        temperature: self.temperature,
-                        seed: self.seed,
-                        stop: self.stop.clone(),
-                        num_predict: self.num_predict,
-                        top_k: self.top_k,
-                        top_p: self.top_p,
-                        min_p: self.min_p,
-                        presence_penalty: self.presence_penalty,
-                        frequency_penalty: self.frequency_penalty,
-                    }),
-                    stream: Some(false), 
-                    keep_alive: Some("5m".to_string()),
-                },
-                messages: self.history.clone(),
-                tools: running_tools.clone(), 
-            };
-    
-            self.notify(Notification::PromptRequest(request.clone())).await;
-            let response = match self.ollama_client.chat(request).await {
-              Ok(resp) => {
-                self.notify(Notification::PromptSuccessResult(resp.clone())).await;
-                resp
-              }
-              Err(e) => {
-                self.notify(Notification::PromptErrorResult(e.to_string())).await;
-                return Err(e.into());
-              } 
-            };
-            let mut message = response.message.clone();
-
-           
-            let tool_calls = message.tool_calls.clone();
+            let request = self.generate_llm_request(running_tools.clone());
+            let mut response = self.call_model(request).await?;
 
             if self.strip_thinking {
-                if message.content.clone().unwrap().contains("</think>") {
-                    message.content = Some(message
+                if response.message.content.clone().unwrap().contains("</think>") {
+                    response.message.content = Some(response.message
                         .content
                         .unwrap()
                         .split("</think>")
@@ -179,9 +139,10 @@ impl Agent {
                 }
             }
 
-            self.history.push(message);
 
-            if let Some(tc) = tool_calls {
+            self.history.push(response.message.clone());
+
+            if let Some(tc) = response.message.tool_calls {
                 for tool_message in self.call_tools(&tc, &running_tools).await {
                     self.history.push(tool_message);
                 }
@@ -201,6 +162,46 @@ impl Agent {
         }
     }
 
+    fn generate_llm_request(&self, tools: Option<Vec<Tool>>) -> ChatRequest {
+        ChatRequest {
+            base: BaseRequest {
+                model: self.model.clone(),
+                format: self.response_format.clone(),
+                options:  Some(OllamaOptions {
+                    num_ctx: self.num_ctx,
+                    repeat_last_n: self.repeat_last_n,
+                    repeat_penalty: self.repeat_penalty,
+                    temperature: self.temperature,
+                    seed: self.seed,
+                    stop: self.stop.clone(),
+                    num_predict: self.num_predict,
+                    top_k: self.top_k,
+                    top_p: self.top_p,
+                    min_p: self.min_p,
+                    presence_penalty: self.presence_penalty,
+                    frequency_penalty: self.frequency_penalty,
+                }),
+                stream: Some(false), 
+                keep_alive: Some("5m".to_string()),
+            },
+            messages: self.history.clone(),
+            tools: tools, 
+        }
+    }
+
+    async fn call_model(&self, request: ChatRequest) -> Result<ChatResponse, AgentError> {
+        self.notify(Notification::PromptRequest(request.clone())).await;
+        match self.ollama_client.chat(request).await {
+            Ok(resp) => {
+                self.notify(Notification::PromptSuccessResult(resp.clone())).await;
+                Ok(resp)
+            }
+            Err(e) => {
+                self.notify(Notification::PromptErrorResult(e.to_string())).await;
+                Err(e.into())
+            } 
+        }
+    }
 
     async fn call_tools(&self, tool_calls: &Vec<ToolCall>, running_tools: &Option<Vec<Tool>>) -> Vec<Message> {
         if let Some(avalible_tools) = running_tools {
@@ -275,10 +276,10 @@ impl Agent {
         Ok(())
     }
 
-    pub fn new_notification_channel(&mut self) -> mpsc::Receiver<Notification> {
+    pub async fn new_notification_channel(&mut self) -> Result<mpsc::Receiver<Notification>, AgentError> {
         let (s, r) = mpsc::channel::<Notification>(100);
         self.notification_channel = Some(s);
-        r
+        Ok(r)
     }
 
     async fn notify(&self, msg: Notification) -> bool {
@@ -294,4 +295,38 @@ impl Agent {
             },
         }
     }
+
+    pub async fn get_compiled_tools(&self) -> Result<Option<Vec<Tool>>, AgentError> {
+        let mut running_tools = self.local_tools.clone();
+        if let Ok(Some(mcp_tools)) = self.get_compiled_mcp_tools().await {
+            match running_tools.as_mut() {
+                Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
+                None => if mcp_tools.len() > 0 {
+                    running_tools = Some(mcp_tools)
+                },
+            }
+        }
+        Ok(running_tools)
+    }
+
+    pub async fn get_compiled_mcp_tools(&self) -> Result<Option<Vec<Tool>>, AgentError> {
+        let mut running_tools: Option<Vec<Tool>> = None;
+        if let Some(mcp_servers) = &self.mcp_servers {
+            for mcp_server in mcp_servers {
+                let mcp_tools = match get_mcp_tools(mcp_server.clone(), self.notification_channel.clone()).await {
+                    Ok(t) => t,
+                    Err(e) => return Err(e.into()),
+                };
+    
+                match running_tools.as_mut() {
+                    Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
+                    None => if mcp_tools.len() > 0 {
+                        running_tools = Some(mcp_tools)
+                    },
+                }
+            }
+        }
+        Ok(running_tools)
+    } 
+
 }
