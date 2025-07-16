@@ -1,6 +1,38 @@
-use crate::{models::AgentError, services::ollama::models::{base::{BaseRequest, OllamaOptions}, chat::{ChatRequest, ChatResponse}, tool::{Tool, ToolCall}}, Agent, Message, Notification};
+use crate::{
+    models::{invocation::invocation_handler::InvokeFuture, AgentError}, 
+    services::ollama::models::{
+        base::{BaseRequest, OllamaOptions}, 
+        chat::{ChatRequest, ChatResponse}, 
+        tool::ToolCall
+    }, 
+    Agent,
+    Message, 
+    Notification
+};
 
-pub(crate) async fn generate_llm_request(agent: &mut Agent) -> Result<ChatRequest, AgentError> {
+
+pub fn invoke<'a>(
+    agent: &'a mut Agent,
+) -> InvokeFuture<'a> {
+    Box::pin(async move {
+        let request = generate_llm_request(agent).await?;
+        let response = call_model(agent, request).await?;
+        Ok(response)
+    })
+}
+
+
+pub fn invoke_without_tools<'a>(
+    agent: &'a mut Agent,
+) -> InvokeFuture<'a> {
+    Box::pin(async move {
+        let request = generate_llm_request_without_tools(agent).await?;
+        let response = call_model(agent, request).await?;
+        Ok(response)
+    })
+}
+
+pub async fn generate_llm_request(agent: &mut Agent) -> Result<ChatRequest, AgentError> {
     if let None = agent.tools {
         agent.tools = agent.get_compiled_tools().await?;
     }
@@ -30,7 +62,7 @@ pub(crate) async fn generate_llm_request(agent: &mut Agent) -> Result<ChatReques
     })
 }
 
-pub(crate) async fn generate_llm_request_without_tools(agent: &mut Agent) -> Result<ChatRequest, AgentError> {
+pub async fn generate_llm_request_without_tools(agent: &mut Agent) -> Result<ChatRequest, AgentError> {
     if let None = agent.tools {
         agent.tools = agent.get_compiled_tools().await?;
     }
@@ -60,7 +92,7 @@ pub(crate) async fn generate_llm_request_without_tools(agent: &mut Agent) -> Res
     })
 }
 
-pub(crate) async fn call_model(agent: &Agent, request: ChatRequest) -> Result<ChatResponse, AgentError> {
+pub async fn call_model(agent: &Agent, request: ChatRequest) -> Result<ChatResponse, AgentError> {
     agent.notify(Notification::PromptRequest(request.clone())).await;
     match agent.ollama_client.chat(request).await {
         Ok(mut resp) => {
@@ -83,7 +115,7 @@ pub(crate) async fn call_model(agent: &Agent, request: ChatRequest) -> Result<Ch
     }
 }
 
-pub(crate) async fn call_tools(agent: &Agent, tool_calls: &Vec<ToolCall>) -> Vec<Message> {
+pub async fn call_tools(agent: &Agent, tool_calls: &Vec<ToolCall>) -> Vec<Message> {
     if let Some(avalible_tools) = &agent.tools {
         let mut messages = vec![];
         for tool_call in tool_calls {

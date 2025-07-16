@@ -151,7 +151,7 @@ impl ToolBuilder {
 #[cfg(test)]
 mod tests {
     use super::*; // Imports ToolBuilder, ToolBuilderError
-    use crate::services::ollama::models::tool::{Tool, ToolType, Function, Property, AsyncToolFn};
+    use crate::services::ollama::models::tool::AsyncToolFn;
     use std::sync::Arc;
     use serde_json::Value;
 

@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc};
+use std::sync::Arc;
 
 use serde_json::Value;
 use tokio::{process::Command, sync::{mpsc::Sender, Mutex}};
@@ -7,7 +7,7 @@ use tracing::info;
 use crate::{services::ollama::models::tool::Tool, Notification, ToolBuilder, ToolExecutionError};
 
 use super::error::McpIntegrationError;
-use rmcp::{model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceError, ServiceExt};
+use rmcp::{model::{CallToolRequestParam, CallToolResult, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceExt};
 use crate::AsyncToolFn;
 
 
@@ -33,13 +33,6 @@ pub type McpClient = Arc<Mutex<ArcMcpClient>>;
 pub struct AgentMcpHandler {
     /// The channel to send notifications back to the main agent.
     agent_notification_tx: Option<Sender<Notification>>,
-    client_info: ClientInfo,
-}
-
-impl AgentMcpHandler {
-    pub fn new(agent_notification_tx: Option<Sender<Notification>>, client_info: ClientInfo) -> Self {
-        Self { agent_notification_tx, client_info }
-    }
 }
 
 impl ClientHandler for AgentMcpHandler {
@@ -195,7 +188,6 @@ pub async fn get_mcp_sse_tools<T>(url: T, notification_channel: Option<Sender<No
     
     let handler = AgentMcpHandler {
         agent_notification_tx: notification_channel,
-        client_info: ClientInfo::default(),
     };
 
     let client = match handler.serve(transport).await {
@@ -216,7 +208,6 @@ pub async fn get_mcp_streamable_http_tools<T>(url: T, notification_channel: Opti
 
     let handler = AgentMcpHandler {
         agent_notification_tx: notification_channel,
-        client_info: ClientInfo::default(),
     };
 
     let client = handler.serve(transport).await.map_err(|e| McpIntegrationError::ConnectionError(e.to_string()))?;
@@ -246,7 +237,6 @@ pub async fn get_mcp_stdio_tools<T>(full_command: T, notification_channel: Optio
 
     let handler = AgentMcpHandler {
         agent_notification_tx: notification_channel,
-        client_info: ClientInfo::default(),
     };
 
     let client = match handler.serve(transport)

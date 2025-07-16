@@ -1,9 +1,10 @@
 
 use tokio::{sync::mpsc};
 
-use crate::{models::{invocation::{self, simple_loop::simple_loop_invoke}, notification::Notification}, services::{mcp::mcp_tool_builder::{get_mcp_tools, McpServerType}, ollama::models::tool::Tool}};
+use crate::{models::{invocation::{invocation_handler::Flow}, notification::Notification}, services::{mcp::mcp_tool_builder::McpServerType, ollama::models::tool::Tool}};
 
 use super::{Agent, AgentBuildError};
+
 
 #[derive(Debug, Default)]
 pub struct AgentBuilder {
@@ -29,7 +30,8 @@ pub struct AgentBuilder {
     num_predict: Option<i32>,
     top_k: Option<u32>,
     min_p: Option<f32>,
-    notification_channel: Option<mpsc::Sender<Notification>>
+    notification_channel: Option<mpsc::Sender<Notification>>,
+    flow: Option<Flow>,
 }
 
 
@@ -55,6 +57,7 @@ impl AgentBuilder {
     pub fn set_stop_prompt<T>(mut self, stop_prompt: T) -> Self where T: Into<String> { self.stop_prompt = Some(stop_prompt.into()); self }
     pub fn set_stopword<T>(mut self, stopword: T) -> Self where T: Into<String> { self.stopword = Some(stopword.into()); self }
     pub fn strip_thinking(mut self, strip: bool) -> Self { self.strip_thinking = Some(strip); self }
+    pub fn set_flow(mut self, flow: Flow) -> Self { self.flow = Some(flow); self }
     
     pub fn add_tool(mut self, tool: Tool) -> Self {
         match self.tools.as_mut() {
@@ -118,7 +121,12 @@ impl AgentBuilder {
         }
 
         let tools = self.tools.clone();
-        let invoke_fn = simple_loop_invoke;
+
+
+        let flow = match self.flow {
+            Some(flow) => flow,
+            None => Flow::Simple,
+        };
         Ok(Agent::new(
             &model, 
             &ollama_url, 
@@ -143,7 +151,7 @@ impl AgentBuilder {
             self.min_p,
             self.notification_channel,
             self.mcp_servers,
-            invoke_fn,
+            flow.into(),
         ))
     }
 }

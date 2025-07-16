@@ -6,15 +6,14 @@ use tokio::sync::mpsc::{self, Sender};
 use tracing::instrument;
 
 use crate::{
-    models::{agent, invocation::{invocation_handler::{FlowFn, FlowFuture, InvokeFn}, invocation_util::{call_model, call_tools, generate_llm_request}, simple_loop::simple_loop_invoke}, notification::Notification}, 
+    models::{invocation::{invocation_handler::InternalFlow, simple_loop::simple_loop_invoke}, notification::Notification}, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
         ollama::{
             client::OllamaClient, 
             models::{
-                base::{BaseRequest, Message, OllamaOptions}, 
-                chat::{ChatRequest, ChatResponse}, 
-                tool::{Tool, ToolCall}}
+                base::Message, 
+                tool::Tool}
             }
         }, 
         McpServerType
@@ -52,7 +51,7 @@ pub struct Agent {
     pub top_k: Option<u32>,
     pub min_p: Option<f32>,
     pub notification_channel: Option<Sender<Notification>>,
-    invoke_fn: FlowFn,
+    flow: InternalFlow,
 }
 
 impl Agent {
@@ -80,7 +79,7 @@ impl Agent {
         min_p: Option<f32>,
         notification_channel: Option<Sender<Notification>>,
         mcp_servers: Option<Vec<McpServerType>>,
-        invoke_fn: FlowFn,
+        flow: InternalFlow,
 
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
@@ -110,7 +109,7 @@ impl Agent {
             notification_channel,
             mcp_servers,
             local_tools,
-            invoke_fn,
+            flow,
             tools: None,
         }
     }
@@ -124,49 +123,12 @@ impl Agent {
     where
         T: Into<String>,
     {
-        (self.invoke_fn)(self, prompt.into()).await
-        // self.history.push(Message::user(prompt.into()));
-        // let running_tools = self.get_compiled_tools().await?;
+        let flow_to_run = self.flow.clone();
 
-        // loop {
-
-        //     let request = generate_llm_request(self, running_tools.clone());
-        //     let mut response = call_model(self, request).await?;
-
-        //     if self.strip_thinking {
-        //         if response.message.content.clone().unwrap().contains("</think>") {
-        //             response.message.content = Some(response.message
-        //                 .content
-        //                 .unwrap()
-        //                 .split("</think>")
-        //                 .nth(1)
-        //                 .unwrap()
-        //                 .to_string()
-        //             );
-        //         }
-        //     }
-
-
-        //     self.history.push(response.message.clone());
-
-        //     if let Some(tc) = response.message.tool_calls {
-        //         for tool_message in call_tools(self, &tc, &running_tools).await {
-        //             self.history.push(tool_message);
-        //         }
-        //     } else {
-        //         if let Some(stopword) = &self.stopword {
-        //             if response.message.clone().content.unwrap().contains(stopword) {
-        //                 self.notify(Notification::Done(true)).await;
-        //                 return Ok(response.message);
-        //             } else if let Some(stop_prompt) = &self.stop_prompt {
-        //                 self.history.push(Message::tool( stop_prompt, "0"));
-        //             }
-        //         } else {
-        //             self.notify(Notification::Done(true)).await;
-        //             return Ok(response.message);
-        //         }
-        //     } 
-        // }
+        match flow_to_run {
+            InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
+            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
+        }
     }
 
     

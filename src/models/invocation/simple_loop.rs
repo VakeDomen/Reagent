@@ -1,6 +1,6 @@
 use tracing::instrument;
 
-use crate::{models::{invocation::{invocation_handler::{FlowFuture, InvokeFuture}, invocation_util::{call_model, call_tools, generate_llm_request, generate_llm_request_without_tools}}, AgentError}, Agent, Message, Notification};
+use crate::{models::{invocation::{invocation_handler::FlowFuture, invocation_util::{call_tools, invoke}}}, Agent, Message, Notification};
 
 #[instrument(level = "debug", skip(agent, prompt))]
 pub fn simple_loop_invoke<'a>(
@@ -43,23 +43,3 @@ pub fn simple_loop_invoke<'a>(
     })
 }
 
-pub fn invoke<'a>(
-    agent: &'a mut Agent,
-) -> InvokeFuture<'a> {
-    Box::pin(async move {
-        let request = generate_llm_request(agent).await?;
-        let response = call_model(agent, request).await?;
-        Ok(response)
-    })
-}
-
-
-pub fn invoke_without_tools<'a>(
-    agent: &'a mut Agent,
-) -> InvokeFuture<'a> {
-    Box::pin(async move {
-        let request = generate_llm_request_without_tools(agent).await?;
-        let response = call_model(agent, request).await?;
-        Ok(response)
-    })
-}
