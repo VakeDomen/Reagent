@@ -1,7 +1,7 @@
 
 use tokio::{sync::mpsc};
 
-use crate::{models::notification::Notification, services::{mcp::mcp_tool_builder::{get_mcp_tools, McpServerType}, ollama::models::tool::Tool}};
+use crate::{models::{invocation::{self, simple_loop::simple_loop_invoke}, notification::Notification}, services::{mcp::mcp_tool_builder::{get_mcp_tools, McpServerType}, ollama::models::tool::Tool}};
 
 use super::{Agent, AgentBuildError};
 
@@ -118,7 +118,7 @@ impl AgentBuilder {
         }
 
         let tools = self.tools.clone();
-
+        let invoke_fn = simple_loop_invoke;
         Ok(Agent::new(
             &model, 
             &ollama_url, 
@@ -143,6 +143,7 @@ impl AgentBuilder {
             self.min_p,
             self.notification_channel,
             self.mcp_servers,
+            invoke_fn,
         ))
     }
 }

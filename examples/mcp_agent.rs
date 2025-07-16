@@ -1,11 +1,12 @@
 
 use std::{error::Error, sync::Arc};
 use tokio::sync::Mutex;
-use reagent::{AgentBuilder, AsyncToolFn, McpServerType, ToolBuilder, ToolExecutionError};
+use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, McpServerType, ToolBuilder, ToolExecutionError};
 use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    init_default_tracing();
     let weather_agent = AgentBuilder::default()
         .set_model("qwen3:30b")
         .set_system_prompt("/no_think \nYou make up weather info in JSON. You always say it's snowing.")
@@ -39,7 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 let prompt = format!("/no_think What is the weather in {}?", loc);
 
-                let resp = agent.invoke(prompt)
+                let resp = agent.invoke_flow(prompt)
                     .await
                     .map_err(|e| ToolExecutionError::ExecutionFailed(e.to_string()))?;
                 Ok(resp.content.unwrap_or_default())
@@ -138,13 +139,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let resp = agent.invoke("Say hello").await?;
+    let resp = agent.invoke_flow("Say hello").await?;
     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
-    let resp = agent.invoke("What is the current weather in Koper?").await?;
+    let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
-    let resp = agent.invoke("What do you remember?").await?;
+    let resp = agent.invoke_flow("What do you remember?").await?;
     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
     println!("Agent: {:#?}", agent);
