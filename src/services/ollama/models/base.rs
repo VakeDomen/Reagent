@@ -42,18 +42,18 @@ impl Message {
     }
 
     /// Creates a new 'system' message.
-    pub fn system(content: String) -> Self {
-        Self::new(Role::System, content)
+    pub fn system<T: Into<String>>(content: T) -> Self {
+        Self::new(Role::System, content.into())
     }
 
     /// Creates a new 'user' message.
-    pub fn user(content: String) -> Self {
-        Self::new(Role::User, content)
+    pub fn user<T: Into<String>>(content: T) -> Self {
+        Self::new(Role::User, content.into())
     }
 
     /// Creates a new 'assistant' message.
-    pub fn assistant(content: String) -> Self {
-        Self::new(Role::Assistant, content)
+    pub fn assistant<T: Into<String>>(content: T) -> Self {
+        Self::new(Role::Assistant, content.into())
     }
 
     pub fn tool<T, S>(content: T, tool_call_id: S) -> Self where T: Into<String>, S: Into<String> {
