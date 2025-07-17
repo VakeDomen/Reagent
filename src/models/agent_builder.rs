@@ -1,7 +1,7 @@
 use tokio::sync::mpsc;
 use crate::{
     models::{
-        invocation::invocation_handler::Flow,
+        flow::invocation_flows::Flow,
         notification::Notification
     },
     services::{
@@ -279,7 +279,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::{models::invocation::invocation_handler::{Flow, FlowFuture}, Agent, AsyncToolFn, Message, ToolBuilder};
+    use crate::{models::flow::invocation_flows::{Flow, FlowFuture}, Agent, AsyncToolFn, Message, ToolBuilder};
 
     #[tokio::test]
     async fn defaults_fail_without_model() {

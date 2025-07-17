@@ -1,12 +1,12 @@
 use core::fmt;
-use std::{fs, path::Path};
+use std::{collections::HashMap, fs, path::Path};
 
 use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 use tracing::instrument;
 
 use crate::{
-    models::{invocation::{invocation_handler::InternalFlow, simple_loop::simple_loop_invoke}, notification::Notification}, 
+    models::{flow::{invocation_flows::InternalFlow, simple_loop::simple_loop_invoke}, notification::Notification}, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
         ollama::{
@@ -131,7 +131,15 @@ impl Agent {
         }
     }
 
-    
+    // #[instrument(level = "debug", skip(self, data))]
+    // pub async fn invoke_flow_with_with_template<T>(&mut self, data: HashMap<String, Box<dyn ToString + Send + Sync>>) -> Result<Message, AgentError> {
+    //     let flow_to_run = self.flow.clone();
+
+    //     match flow_to_run {
+    //         InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
+    //         InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
+    //     }
+    // }
 
     pub fn save_history<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
         let json_string = serde_json::to_string_pretty(&self.history)?;

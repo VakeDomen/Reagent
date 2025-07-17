@@ -2,7 +2,7 @@ mod agent;
 mod agent_builder;
 mod error;
 pub mod notification;
-pub mod invocation;
+pub mod flow;
 
 pub use agent::Agent;
 pub use agent_builder::AgentBuilder;
