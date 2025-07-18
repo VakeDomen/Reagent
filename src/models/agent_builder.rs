@@ -268,6 +268,7 @@ impl AgentBuilder {
             self.notification_channel,
             self.mcp_servers,
             flow.into(),
+            None,
         ))
     }
 }

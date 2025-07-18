@@ -1,56 +1,38 @@
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
-/// A trait defining an asynchronous data source that provides key-value pairs.
-pub trait TemplateDataSource {
-    /// Asynchronously retrieves a HashMap of key-value pairs to be replaced in the template
-    fn get_values(&self) -> impl std::future::Future<Output = HashMap<String, String>> + Send;
+pub trait TemplateDataSource: Send {
+    fn get_values(&self) -> Pin<Box<dyn Future<Output = HashMap<String, String>> + Send>>;
+    fn clone_data_source(&self) -> Box<dyn TemplateDataSource>;
 }
 
-/// A struct representing a template that can be filled with dynamic data.
-///
-/// # Type Parameters
-///
-/// * `T`: A type that implements the `DataSource` trait.
-#[derive(Clone)]
-pub struct Template<T> where T: TemplateDataSource {
+pub struct Template {
     content: String,
-    data_source: T,
+    data_source: Option<Box<dyn TemplateDataSource>>,
 }
 
-impl<T: TemplateDataSource> Template<T> {
-    /// Creates a new `Template` with the given content and data source.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - A string slice that holds the template content.
-    /// * `data_source` - A data source that implements the `DataSource` trait.
-    ///
-    /// # Returns
-    ///
-    /// A new instance of `Template`.
-    pub fn new(content: &str, data_source: T) -> Self {
+impl Template {
+    pub fn new<D: TemplateDataSource + 'static>(content: &str, data_source: D) -> Self {
         Self {
             content: content.to_string(),
-            data_source,
+            data_source: Some(Box::new(data_source)),
         }
     }
 
-    /// Asynchronously compiles the template by replacing placeholders with values from the provided data and data source.
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - A HashMap containing key-value pairs to replace placeholders in the template.
-    ///
-    /// # Returns
-    ///
-    /// A `String` with the compiled template content.
+    pub fn simple<T>(content: T) -> Self where T: Into<String> {
+        Self { content: content.into(), data_source: None }
+    }
+
     pub async fn compile(&self, data: &HashMap<String, String>) -> String {
         let mut filled_content = self.content.clone();
-        let generated_data = self.data_source.get_values().await;
 
-        for (key, value) in generated_data {
-            let placeholder = format!("{{{{{}}}}}", key);
-            filled_content = filled_content.replace(&placeholder, &value);
+        if let Some(source) = &self.data_source {
+            let generated_data = source.get_values().await;
+            for (key, value) in generated_data {
+                let placeholder = format!("{{{{{}}}}}", key);
+                filled_content = filled_content.replace(&placeholder, &value);
+            }
         }
 
         for (key, value) in data {
@@ -62,31 +44,52 @@ impl<T: TemplateDataSource> Template<T> {
     }
 }
 
+impl Clone for Template {
+    fn clone(&self) -> Self {
+        Self {
+            content: self.content.clone(),
+            data_source: match &self.data_source {
+                None => None,
+                Some(data_source) => Some(data_source.clone_data_source())
+            },
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    #[derive(Clone)]
     pub struct MockDataSource {
         data: HashMap<String, String>,
     }
 
+    impl MockDataSource {
+        pub fn new(data: HashMap<String, String>) -> Self {
+            Self { data }
+        }
+    }
+
     impl TemplateDataSource for MockDataSource {
-        async fn get_values(&self) -> HashMap<String, String> {
-            self.data.clone()
+        fn get_values(&self) -> Pin<Box<dyn Future<Output = HashMap<String, String>> + Send>> {
+            let data = self.data.clone();
+            Box::pin(async move { data })
+        }
+
+        fn clone_data_source(&self) -> Box<dyn TemplateDataSource> {
+            Box::new(self.clone())
         }
     }
 
     #[tokio::test]
     async fn test_template_compile() {
-        let mock_data_source = MockDataSource {
-            data: {
-                let mut data = HashMap::new();
-                data.insert("datetime".to_string(), "2023-10-01T12:00:00".to_string());
-                data
-            },
-        };
+        let mock_data_source = MockDataSource::new({
+            let mut data = HashMap::new();
+            data.insert("datetime".to_string(), "2023-10-01T12:00:00".to_string());
+            data
+        });
 
         let template = Template::new(
             "Current datetime is: {{datetime}}. User input: {{user_input}}.",
@@ -102,13 +105,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_template_compile_without_user_data() {
-        let mock_data_source = MockDataSource {
-            data: {
-                let mut data = HashMap::new();
-                data.insert("datetime".to_string(), "2023-10-01T12:00:00".to_string());
-                data
-            },
-        };
+        let mock_data_source = MockDataSource::new({
+            let mut data = HashMap::new();
+            data.insert("datetime".to_string(), "2023-10-01T12:00:00".to_string());
+            data
+        });
 
         let template = Template::new(
             "Current datetime is: {{datetime}}.",

@@ -1,9 +1,12 @@
 use core::fmt;
-use std::{collections::HashMap, fs, path::Path};
+use std::sync::Arc;
+use std::{collections::HashMap, fs, marker::PhantomData, path::Path};
 
 use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::Mutex;
 use tracing::instrument;
+use crate::models::flow::util::templating::{Template, TemplateDataSource};
 
 use crate::{
     models::{flow::{invocation_flows::InternalFlow, simple_loop::simple_loop_invoke}, notification::Notification}, 
@@ -22,8 +25,11 @@ use crate::{
 use super::AgentError;
 
 
-#[derive( Clone)]
-pub struct Agent {
+struct Plain;
+struct Templated;
+
+#[derive(Clone)]
+pub struct Agent{
     pub model: String,
     pub history: Vec<Message>,
 
@@ -51,7 +57,9 @@ pub struct Agent {
     pub top_k: Option<u32>,
     pub min_p: Option<f32>,
     pub notification_channel: Option<Sender<Notification>>,
+    pub template: Option<Arc<Mutex<Template>>>,
     flow: InternalFlow,
+
 }
 
 impl Agent {
@@ -80,6 +88,7 @@ impl Agent {
         notification_channel: Option<Sender<Notification>>,
         mcp_servers: Option<Vec<McpServerType>>,
         flow: InternalFlow,
+        template: Option<Arc<Mutex<Template>>>,
 
     ) -> Self {
         let base_url = format!("{}:{}", ollama_host, ollama_port);
@@ -111,6 +120,7 @@ impl Agent {
             local_tools,
             flow,
             tools: None,
+            template,
         }
     }
 
@@ -118,18 +128,7 @@ impl Agent {
         self.history = vec![Message::system(self.system_prompt.clone())];
     }
 
-    #[instrument(level = "debug", skip(self, prompt))]
-    pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
-    where
-        T: Into<String>,
-    {
-        let flow_to_run = self.flow.clone();
-
-        match flow_to_run {
-            InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
-            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
-        }
-    }
+    
 
     // #[instrument(level = "debug", skip(self, data))]
     // pub async fn invoke_flow_with_with_template<T>(&mut self, data: HashMap<String, Box<dyn ToString + Send + Sync>>) -> Result<Message, AgentError> {
@@ -207,9 +206,35 @@ impl Agent {
         Ok(running_tools)
     } 
 
+
+
+
+    #[instrument(level = "debug", skip(self, prompt))]
+    pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
+    where
+        T: Into<String>,
+    {
+        let flow_to_run = self.flow.clone();
+
+        match flow_to_run {
+            InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
+            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
+        }
+    }
+
+    // #[instrument(level = "debug", skip(self, prompt))]
+    // pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
+    // where
+    //     T: Into<String>,
+    // {
+    //     let flow_to_run = self.flow.clone();
+
+    //     match flow_to_run {
+    //         InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
+    //         InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
+    //     }
+    // }
 }
-
-
 
 impl fmt::Debug for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
