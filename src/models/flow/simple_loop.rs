@@ -22,23 +22,21 @@ pub fn simple_loop_invoke<'a>(
                 }
             } 
             
-            else {
-                if let Some(stopword) = &agent.stopword {
-                    if response
-                        .message
-                        .content
-                        .as_ref()
-                        .map_or(false, |c| c.contains(stopword))
-                    {
-                        agent.notify(Notification::Done(true)).await;
-                        return Ok(response.message);
-                    } else if let Some(stop_prompt) = &agent.stop_prompt {
-                        agent.history.push(Message::tool(stop_prompt, "0"));
-                    }
-                } else {
+            else if let Some(stopword) = &agent.stopword {
+                if response
+                    .message
+                    .content
+                    .as_ref()
+                    .is_some_and(|c| c.contains(stopword))
+                {
                     agent.notify(Notification::Done(true)).await;
                     return Ok(response.message);
+                } else if let Some(stop_prompt) = &agent.stop_prompt {
+                    agent.history.push(Message::tool(stop_prompt, "0"));
                 }
+            } else {
+                agent.notify(Notification::Done(true)).await;
+                return Ok(response.message);
             }
         }
     })

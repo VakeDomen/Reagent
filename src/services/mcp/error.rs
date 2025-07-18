@@ -15,18 +15,18 @@ pub enum McpIntegrationError {
 impl fmt::Display for McpIntegrationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            McpIntegrationError::SdkError(e) => write!(f, "MCP SDK error: {}", e),
+            McpIntegrationError::SdkError(e) => write!(f, "MCP SDK error: {e}"),
             McpIntegrationError::ConnectionError(s) => {
-                write!(f, "Failed to connect to MCP server: {}", s)
+                write!(f, "Failed to connect to MCP server: {s}")
             }
             McpIntegrationError::DiscoveryError(s) => {
-                write!(f, "Failed to discover MCP actions: {}", s)
+                write!(f, "Failed to discover MCP actions: {s}")
             }
             McpIntegrationError::ToolConversionError(s) => {
-                write!(f, "Failed to convert MCP action to agent tool: {}", s)
+                write!(f, "Failed to convert MCP action to agent tool: {s}")
             }
             McpIntegrationError::InvalidSchemaError(s) => {
-                write!(f, "MCP action input schema is missing or not an object: {}", s)
+                write!(f, "MCP action input schema is missing or not an object: {s}")
             }
         }
     }

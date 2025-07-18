@@ -9,7 +9,7 @@ use crate::{models::AgentError, services::ollama::models::{base::{BaseRequest, O
 pub async fn generate_llm_request(
     agent: &mut Agent
 ) -> Result<ChatRequest, AgentError> {
-    if let None = agent.tools {
+    if agent.tools.is_none() {
         agent.tools = agent.get_compiled_tools().await?;
     }
 
@@ -43,7 +43,7 @@ pub async fn generate_llm_request(
 pub async fn generate_llm_request_without_tools(
     agent: &mut Agent
 ) -> Result<ChatRequest, AgentError> {
-    if let None = agent.tools {
+    if agent.tools.is_none() {
         agent.tools = agent.get_compiled_tools().await?;
     }
 

@@ -69,7 +69,7 @@ impl OllamaClient {
                 .json(request_body)
                 .send()
                 .await
-                .map_err(|e| OllamaError::ApiError(e.to_string()))?;
+                .map_err(|e| OllamaError::Api(e.to_string()))?;
 
             let status = response.status();
             debug!(%status, "received response");
@@ -79,7 +79,7 @@ impl OllamaClient {
                 let response_text = response
                     .text()
                     .await
-                    .map_err(|e| OllamaError::ApiError(format!("Failed to read response text: {e}")))?;
+                    .map_err(|e| OllamaError::Api(format!("Failed to read response text: {e}")))?;
 
                 match serde_json::from_str::<R>(&response_text) {
                     Ok(parsed) => {
@@ -88,7 +88,7 @@ impl OllamaClient {
                     }
                     Err(e) => {
                         error!(%e, raw = %response_text, "deserialization error");
-                        Err(OllamaError::SerializationError(format!(
+                        Err(OllamaError::Serialization(format!(
                             "Error decoding response body: {e}. Raw JSON was: '{response_text}'"
                         )))
                     }
@@ -100,7 +100,7 @@ impl OllamaClient {
                     .unwrap_or_else(|_| "Failed to read error body".into());
 
                 error!(%status, body = %error_text, "request failed");
-                Err(OllamaError::ApiError(format!(
+                Err(OllamaError::Api(format!(
                     "Request failed: {status} - {error_text}"
                 )))
             }
@@ -167,13 +167,13 @@ impl OllamaClient {
         let url = &self.base_url;
         match self.client.get(url).send().await {
             Ok(response) => Ok(response.status().is_success()),
-            Err(e) => Err(OllamaError::RequestError(e.to_string())),
+            Err(e) => Err(OllamaError::Request(e.to_string())),
         }
     }
 }
 
 impl From<ReqwestError> for OllamaError {
     fn from(err: ReqwestError) -> Self {
-        OllamaError::RequestError(err.to_string())
+        OllamaError::Request(err.to_string())
     }
 }

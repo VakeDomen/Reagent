@@ -1,12 +1,12 @@
 use core::fmt;
 use std::sync::Arc;
-use std::{collections::HashMap, fs, marker::PhantomData, path::Path};
+use std::{collections::HashMap, fs, path::Path};
 
 use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::models::flow::util::templating::{Template, TemplateDataSource};
+use crate::models::flow::util::templating::Template;
 
 use crate::{
     models::{flow::{invocation_flows::InternalFlow, simple_loop::simple_loop_invoke}, notification::Notification}, 
@@ -91,7 +91,7 @@ impl Agent {
         template: Option<Arc<Mutex<Template>>>,
 
     ) -> Self {
-        let base_url = format!("{}:{}", ollama_host, ollama_port);
+        let base_url = format!("{ollama_host}:{ollama_port}");
         let history = vec![Message::system(system_prompt.to_string())];
 
         Self {
@@ -156,7 +156,7 @@ impl Agent {
     }
 
     pub(crate) async fn notify(&self, msg: Notification) -> bool {
-        if let None = self.notification_channel {
+        if self.notification_channel.is_none() {
             return false;
         }
         let notification_channel = self.notification_channel.as_ref().unwrap();
@@ -176,7 +176,7 @@ impl Agent {
             Ok(tools_option) => if let Some(mcp_tools) = tools_option {
                 match running_tools.as_mut() {
                     Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
-                    None => if mcp_tools.len() > 0 {
+                    None => if !mcp_tools.is_empty() {
                         running_tools = Some(mcp_tools)
                     },
                 }
@@ -197,7 +197,7 @@ impl Agent {
     
                 match running_tools.as_mut() {
                     Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
-                    None => if mcp_tools.len() > 0 {
+                    None => if !mcp_tools.is_empty() {
                         running_tools = Some(mcp_tools)
                     },
                 }
@@ -247,8 +247,8 @@ impl Agent {
         
 
         match self.flow.clone() {
-            InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
-            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
+            InternalFlow::Simple => simple_loop_invoke(self, prompt).await,
+            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
         }
     }
 }

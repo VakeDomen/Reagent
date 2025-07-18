@@ -135,7 +135,7 @@ impl ToolBuilder {
         let function = Function {
             name: function_name,
             description: function_description,
-            parameters: parameters,
+            parameters,
         };
 
         Ok(Tool {

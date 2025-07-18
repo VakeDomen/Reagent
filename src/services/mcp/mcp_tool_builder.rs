@@ -47,7 +47,7 @@ impl ClientHandler for AgentMcpHandler {
         }
         let tx = self.agent_notification_tx.clone().unwrap();
         let notification_string = serde_json::to_string(&params)
-            .unwrap_or_else(|e| format!("Failed to serialize MCP notification: {}", e));
+            .unwrap_or_else(|e| format!("Failed to serialize MCP notification: {e}"));
 
         let agent_notification = Notification::McpToolNotification(notification_string);
 
@@ -99,7 +99,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
                         let CallToolResult {content, is_error } = result;
                         match (content, is_error) {
                             (content, Some(true))  => {
-                                Err(ToolExecutionError::ExecutionFailed(format!("tool call failed, mcp call error: {:#?}", content)))
+                                Err(ToolExecutionError::ExecutionFailed(format!("tool call failed, mcp call error: {content:#?}")))
                             }
                             (content, _) => {
                                 let mut out_result = "".to_string();
@@ -113,8 +113,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
                         }
                     }
                     Err(e) => Err(ToolExecutionError::ExecutionFailed(format!(
-                        "MCP tool '{}' execution failed: {}",
-                        action_name_captured, e.to_string()
+                        "MCP tool '{action_name_captured}' execution failed: {e}"
                     ))),
                 }
             })
@@ -131,7 +130,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
             .function_description(tool_desciption)
             .executor(executor);
  
-        let input_schema_json_obj: &JsonObject = &*mcp_tool_def.input_schema;
+        let input_schema_json_obj: &JsonObject = &mcp_tool_def.input_schema;
 
         if let Some(Value::Object(properties_map)) = input_schema_json_obj.get("properties") {
             for (prop_name, prop_schema_value) in properties_map {

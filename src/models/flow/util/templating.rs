@@ -31,13 +31,13 @@ impl Template {
         if let Some(source) = &self.data_source {
             let generated_data = source.get_values().await;
             for (key, value) in generated_data {
-                let placeholder = format!("{{{{{}}}}}", key);
+                let placeholder = format!("{{{{{key}}}}}");
                 filled_content = filled_content.replace(&placeholder, &value);
             }
         }
 
         for (key, value) in data {
-            let placeholder = format!("{{{{{}}}}}", key);
+            let placeholder = format!("{{{{{key}}}}}");
             filled_content = filled_content.replace(&placeholder, value);
         }
 

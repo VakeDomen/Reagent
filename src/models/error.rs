@@ -12,10 +12,10 @@ pub enum AgentError {
 impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AgentError::OllamaError(e) => write!(f, "Ollama API Error: {}", e),
-            AgentError::AgentBuildError(agent_build_error) => write!(f, "Agent Build Error: {}", agent_build_error),
-            AgentError::McpError(mcp_integration_error) => write!(f, "Mcp Error: {}", mcp_integration_error),
-            AgentError::RuntimeError(s) => write!(f, "Runtime error: {}", s),
+            AgentError::OllamaError(e) => write!(f, "Ollama API Error: {e}"),
+            AgentError::AgentBuildError(agent_build_error) => write!(f, "Agent Build Error: {agent_build_error}"),
+            AgentError::McpError(mcp_integration_error) => write!(f, "Mcp Error: {mcp_integration_error}"),
+            AgentError::RuntimeError(s) => write!(f, "Runtime error: {s}"),
                     }
     }
 }
@@ -60,9 +60,9 @@ pub enum AgentBuildError {
 impl std::fmt::Display for AgentBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AgentBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {}", e),
+            AgentBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {e}"),
             AgentBuildError::ModelNotSet => write!(f, "Model not set."),
-            AgentBuildError::McpError(e) => write!(f, "Mcp error: {}", e),
+            AgentBuildError::McpError(e) => write!(f, "Mcp error: {e}"),
         }
     }
 }

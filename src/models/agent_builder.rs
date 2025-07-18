@@ -241,8 +241,7 @@ impl AgentBuilder {
                 Ok(v) => Some(v),
                 Err(e) => {
                     return Err(AgentBuildError::InvalidJsonSchema(format!(
-                        "Failed to parse JSON schema `{}`: {}",
-                        trimmed, e
+                        "Failed to parse JSON schema `{trimmed}`: {e}"
                     )))
                 }
             }
