@@ -1,7 +1,9 @@
-use tokio::sync::mpsc;
+use std::sync::Arc;
+
+use tokio::sync::{mpsc, Mutex};
 use crate::{
     models::{
-        flow::invocation_flows::Flow,
+        flow::{invocation_flows::Flow, util::templating::Template},
         notification::Notification
     },
     services::{
@@ -57,6 +59,7 @@ pub struct AgentBuilder {
     min_p: Option<f32>,
     notification_channel: Option<mpsc::Sender<Notification>>,
     flow: Option<Flow>,
+    template: Option<Arc<Mutex<Template>>>,
 }
 
 impl AgentBuilder {
@@ -206,6 +209,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Set a template for the agent's first prompt
+    pub fn set_template(mut self, template: Template) -> Self {
+        self.template = Some(Arc::new(Mutex::new(template)));
+        self
+    }
+
     /// Build an [`Agent`] and return also the notification receiver.
     ///
     /// Creates an internal mpsc channel of size 100.
@@ -268,7 +277,7 @@ impl AgentBuilder {
             self.notification_channel,
             self.mcp_servers,
             flow.into(),
-            None,
+            self.template,
         ))
     }
 }

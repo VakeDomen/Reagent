@@ -14,6 +14,7 @@ pub fn simple_loop_invoke<'a>(
         loop {
             
             let response = invoke(agent).await?;
+            agent.history.push(response.message.clone());
 
             if let Some(tc) = response.message.tool_calls {
                 for tool_msg in call_tools(agent, &tc).await {

@@ -222,18 +222,35 @@ impl Agent {
         }
     }
 
-    // #[instrument(level = "debug", skip(self, prompt))]
-    // pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
-    // where
-    //     T: Into<String>,
-    // {
-    //     let flow_to_run = self.flow.clone();
+    #[instrument(level = "debug", skip(self, template_data))]
+    pub async fn invoke_flow_with_template<K, V>(&mut self, template_data: HashMap<K, V>) -> Result<Message, AgentError>
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let Some(template) = &self.template else {
+            return Err(AgentError::RuntimeError("No template defined".into()));
+        };
 
-    //     match flow_to_run {
-    //         InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
-    //         InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
-    //     }
-    // }
+        let string_map: HashMap<String, String> = template_data
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+
+        let prompt = {
+            template
+                .lock()
+                .await
+                .compile(&string_map)
+                .await
+        };
+        
+
+        match self.flow.clone() {
+            InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
+            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
+        }
+    }
 }
 
 impl fmt::Debug for Agent {

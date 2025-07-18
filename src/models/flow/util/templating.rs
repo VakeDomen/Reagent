@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -53,6 +54,16 @@ impl Clone for Template {
                 Some(data_source) => Some(data_source.clone_data_source())
             },
         }
+    }
+}
+
+// Implement Debug for Template
+impl fmt::Debug for Template {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Template")
+            .field("content", &self.content)
+            .field("data_source", &self.data_source.as_ref().map(|_| "Some(Box<dyn TemplateDataSource>)").unwrap_or("None"))
+            .finish()
     }
 }
 
