@@ -16,6 +16,36 @@ pub fn invoke<'a>(
     })
 }
 
+
+/// Invoke the agent’s normal LLM flow and call tools the LLM requested
+/// 1. build a request via [`generate_llm_request`],  
+/// 2. call the model via [`call_model`].  
+/// 3. optionally call the tools [`call_tools`]
+///  
+/// # Returns  
+/// A pinned, boxed future that resolves to a [`ChatResponse`].  
+pub fn invoke_with_tool_calls<'a>(
+    agent: &'a mut Agent,
+) -> InvokeFuture<'a> {
+    Box::pin(async move {
+        let request = generate_llm_request(agent).await?;
+        let response = call_model(agent, request).await?;
+
+        let resp = response.clone();
+        agent.history.push(response.message.clone());
+
+        if let Some(tc) = response.message.tool_calls {
+            for tool_msg in call_tools(agent, &tc).await {
+                agent.history.push(tool_msg);
+            }
+        } 
+        
+        Ok(resp)
+    })
+}
+
+
+
 /// Exactly like [`invoke`], but omits all tool definitions in the request.
 /// Useful when you know no tools should be present.  
 pub fn invoke_without_tools<'a>(

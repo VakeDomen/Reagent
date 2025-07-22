@@ -6,10 +6,12 @@ use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::models::flow::util::templating::Template;
+use crate::models::agents::flow::flows::plan_and_execute::{self, plan_and_execute_invoke};
+use crate::models::agents::flow::util::templating::Template;
 
+use crate::models::AgentError;
 use crate::{
-    models::{flow::{invocation_flows::InternalFlow, simple_loop::simple_loop_invoke}, notification::Notification}, 
+    models::{agents::flow::{invocation_flows::InternalFlow, flows::simple_loop::simple_loop_invoke}, notification::Notification}, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
         ollama::{
@@ -22,16 +24,11 @@ use crate::{
         McpServerType
     };
 
-use super::AgentError;
 
-
-struct Plain;
-struct Templated;
 
 #[derive(Clone)]
-pub struct Agent{
+pub struct Node{
     pub model: String,
-    pub history: Vec<Message>,
 
     pub local_tools: Option<Vec<Tool>>,
     pub mcp_servers: Option<Vec<McpServerType>>,
@@ -41,9 +38,8 @@ pub struct Agent{
     pub response_format: Option<Value>,
     pub(crate) ollama_client: OllamaClient,
     pub system_prompt: String,
-    pub stop_prompt: Option<String>,
-    pub stopword: Option<String>,
     pub strip_thinking: bool,
+
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub presence_penalty: Option<f32>,
@@ -56,13 +52,12 @@ pub struct Agent{
     pub num_predict: Option<i32>,
     pub top_k: Option<u32>,
     pub min_p: Option<f32>,
+    
     pub notification_channel: Option<Sender<Notification>>,
     pub template: Option<Arc<Mutex<Template>>>,
-    flow: InternalFlow,
-
 }
 
-impl Agent {
+impl Node {
     pub(crate) fn new(
         model: &str,
         ollama_host: &str,
@@ -70,8 +65,6 @@ impl Agent {
         system_prompt: &str,
         local_tools: Option<Vec<Tool>>,
         response_format: Option<Value>,
-        stop_prompt: Option<String>,
-        stopword: Option<String>,
         strip_thinking: bool,
         temperature: Option<f32>,
         top_p: Option<f32>,
@@ -87,21 +80,16 @@ impl Agent {
         min_p: Option<f32>,
         notification_channel: Option<Sender<Notification>>,
         mcp_servers: Option<Vec<McpServerType>>,
-        flow: InternalFlow,
         template: Option<Arc<Mutex<Template>>>,
 
     ) -> Self {
         let base_url = format!("{ollama_host}:{ollama_port}");
-        let history = vec![Message::system(system_prompt.to_string())];
 
         Self {
             model: model.into(),
-            history,
             ollama_client: OllamaClient::new(base_url),
             response_format,
             system_prompt: system_prompt.into(),
-            stop_prompt,
-            stopword,
             strip_thinking,
             temperature,
             top_p,
@@ -118,32 +106,9 @@ impl Agent {
             notification_channel,
             mcp_servers,
             local_tools,
-            flow,
             tools: None,
             template,
         }
-    }
-
-    pub fn clear_history(&mut self) {
-        self.history = vec![Message::system(self.system_prompt.clone())];
-    }
-
-    
-
-    // #[instrument(level = "debug", skip(self, data))]
-    // pub async fn invoke_flow_with_with_template<T>(&mut self, data: HashMap<String, Box<dyn ToString + Send + Sync>>) -> Result<Message, AgentError> {
-    //     let flow_to_run = self.flow.clone();
-
-    //     match flow_to_run {
-    //         InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
-    //         InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
-    //     }
-    // }
-
-    pub fn save_history<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
-        let json_string = serde_json::to_string_pretty(&self.history)?;
-        fs::write(path, json_string)?;
-        Ok(())
     }
 
     pub async fn new_notification_channel(&mut self) -> Result<mpsc::Receiver<Notification>, AgentError> {
@@ -214,12 +179,7 @@ impl Agent {
     where
         T: Into<String>,
     {
-        let flow_to_run = self.flow.clone();
-
-        match flow_to_run {
-            InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
-            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
-        }
+        self.execute_invocation(prompt.into()).await
     }
 
     #[instrument(level = "debug", skip(self, template_data))]
@@ -246,24 +206,24 @@ impl Agent {
         };
         
 
-        match self.flow.clone() {
-            InternalFlow::Simple => simple_loop_invoke(self, prompt).await,
-            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
-        }
+        self.execute_invocation(prompt.into()).await
+    }
+
+
+    async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError>  {
+
+        todo!()
     }
 }
 
-impl fmt::Debug for Agent {
+impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Agent")
+        f.debug_struct("Node")
             .field("model", &self.model)
-            .field("history", &self.history)
             .field("local_tools", &self.local_tools)
             .field("response_format", &self.response_format)
             .field("ollama_client", &self.ollama_client)
             .field("system_prompt", &self.system_prompt)
-            .field("stop_prompt", &self.stop_prompt)
-            .field("stopword", &self.stopword)
             .field("strip_thinking", &self.strip_thinking)
             .field("temperature", &self.temperature)
             .field("top_p", &self.top_p)

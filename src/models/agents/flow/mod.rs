@@ -1,5 +1,5 @@
 pub mod invocation_flows;
-pub mod simple_loop;
+pub mod flows;
 pub mod util;
 
 
