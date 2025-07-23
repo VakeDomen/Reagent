@@ -57,14 +57,6 @@ pub enum AgentBuildError {
     ModelNotSet
 }
 
-
-/// Errors that can occur while building a [`Node`].
-#[derive(Debug)]
-pub enum NodeBuildError {
-    ModelNotSet,
-    InvalidJsonSchema(String),
-}
-
 impl std::fmt::Display for AgentBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -75,14 +67,3 @@ impl std::fmt::Display for AgentBuildError {
     }
 }
 impl std::error::Error for AgentBuildError {}
-
-
-impl std::fmt::Display for NodeBuildError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NodeBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {e}"),
-            NodeBuildError::ModelNotSet => write!(f, "Model not set."),
-        }
-    }
-}
-impl std::error::Error for NodeBuildError {}

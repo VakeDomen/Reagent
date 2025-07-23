@@ -1,4 +1,4 @@
-use crate::{models::agents::flow::invocation_flows::{Flow, FlowFuture}, util::invocations::invoke_without_tools, Agent, AgentBuilder, Message};
+use crate::{models::agents::flow::invocation_flows::{Flow, FlowFuture}, prebuilds::stateless::StatelessPrebuild, util::invocations::invoke_without_tools, Agent, AgentBuilder, Message};
 
 
 fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
@@ -11,7 +11,7 @@ fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     })    
 }
 
-impl AgentBuilder {
+impl StatelessPrebuild {
     pub fn reply_without_tools() -> AgentBuilder {
         AgentBuilder::default()
             .set_flow(Flow::Custom(custom_flow))

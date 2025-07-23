@@ -38,7 +38,6 @@ pub struct AgentBuilder {
     name: Option<String>,
     model: Option<String>,
     ollama_url: Option<String>,
-    ollama_port: Option<u16>,
     system_prompt: Option<String>,
     tools: Option<Vec<Tool>>,
     response_format: Option<String>,
@@ -155,12 +154,6 @@ impl AgentBuilder {
         self
     }
 
-    /// Port number of the Ollama service.
-    pub fn set_ollama_port(mut self, port: u16) -> Self {
-        self.ollama_port = Some(port);
-        self
-    }
-
     /// System prompt that initializes conversation history.
     pub fn set_system_prompt<T: Into<String>>(mut self, prompt: T) -> Self {
         self.system_prompt = Some(prompt.into());
@@ -238,8 +231,7 @@ impl AgentBuilder {
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
         let model = self.model.ok_or(AgentBuildError::ModelNotSet)?;
-        let ollama_url = self.ollama_url.unwrap_or_else(|| "http://localhost".into());
-        let ollama_port = self.ollama_port.unwrap_or(11434);
+        let ollama_url = self.ollama_url.unwrap_or_else(|| "http://localhost:11434".into());
         let system_prompt = self.system_prompt.unwrap_or_else(|| "You are a helpful agent.".into());
         let strip_thinking = self.strip_thinking.unwrap_or(true);
 
@@ -257,7 +249,7 @@ impl AgentBuilder {
             None
         };
 
-        let flow = self.flow.unwrap_or(Flow::Simple);
+        let flow = self.flow.unwrap_or(Flow::Default);
 
         let name = match self.name {
             Some(n) => n,
@@ -268,7 +260,6 @@ impl AgentBuilder {
             name,
             &model,
             &ollama_url,
-            ollama_port,
             &system_prompt,
             self.tools.clone(),
             response_format,

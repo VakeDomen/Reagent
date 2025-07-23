@@ -6,12 +6,12 @@ use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::models::agents::flow::flows::plan_and_execute::plan_and_execute_invoke;
+use crate::prebuilds::statefull::plan_and_execute;
 use crate::util::templating::Template;
 
 use crate::models::AgentError;
 use crate::{
-    models::{agents::flow::{invocation_flows::InternalFlow, flows::simple_loop::simple_loop_invoke}, notification::Notification}, 
+    models::{agents::flow::invocation_flows::InternalFlow, notification::Notification}, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
         ollama::{
@@ -38,6 +38,7 @@ pub struct Agent {
 
     pub response_format: Option<Value>,
     pub(crate) ollama_client: OllamaClient,
+
     pub system_prompt: String,
     pub stop_prompt: Option<String>,
     pub stopword: Option<String>,
@@ -65,7 +66,6 @@ impl Agent {
         name: String,
         model: &str,
         ollama_host: &str,
-        ollama_port: u16,
         system_prompt: &str,
         local_tools: Option<Vec<Tool>>,
         response_format: Option<Value>,
@@ -90,14 +90,13 @@ impl Agent {
         template: Option<Arc<Mutex<Template>>>,
 
     ) -> Self {
-        let base_url = format!("{ollama_host}:{ollama_port}");
         let history = vec![Message::system(system_prompt.to_string())];
 
         Self {
             name,
             model: model.into(),
             history,
-            ollama_client: OllamaClient::new(base_url),
+            ollama_client: OllamaClient::new(ollama_host.to_string()),
             response_format,
             system_prompt: system_prompt.into(),
             stop_prompt,
@@ -244,13 +243,12 @@ impl Agent {
         self.execute_invocation(prompt.into()).await
     }
 
-
+    #[instrument(level = "debug", skip(self))]
     async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError>  {
         let flow_to_run = self.flow.clone();
 
         match flow_to_run {
-            InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
-            InternalFlow::PlanAndReact => plan_and_execute_invoke(self, prompt.into()).await,
+            InternalFlow::Default => plan_and_execute::plan_and_execute_flow(self, prompt.into()).await,
             InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
         }
     }

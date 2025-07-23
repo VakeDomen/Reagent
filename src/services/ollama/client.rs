@@ -9,8 +9,8 @@ use super::models::{chat::{ChatRequest, ChatResponse}, embedding::{EmbeddingsReq
 /// The main client for interacting with the Ollama API.
 #[derive(Debug, Clone)]
 pub(crate) struct OllamaClient {
-    client: Client,
-    base_url: String,
+    pub client: Client,
+    pub base_url: String,
 }
 
 impl OllamaClient {

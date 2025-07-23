@@ -20,8 +20,7 @@ pub type FlowFuture<'a> = Pin<Box<dyn Future<Output = Result<Message, AgentError
 /// variant.
 #[derive(Clone)]
 pub enum Flow {
-    Simple,
-    PlanAndReact,
+    Default,
     Custom(CustomFlowFn),
     CustomClosure(FlowFn),
 }
@@ -34,8 +33,7 @@ pub enum Flow {
 /// understandable to the library.
 #[derive(Clone)]
 pub enum InternalFlow {
-  Simple,
-  PlanAndReact,
+  Default,
   Custom(FlowFn),
 }
 
@@ -54,8 +52,7 @@ impl Flow {
 impl From<Flow> for InternalFlow {
     fn from(flow: Flow) -> Self {
         match flow {
-            Flow::Simple => InternalFlow::Simple,
-            Flow::PlanAndReact => InternalFlow::PlanAndReact,
+            Flow::Default => InternalFlow::Default,
             Flow::Custom(custom_fn_ptr) => {
                 InternalFlow::Custom(Arc::new(custom_fn_ptr))
             }
@@ -75,9 +72,8 @@ impl From<Flow> for InternalFlow {
 impl fmt::Debug for InternalFlow {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InternalFlow::Simple    => f.write_str("InternalFlow::Simple"),
+            InternalFlow::Default    => f.write_str("InternalFlow::Default"),
             InternalFlow::Custom(_) => f.write_str("InternalFlow::Custom(<flow_fn>)"),
-            InternalFlow::PlanAndReact => f.write_str("InternalFlow::PlanAndReact"),
         }
   }
 }
@@ -85,10 +81,9 @@ impl fmt::Debug for InternalFlow {
 impl fmt::Debug for Flow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Flow::Simple => write!(f, "Simple"),
+            Flow::Default => write!(f, "Simple"),
             Flow::Custom(func_ptr) => f.debug_tuple("Custom").field(func_ptr).finish(),
             Flow::CustomClosure(_) => write!(f, "CustomClosure(<closure>)"),
-            Flow::PlanAndReact => write!(f, "PlanAndReact"),
         }
     }
 }
