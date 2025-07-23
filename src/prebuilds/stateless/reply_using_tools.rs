@@ -17,7 +17,9 @@ fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
 }
 
 impl AgentBuilder {
-    pub fn rep() -> AgentBuilder {
-        AgentBuilder::default().set_flow(Flow::Custom(custom_flow))
+    pub fn reply_using_tools() -> AgentBuilder {
+        AgentBuilder::default()
+            .set_flow(Flow::Custom(custom_flow))
+            .set_name("Stateless_prebuild-reply_using_tools")
     }
 }

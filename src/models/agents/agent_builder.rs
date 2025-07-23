@@ -64,6 +64,13 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
+
+    /// Set the name of the agent (used in logging)
+    pub fn set_name<T>(mut self, name: T) -> Self where T: Into<String> {
+        self.name = Some(name.into());
+        self
+    }
+
     /// Set the sampling temperature.
     pub fn set_temperature(mut self, v: f32) -> Self {
         self.temperature = Some(v);
