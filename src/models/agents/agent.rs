@@ -7,7 +7,7 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
 use crate::models::agents::flow::flows::plan_and_execute::plan_and_execute_invoke;
-use crate::models::agents::flow::util::templating::Template;
+use crate::util::templating::Template;
 
 use crate::models::AgentError;
 use crate::{
@@ -26,7 +26,8 @@ use crate::{
 
 
 #[derive(Clone)]
-pub struct Agent{
+pub struct Agent {
+    name: String,
     pub model: String,
     pub history: Vec<Message>,
 
@@ -61,6 +62,7 @@ pub struct Agent{
 
 impl Agent {
     pub(crate) fn new(
+        name: String,
         model: &str,
         ollama_host: &str,
         ollama_port: u16,
@@ -92,6 +94,7 @@ impl Agent {
         let history = vec![Message::system(system_prompt.to_string())];
 
         Self {
+            name,
             model: model.into(),
             history,
             ollama_client: OllamaClient::new(base_url),

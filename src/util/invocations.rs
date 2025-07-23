@@ -1,4 +1,6 @@
-use crate::{models::{flow::{invocation_flows::InvokeFuture, util::request_generation::{generate_llm_request, generate_llm_request_without_tools}}, AgentError}, services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall}, Agent, Message, Notification};
+use crate::{models::{agents::flow::invocation_flows::InvokeFuture, AgentError}, services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall}, Agent, Message, Notification};
+use crate::util::request_generation::{generate_llm_request, generate_llm_request_without_tools};
+
 
 /// Invoke the agent’s normal LLM flow:  
 /// 1. build a request via [`generate_llm_request`],  

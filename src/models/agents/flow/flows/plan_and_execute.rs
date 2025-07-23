@@ -4,14 +4,14 @@ use tracing::instrument;
 
 use crate::{
     models::{
-        flow::{
+        agents::flow::{
             invocation_flows::FlowFuture,
-            util::{invocations::{call_model, invoke, invoke_with_tool_calls, invoke_without_tools}, request_generation::generate_llm_request_without_tools},
         },
         AgentError,
     },
     services::ollama::models::base::Message,
     Agent,
+    util::{invocations::{call_model, invoke_with_tool_calls, invoke_without_tools}, request_generation::generate_llm_request_without_tools}
 };
 
 

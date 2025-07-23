@@ -3,9 +3,10 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use crate::{
     models::{
-        agents::flow::{invocation_flows::Flow, util::templating::Template},
+        agents::flow::invocation_flows::Flow,
         notification::Notification, AgentBuildError
     },
+    util::templating::Template,
     services::{
         mcp::mcp_tool_builder::McpServerType,
         ollama::models::tool::Tool
@@ -34,6 +35,7 @@ use crate::{
 /// ```
 #[derive(Debug, Default)]
 pub struct AgentBuilder {
+    name: Option<String>,
     model: Option<String>,
     ollama_url: Option<String>,
     ollama_port: Option<u16>,
@@ -250,7 +252,13 @@ impl AgentBuilder {
 
         let flow = self.flow.unwrap_or(Flow::Simple);
 
+        let name = match self.name {
+            Some(n) => n,
+            None => format!("Agent-{}", model),
+        };
+
         Ok(Agent::new(
+            name,
             &model,
             &ollama_url,
             ollama_port,

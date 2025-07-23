@@ -1,5 +1,7 @@
 pub mod models;
 pub(crate) mod services;
+pub mod util;
+pub mod prebuilds;
 
 pub use services::ollama::tool_builder::{ToolBuilder, ToolBuilderError};
 pub use models::{AgentBuilder, Agent, Notification};

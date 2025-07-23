@@ -1,6 +1,6 @@
 
 use std::{collections::HashMap, error::Error, future::Future};
-use reagent::{init_default_tracing, models::flow::util::templating::{Template, TemplateDataSource}, AgentBuilder};
+use reagent::{init_default_tracing, util::templating::{Template, TemplateDataSource}, AgentBuilder};
 
 struct MyCustomDataSource;
 

@@ -1,5 +1,4 @@
 pub mod agents;
-pub mod nodes;
 pub mod error;
 pub mod notification;
 

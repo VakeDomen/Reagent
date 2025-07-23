@@ -1,6 +1,8 @@
 use tracing::instrument;
 
-use crate::{models::{flow::{invocation_flows::FlowFuture, util::invocations::{call_tools, invoke}}}, Agent, Message, Notification};
+use crate::{
+    models::{agents::flow::invocation_flows::FlowFuture}, Agent, Message, Notification, util::invocations::{call_tools, invoke}
+};
 
 #[instrument(level = "debug", skip(agent, prompt))]
 pub fn simple_loop_invoke<'a>(
