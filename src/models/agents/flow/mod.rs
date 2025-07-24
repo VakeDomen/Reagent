@@ -10,11 +10,7 @@ mod tests {
     use serde_json::Value;
 
     use crate::{
-        AgentBuilder,
-        AsyncToolFn,
-        ToolBuilder,
-        Notification,
-        ToolExecutionError,
+        models::notification::NotificationContent, AgentBuilder, AsyncToolFn, Notification, ToolBuilder, ToolExecutionError
     };
 
     #[tokio::test]
@@ -88,7 +84,7 @@ mod tests {
                 println!("Received notification: {:?}", note);
                 seen.push(note.clone());
 
-                if let Notification::Done(_) = note {
+                if let NotificationContent::Done(_) = note.content {
                     break;
                 }
             }
@@ -129,11 +125,11 @@ mod tests {
         assert!(!notifications.is_empty(), "Expected at least one notification");
         println!("All collected notifications:\n{:#?}", notifications);
 
-        assert!(notifications.iter().any(|n| matches!(n, Notification::PromptRequest(_))));
-        assert!(notifications.iter().any(|n| matches!(n, Notification::ToolCallRequest(_))));
-        assert!(notifications.iter().any(|n| matches!(n, Notification::ToolCallSuccessResult(_))));
-        assert!(notifications.iter().any(|n| matches!(n, Notification::PromptSuccessResult(_))));
-        assert!(notifications.iter().any(|n| matches!(n, Notification::Done(_))));
+        assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::PromptRequest(_))));
+        assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::ToolCallRequest(_))));
+        assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::ToolCallSuccessResult(_))));
+        assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::PromptSuccessResult(_))));
+        assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::Done(_))));
 
         Ok(())
     }

@@ -23,16 +23,9 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
         let (mut replanner, replanner_notification_channel) = create_replanner_agent(&agent).await?;
         let (mut executor, executor_notification_channel) = create_single_task_agent(&agent).await?;
 
-
-        if let Some(main_notification_sender) = &agent.notification_channel {
-            forward_notifications(planner_notification_channel, main_notification_sender.clone());
-            forward_notifications(replanner_notification_channel, main_notification_sender.clone());
-            forward_notifications(executor_notification_channel, main_notification_sender.clone());
-        }
-        
-
-
-
+        agent.forward_notifications(planner_notification_channel);
+        agent.forward_notifications(replanner_notification_channel);
+        agent.forward_notifications(executor_notification_channel);
 
         let plan_content = planner.invoke_flow_with_template(HashMap::from([
             ("tools", format!("{:#?}", agent.get_compiled_tools().await?)),
@@ -88,29 +81,15 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
 
             agent.history.push(Message::user(format!("{}", prompt)));
             let response = invoke(agent).await?;
-            agent.notify(crate::Notification::Done(true)).await;
+            agent.notify(crate::NotificationContent::Done(true)).await;
             Ok(response.message)
         } else {
-            agent.notify(crate::Notification::Done(false)).await;
+            agent.notify(crate::NotificationContent::Done(false)).await;
             Err(AgentError::RuntimeError(
                 "Plan-and-Execute failed to produce a result.".into(),
             ))
         }
     })    
-}
-
-pub fn forward_notifications(
-    mut from_channel: Receiver<Notification>,
-    to_sender: Sender<Notification>
-) {
-    tokio::spawn(async move {
-        while let Some(msg) = from_channel.recv().await {
-            if to_sender.send(msg).await.is_err() {
-                // The main agent's receiver has been dropped, so we can stop.
-                break;
-            }
-        }
-    });
 }
 
 

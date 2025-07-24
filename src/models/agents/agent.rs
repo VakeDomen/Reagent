@@ -7,6 +7,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
 use crate::models::agents::flow::flows::simple_loop::simple_loop_invoke;
+use crate::models::notification::NotificationContent;
 use crate::util::templating::Template;
 
 use crate::models::AgentError;
@@ -157,17 +158,33 @@ impl Agent {
         Ok(r)
     }
 
-    pub(crate) async fn notify(&self, msg: Notification) -> bool {
+    pub(crate) async fn notify(&self, content: NotificationContent) -> bool {
         if self.notification_channel.is_none() {
             return false;
         }
         let notification_channel = self.notification_channel.as_ref().unwrap();
-        match notification_channel.send(msg).await {
+        match notification_channel.send(Notification { agent: self.name.clone(), content }).await {
             Ok(_) => true,
             Err(e) => {
                 tracing::error!(error = %e, "Failed sending notification");
                 false
             },
+        }
+    }
+
+    pub fn forward_notifications(
+        &self,
+        mut from_channel: Receiver<Notification>
+    ) {
+        if let Some(notification_channel) = &self.notification_channel {
+            let to_sender = notification_channel.clone();
+            tokio::spawn(async move {
+                while let Some(msg) = from_channel.recv().await {
+                    if to_sender.send(msg).await.is_err() {
+                        break;
+                    }
+                }
+            });    
         }
     }
 

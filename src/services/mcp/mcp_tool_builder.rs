@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::{process::Command, sync::{mpsc::Sender, Mutex}};
 use tracing::{info, instrument, trace};
 
-use crate::{services::ollama::models::tool::Tool, Notification, ToolBuilder, ToolExecutionError};
+use crate::{services::ollama::models::tool::Tool, Notification, NotificationContent, ToolBuilder, ToolExecutionError};
 
 use super::error::McpIntegrationError;
 use rmcp::{model::{CallToolRequestParam, CallToolResult, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceExt};
@@ -49,7 +49,10 @@ impl ClientHandler for AgentMcpHandler {
         let notification_string = serde_json::to_string(&params)
             .unwrap_or_else(|e| format!("Failed to serialize MCP notification: {e}"));
 
-        let agent_notification = Notification::McpToolNotification(notification_string);
+        let agent_notification = Notification { 
+            agent: "MCP".to_string(), 
+            content: NotificationContent::McpToolNotification(notification_string)
+        };
 
         if tx.send(agent_notification).await.is_err() {
             tracing::warn!("Agent notification channel closed. Cannot forward MCP notification.");

@@ -303,7 +303,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::{models::agents::flow::invocation_flows::{Flow, FlowFuture}, Agent, AsyncToolFn, Message, ToolBuilder};
+    use crate::{models::{agents::flow::invocation_flows::{Flow, FlowFuture}, notification::NotificationContent}, Agent, AsyncToolFn, Message, ToolBuilder};
 
     #[tokio::test]
     async fn defaults_fail_without_model() {
@@ -414,11 +414,14 @@ mod tests {
             .notification_channel
             .as_ref()
             .unwrap()
-            .send(Notification::Done(false))
+            .send(Notification{
+                agent: "test".to_string()    ,
+                content: NotificationContent::Done(false),
+            })
             .await
             .unwrap();
         let notified = rx.recv().await.unwrap();
-        assert!(matches!(notified, Notification::Done(false)));
+        assert!(matches!(notified.content, NotificationContent::Done(false)));
     }
 
     #[tokio::test]

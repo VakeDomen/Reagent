@@ -5,7 +5,14 @@ use crate::services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::T
 pub type Success = bool;
 
 #[derive(Debug, Clone, Serialize)]
-pub enum Notification {
+pub struct Notification {
+    pub agent: String,
+    pub content: NotificationContent,
+}
+
+
+#[derive(Debug, Clone, Serialize)]
+pub enum NotificationContent {
     Done(Success),
     PromptRequest(ChatRequest),
     PromptSuccessResult(ChatResponse),

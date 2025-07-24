@@ -1,7 +1,7 @@
 use tracing::instrument;
 
 use crate::{
-    models::agents::flow::invocation_flows::FlowFuture, util::invocations::invoke_with_tool_calls, Agent, Message, Notification
+    models::{agents::flow::invocation_flows::FlowFuture, notification::NotificationContent}, util::invocations::invoke_with_tool_calls, Agent, Message, Notification
 };
 
 #[instrument(level = "debug", skip(agent, prompt))]
@@ -37,7 +37,7 @@ pub fn simple_loop_invoke<'a>(
             }
 
             if done {
-                agent.notify(Notification::Done(true)).await;
+                agent.notify(NotificationContent::Done(true)).await;
                 return Ok(response.message);
             }
 

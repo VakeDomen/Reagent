@@ -1,7 +1,7 @@
 
 use std::{error::Error, sync::Arc};
 use tokio::sync::Mutex;
-use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, Notification, ToolBuilder, ToolExecutionError};
+use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, NotificationContent, ToolBuilder, ToolExecutionError};
 use serde_json::Value;
 
 #[tokio::main]
@@ -65,11 +65,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tokio::spawn(async move {
         while let Some(msg) = notification_reciever.recv().await {
-            match msg {
-                Notification::ToolCallRequest(notification)=>println!("Recieved tool call reuqest notification: {:#?}",notification),
-                Notification::ToolCallSuccessResult(notification)=>println!("Recieved tool call Success notification: {:#?}",notification),
-                Notification::ToolCallErrorResult(notification)=>println!("Recieved tool call Error notification: {:#?}",notification),
-                Notification::Done(success) => println!("Done with generation: {}", success),
+            match msg.content {
+                NotificationContent::ToolCallRequest(notification)=>println!("Recieved tool call reuqest notification: {:#?}",notification),
+                NotificationContent::ToolCallSuccessResult(notification)=>println!("Recieved tool call Success notification: {:#?}",notification),
+                NotificationContent::ToolCallErrorResult(notification)=>println!("Recieved tool call Error notification: {:#?}",notification),
+                NotificationContent::Done(success) => println!("Done with generation: {}", success),
                 _ => ()
             }
   

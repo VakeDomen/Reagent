@@ -1,4 +1,4 @@
-use crate::{models::{agents::{flow::invocation_flows::InvokeFuture}, AgentError}, services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall}, Agent, Message, Notification};
+use crate::{models::{agents::flow::invocation_flows::InvokeFuture, AgentError}, services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall}, Agent, Message, Notification, NotificationContent};
 use crate::util::request_generation::{generate_llm_request, generate_llm_request_without_tools};
 
 
@@ -74,12 +74,12 @@ pub async fn call_model(
     agent: &Agent,
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
-    agent.notify(Notification::PromptRequest(request.clone())).await;
+    agent.notify(NotificationContent::PromptRequest(request.clone())).await;
 
     let raw = agent.ollama_client.chat(request).await;
     match raw {
         Ok(mut resp) => {
-            agent.notify(Notification::PromptSuccessResult(resp.clone())).await;
+            agent.notify(NotificationContent::PromptSuccessResult(resp.clone())).await;
 
             if agent.strip_thinking {
                 if let Some(content) = resp.message.content.clone() {
@@ -92,7 +92,7 @@ pub async fn call_model(
             Ok(resp)
         }
         Err(e) => {
-            agent.notify(Notification::PromptErrorResult(e.to_string())).await;
+            agent.notify(NotificationContent::PromptErrorResult(e.to_string())).await;
             Err(e.into())
         }
     }
@@ -125,16 +125,16 @@ pub async fn call_tools(
 
             // try to find the tool
             if let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name) {
-                agent.notify(Notification::ToolCallRequest(call.clone())).await;
+                agent.notify(NotificationContent::ToolCallRequest(call.clone())).await;
 
                 match tool.execute(call.function.arguments.clone()).await {
                     Ok(output) => {
-                        agent.notify(Notification::ToolCallSuccessResult(output.clone()))
+                        agent.notify(NotificationContent::ToolCallSuccessResult(output.clone()))
                             .await;
                         results.push(Message::tool(output, call.id.clone().unwrap_or(call.function.name.clone())));
                     }
                     Err(e) => {
-                        agent.notify(Notification::ToolCallErrorResult(e.to_string())).await;
+                        agent.notify(NotificationContent::ToolCallErrorResult(e.to_string())).await;
                         let msg = format!("Error executing tool {}: {}", call.function.name, e);
                         results.push(Message::tool(msg, call.id.clone().unwrap_or(call.function.name.clone())));
                     }
@@ -142,13 +142,13 @@ pub async fn call_tools(
             } else {
                 tracing::error!("No corresponding tool found.");
                 let msg = format!("Could not find tool: {}", call.function.name);
-                agent.notify(Notification::ToolCallErrorResult(msg.clone())).await;
+                agent.notify(NotificationContent::ToolCallErrorResult(msg.clone())).await;
                 results.push(Message::tool(msg, "0".to_string()));
             }
         }
     } else {
         tracing::error!("No tools specified");
-        agent.notify(Notification::ToolCallErrorResult("Empty tool call".into())).await;
+        agent.notify(NotificationContent::ToolCallErrorResult("Empty tool call".into())).await;
         results.push(Message::tool(
             "If you want to use a tool specify the name of the available tool.",
             "Tool".to_string(),
