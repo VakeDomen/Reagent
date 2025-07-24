@@ -51,7 +51,8 @@ impl ClientHandler for AgentMcpHandler {
 
         let agent_notification = Notification { 
             agent: "MCP".to_string(), 
-            content: NotificationContent::McpToolNotification(notification_string)
+            content: NotificationContent::McpToolNotification(notification_string),
+            mcp_envelope: None,
         }.unwrap();
 
         if tx.send(agent_notification).await.is_err() {

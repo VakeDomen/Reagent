@@ -417,6 +417,7 @@ mod tests {
             .send(Notification{
                 agent: "test".to_string()    ,
                 content: NotificationContent::Done(false),
+                mcp_envelope: None,
             })
             .await
             .unwrap();
