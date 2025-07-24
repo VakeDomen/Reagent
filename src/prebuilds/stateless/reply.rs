@@ -7,6 +7,7 @@ fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
         agent.history.push(Message::system(agent.system_prompt.clone()));
         agent.history.push(Message::user(prompt));
         let response = invoke(agent).await?;
+        agent.notify(crate::Notification::Done(true)).await;
         Ok(response.message)
     })    
 }

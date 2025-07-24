@@ -1,6 +1,6 @@
 use reqwest::{Client, Error as ReqwestError};
 use serde::de::DeserializeOwned;
-use tracing::{debug, error, info_span, instrument, Instrument};
+use tracing::{debug, error, info_span, trace, instrument, Instrument};
 use std::fmt;
 
 use super::models::{chat::{ChatRequest, ChatResponse}, embedding::{EmbeddingsRequest, EmbeddingsResponse}, errors::OllamaError, generate::{GenerateRequest, GenerateResponse}};
@@ -83,7 +83,7 @@ impl OllamaClient {
 
                 match serde_json::from_str::<R>(&response_text) {
                     Ok(parsed) => {
-                        debug!(?parsed, "deserialized response");
+                        trace!(?parsed, "deserialized response");
                         Ok(parsed)
                     }
                     Err(e) => {

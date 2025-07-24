@@ -60,6 +60,7 @@ pub struct AgentBuilder {
     notification_channel: Option<mpsc::Sender<Notification>>,
     flow: Option<Flow>,
     template: Option<Arc<Mutex<Template>>>,
+    max_iterations: Option<usize>,
 }
 
 impl AgentBuilder {
@@ -216,6 +217,14 @@ impl AgentBuilder {
         self
     }
 
+    /// Set max_iterations. This controlls maximum amount of times the agent
+    /// may perform a "conversation iteration". Also serves as a breakpoint 
+    /// if the agent is stuck in a loop
+    pub fn set_max_iterations(mut self, max_iterations: usize) -> Self {
+        self.max_iterations = Some(max_iterations);
+        self
+    }
+
     /// Build an [`Agent`] and return also the notification receiver.
     ///
     /// Creates an internal mpsc channel of size 100.
@@ -282,6 +291,7 @@ impl AgentBuilder {
             self.mcp_servers,
             flow.into(),
             self.template,
+            self.max_iterations
         ))
     }
 }

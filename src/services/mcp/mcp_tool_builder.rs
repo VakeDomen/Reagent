@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use tokio::{process::Command, sync::{mpsc::Sender, Mutex}};
-use tracing::info;
+use tracing::{info, instrument, trace};
 
 use crate::{services::ollama::models::tool::Tool, Notification, ToolBuilder, ToolExecutionError};
 
@@ -59,7 +59,7 @@ impl ClientHandler for AgentMcpHandler {
 }
 
 
-
+#[instrument(level = "debug", skip(mcp_server_type, notification_channel))]
 pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel: Option<Sender<Notification>>) -> Result<Vec<Tool>, McpIntegrationError> {
     
     let (mcp_client_arc, mcp_raw_tools) = match mcp_server_type {
@@ -70,8 +70,8 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
 
     
 
-    info!(
-        "[MCP] Discovered {} raw tools from MCP server. Converting...",
+    trace!(
+        "Discovered {} raw tools from MCP server. Converting...",
         mcp_raw_tools.len()
     );
     let mut agent_tools = Vec::new();

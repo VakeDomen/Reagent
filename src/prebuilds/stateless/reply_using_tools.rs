@@ -12,6 +12,7 @@ fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
                 agent.history.push(tool_msg);
             }
         } 
+        agent.notify(crate::Notification::Done(true)).await;
         Ok(response.message)
     })    
 }

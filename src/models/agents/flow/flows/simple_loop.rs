@@ -1,7 +1,7 @@
 use tracing::instrument;
 
 use crate::{
-    models::{agents::flow::invocation_flows::FlowFuture}, Agent, Message, Notification, util::invocations::{call_tools, invoke}
+    models::agents::flow::invocation_flows::FlowFuture, util::invocations::invoke_with_tool_calls, Agent, Message, Notification
 };
 
 #[instrument(level = "debug", skip(agent, prompt))]
@@ -12,34 +12,36 @@ pub fn simple_loop_invoke<'a>(
     Box::pin(async move {
     
         agent.history.push(Message::user(prompt));
-        
+        let mut iteration_number = 1;
+
         loop {
             
-            let response = invoke(agent).await?;
-            agent.history.push(response.message.clone());
-
-            if let Some(tc) = response.message.tool_calls {
-                for tool_msg in call_tools(agent, &tc).await {
-                    agent.history.push(tool_msg);
-                }
-            } 
+            let response = invoke_with_tool_calls(agent).await?;
             
-            else if let Some(stopword) = &agent.stopword {
+            // stop conditions
+            let mut done = false;
+            if let Some(keyword) = &agent.stopword {
                 if response
                     .message
                     .content
                     .as_ref()
-                    .is_some_and(|c| c.contains(stopword))
-                {
-                    agent.notify(Notification::Done(true)).await;
-                    return Ok(response.message);
-                } else if let Some(stop_prompt) = &agent.stop_prompt {
-                    agent.history.push(Message::tool(stop_prompt, "0"));
+                    .is_some_and(|c| c.contains(keyword)) {
+                        done = true;
                 }
-            } else {
+            }
+
+            if let Some(max_iterations) = agent.max_iterations {
+                if max_iterations > iteration_number {
+                    done = true;
+                }
+            }
+
+            if done {
                 agent.notify(Notification::Done(true)).await;
                 return Ok(response.message);
             }
+
+            iteration_number += 1;
         }
     })
 }

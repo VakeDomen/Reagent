@@ -3,10 +3,10 @@ use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 
 use serde_json::Value;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::prebuilds::statefull::plan_and_execute;
+use crate::models::agents::flow::flows::simple_loop::simple_loop_invoke;
 use crate::util::templating::Template;
 
 use crate::models::AgentError;
@@ -58,6 +58,7 @@ pub struct Agent {
     pub notification_channel: Option<Sender<Notification>>,
     pub template: Option<Arc<Mutex<Template>>>,
     flow: InternalFlow,
+    pub max_iterations: Option<usize>
 
 }
 
@@ -88,6 +89,7 @@ impl Agent {
         mcp_servers: Option<Vec<McpServerType>>,
         flow: InternalFlow,
         template: Option<Arc<Mutex<Template>>>,
+        max_iterations: Option<usize>,
 
     ) -> Self {
         let history = vec![Message::system(system_prompt.to_string())];
@@ -120,6 +122,7 @@ impl Agent {
             flow,
             tools: None,
             template,
+            max_iterations,
         }
     }
 
@@ -208,7 +211,7 @@ impl Agent {
 
 
 
-    #[instrument(level = "debug", skip(self, prompt))]
+    #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
     pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
     where
         T: Into<String>,
@@ -243,12 +246,12 @@ impl Agent {
         self.execute_invocation(prompt.into()).await
     }
 
-    #[instrument(level = "debug", skip(self))]
+    #[instrument(level = "debug", skip(self, prompt))]
     async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError>  {
         let flow_to_run = self.flow.clone();
 
         match flow_to_run {
-            InternalFlow::Default => plan_and_execute::plan_and_execute_flow(self, prompt.into()).await,
+            InternalFlow::Default => simple_loop_invoke(self, prompt.into()).await,
             InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
         }
     }

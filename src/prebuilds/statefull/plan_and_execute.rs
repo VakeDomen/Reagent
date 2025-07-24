@@ -1,9 +1,15 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use serde_json::Value;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::instrument;
 
-use crate::{models::{agents::flow::invocation_flows::{Flow, FlowFuture}, AgentBuildError, AgentError}, prebuilds::stateless::StatelessPrebuild, util::{invocations::{call_tools, invoke}, templating::Template}, Agent, AgentBuilder, Message};
+use crate::{
+    models::{agents::flow::invocation_flows::{Flow, FlowFuture}, AgentBuildError, AgentError}, 
+    prebuilds::stateless::StatelessPrebuild, 
+    util::{invocations::invoke, templating::Template}, 
+    Agent, AgentBuilder, Message, Notification
+};
 
 
 
@@ -13,9 +19,19 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
         let mut past_steps: Vec<(String, String)> = Vec::new();
         let max_turns = 5;
         
-        let mut planner = create_planner_agent(&agent).await?;
-        let mut replanner = create_replanner_agent(&agent).await?;
-        let mut executor = create_single_task_agent(&agent).await?;
+        let (mut planner, planner_notification_channel) = create_planner_agent(&agent).await?;
+        let (mut replanner, replanner_notification_channel) = create_replanner_agent(&agent).await?;
+        let (mut executor, executor_notification_channel) = create_single_task_agent(&agent).await?;
+
+
+        if let Some(main_notification_sender) = &agent.notification_channel {
+            forward_notifications(planner_notification_channel, main_notification_sender.clone());
+            forward_notifications(replanner_notification_channel, main_notification_sender.clone());
+            forward_notifications(executor_notification_channel, main_notification_sender.clone());
+        }
+        
+
+
 
 
         let plan_content = planner.invoke_flow_with_template(HashMap::from([
@@ -61,16 +77,21 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
                 ("past_steps", past_steps_str),
             ])).await?;
             plan = get_plan_from_response(&new_plan_content)?;
+
+            if let Err(e) = agent.save_history("./converstion.json") {
+                println!("ERROR saving hisopry: {:#?}", e.to_string());
+            };
         }
 
 
         if let Some(_) = past_steps.last() {
 
-            agent.history.push(Message::user(format!("Summarize the conversation and exhausitvely answe the user queston: {}", prompt)));
+            agent.history.push(Message::user(format!("{}", prompt)));
             let response = invoke(agent).await?;
-
+            agent.notify(crate::Notification::Done(true)).await;
             Ok(response.message)
         } else {
+            agent.notify(crate::Notification::Done(false)).await;
             Err(AgentError::RuntimeError(
                 "Plan-and-Execute failed to produce a result.".into(),
             ))
@@ -78,10 +99,49 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
     })    
 }
 
+pub fn forward_notifications(
+    mut from_channel: Receiver<Notification>,
+    to_sender: Sender<Notification>
+) {
+    tokio::spawn(async move {
+        while let Some(msg) = from_channel.recv().await {
+            if to_sender.send(msg).await.is_err() {
+                // The main agent's receiver has been dropped, so we can stop.
+                break;
+            }
+        }
+    });
+}
+
+
 impl AgentBuilder {
     pub fn plan_and_execute() -> AgentBuilder {
+
+        let system_prompt = r#"You are a Chief Analyst and Reporter Agent. Your primary function is to transform a log of technical steps and results into a comprehensive, well-structured, and easy-to-read report for the end-user.
+
+The conversation history you will receive is an execution log detailing:
+1.  The user's original high-level objective.
+2.  A sequence of specific tasks that were executed (`User` messages).
+3.  The raw results and observations from each task (`Assistant` messages).
+
+**Your Final Task: Create a Detailed Report**
+Your final response must be a comprehensive report that directly answers the user's original objective, which is repeated as the final message in the history. This is your signal to begin.
+
+**Report Structure and Formatting Rules:**
+1.  **Begin with a Direct, Conversational Response:** Start your report by directly answering the user's core question in a natural, conversational tone. **Do not use a generic heading like "Direct Answer" for this opening.**
+2.  **Use Extensive Markdown:** After the initial response, structure the rest of the report using markdown. Use headings (`##`), subheadings (`###`), bold text for emphasis on key terms, and bulleted or numbered lists to break down information.
+3.  **Elaborate on the Findings:** Do not just state the final answer. Elaborate on the key information discovered during the execution process. Create separate sections for different aspects of the findings to build a comprehensive picture.
+4.  **Create a Narrative:** Weave the key findings from the log into a logical narrative. You can explain *what* was found at major stages to build your answer (e.g., "Initial research into the moon landing date confirmed it was July 20, 1969. Subsequent searches for the UK monarch at that time revealed...").
+5.  **Do Not Mention the Process Itself:** Crucially, **do not** talk about the "plan," "steps," or "tools" (e.g., do not say "The first step was to use the search tool"). Instead, focus on the *information* that was uncovered.
+
+**CRITICAL CONSTRAINTS:**
+-   Your entire response must be a single, cohesive report.
+-   You **must not** attempt to call any tools or re-execute tasks.
+-   Base your report **exclusively** on the facts present in the conversation log."#;
+
         AgentBuilder::default()
             .set_temperature(0.)
+            .set_system_prompt(system_prompt)
             .set_flow(Flow::Custom(plan_and_execute_flow))
             .set_name("Statefull_prebuild-plan_and_execute")
     }
@@ -104,7 +164,7 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
     Ok(plan)
 }
 
-pub async fn create_planner_agent(ref_agent: &Agent) -> Result<Agent, AgentBuildError> {
+pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     let system_prompt = r#"You are a meticulous Planner Agent. Your **sole purpose** is to generate a step-by-step plan in a strict JSON format. You will be given an objective and a set of available tools.
 
 **Your Task:**
@@ -204,13 +264,13 @@ A step like `"Use query_memory to find relevant information"` is useless and str
         .set_system_prompt(system_prompt)
         .set_template(template)
         .set_model(ref_agent.model.clone())
-        .build()
+        .build_with_notification()
         .await
 }
 
 
 
-pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<Agent, AgentBuildError> {
+pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     let system_prompt = r#"You are an expert Re-Planner Agent. Your task is to analyze the progress made on a plan and create a new, revised plan to achieve the original objective. You will be given the original objective, the original plan, and a history of the steps that have already been executed along with their results.
 
 **Core Principle: The Executor is Still Blind**
@@ -338,13 +398,13 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
             "required": ["steps"]
         }
         "#)
-        .build()
+        .build_with_notification()
         .await
 }
 
 
 
-pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<Agent, AgentBuildError> {
+pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     let system_prompt = r#"You are given a task and a set of tools. Complete the task.
     You may use the tools if they are heplful. Once you have a response for the task ready, wrap the
     final response to the user in the <final>response</final>"#;
@@ -369,11 +429,12 @@ pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<Agent, AgentB
 
 
     builder
-        .set_name("Statefull_prebuild-plan_and_execute-planner")
+        .set_name("Statefull_prebuild-plan_and_execute-task_executor")
         .set_system_prompt(system_prompt)
         .set_model(ref_agent.model.clone())
         .set_stopword("</final>")
-        .build()
+        .set_max_iterations(5)
+        .build_with_notification()
         .await
 }
 
