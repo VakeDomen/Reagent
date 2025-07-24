@@ -70,10 +70,6 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
                 ("past_steps", past_steps_str),
             ])).await?;
             plan = get_plan_from_response(&new_plan_content)?;
-
-            if let Err(e) = agent.save_history("./converstion.json") {
-                println!("ERROR saving hisopry: {:#?}", e.to_string());
-            };
         }
 
 
@@ -81,10 +77,6 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
 
             agent.history.push(Message::user(format!("{}", prompt)));
             let response = invoke(agent).await?;
-
-            if let Err(e) = agent.save_history("./converstion.json") {
-                println!("ERROR saving hisopry: {:#?}", e.to_string());
-            };
 
             agent.notify(crate::NotificationContent::Done(true)).await;
             Ok(response.message)
