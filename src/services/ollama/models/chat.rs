@@ -4,7 +4,7 @@ use super::{base::{BaseRequest, Message}, tool::Tool};
 
 
 /// Request for the `/api/chat` endpoint.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Deserialize)]
 pub struct ChatRequest {
     #[serde(flatten)]
     pub base: BaseRequest,

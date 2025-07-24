@@ -18,14 +18,25 @@ pub type AsyncToolFn = Arc<
         + Sync,
 >;
 
+/// A placeholder function for deserialization.
+/// It should panic if called, indicating a logic error where a tool was
+/// deserialized but not properly re-initialized.
+fn default_executor() -> AsyncToolFn {
+    Arc::new(|_| {
+        Box::pin(async {
+            panic!("Called a default, non-functional tool executor. The tool was not rehydrated after deserialization.");
+        })
+    })
+}
+
 
 /// Defines a tool (function) that the model can call.
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Deserialize)]
 pub struct Tool {
     #[serde(rename = "type")]
     pub tool_type: ToolType,
     pub function: Function,
-    #[serde(skip_serializing)]
+    #[serde(skip, default = "default_executor")]
     pub executor: AsyncToolFn,
 }
 

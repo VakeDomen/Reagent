@@ -198,6 +198,7 @@ A step like `"Use query_memory to find relevant information"` is useless and str
     "#);
 
     let mut builder = StatelessPrebuild::reply()
+        .set_name("Statefull_prebuild-plan_and_execute-planner")
         .set_model(ref_agent.model.clone())
         .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
 
@@ -215,11 +216,13 @@ A step like `"Use query_memory to find relevant information"` is useless and str
     if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
     if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
     if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
+    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-planner", ref_agent.name)) }
     builder = builder.strip_thinking(ref_agent.strip_thinking);
 
 
+
+
     builder
-        .set_name("Statefull_prebuild-plan_and_execute-planner")
         .set_response_format(r#"
         {
             "type": "object",
@@ -334,6 +337,7 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
     "#);
 
     let mut builder = StatelessPrebuild::reply()
+        .set_name("Statefull_prebuild-plan_and_execute-replanner")
         .set_model(ref_agent.model.clone())
         .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
 
@@ -351,6 +355,7 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
     if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
     if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
     if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
+    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-replanner", ref_agent.name)) }
     builder = builder.strip_thinking(ref_agent.strip_thinking);
 
 
@@ -358,7 +363,6 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
         .set_system_prompt(system_prompt)
         .set_template(template)
         .set_model(ref_agent.model.clone())
-        .set_name("Statefull_prebuild-plan_and_execute-replanner")
         .set_response_format(r#"
         {
             "type": "object",
@@ -385,6 +389,7 @@ pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Recei
     final response to the user in the <final>response</final>"#;
 
     let mut builder = AgentBuilder::default()
+        .set_name("Statefull_prebuild-plan_and_execute-task_executor")
         .set_model(ref_agent.model.clone())
         .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
 
@@ -402,11 +407,11 @@ pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Recei
     if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
     if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
     if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
+    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-executor", ref_agent.name)) }
     builder = builder.strip_thinking(true);
 
 
     builder
-        .set_name("Statefull_prebuild-plan_and_execute-task_executor")
         .set_system_prompt(system_prompt)
         .set_model(ref_agent.model.clone())
         .set_stopword("</final>")

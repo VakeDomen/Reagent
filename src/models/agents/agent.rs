@@ -28,7 +28,7 @@ use crate::{
 
 #[derive(Clone)]
 pub struct Agent {
-    name: String,
+    pub name: String,
     pub model: String,
     pub history: Vec<Message>,
 
@@ -172,7 +172,8 @@ impl Agent {
             let to_sender = notification_channel.clone();
             tokio::spawn(async move {
                 while let Some(msg) = from_channel.recv().await {
-                    if to_sender.send(msg).await.is_err() {
+
+                    if to_sender.send(msg.unwrap()).await.is_err() {
                         break;
                     }
                 }

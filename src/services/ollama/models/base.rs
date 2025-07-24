@@ -66,11 +66,13 @@ impl Message {
     }
 }
 /// Base structure for requests.
-#[derive(Serialize, Debug, Clone, Default)]
+#[derive(Serialize, Debug, Clone, Default, Deserialize)]
 pub struct BaseRequest {
     pub model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<Value>,
+
+    #[serde(flatten)]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "options")]
     #[serde(serialize_with = "serialize_options_as_map")]
