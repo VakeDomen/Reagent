@@ -52,7 +52,7 @@ impl ClientHandler for AgentMcpHandler {
         let agent_notification = Notification { 
             agent: "MCP".to_string(), 
             content: NotificationContent::McpToolNotification(notification_string)
-        };
+        }.unwrap();
 
         if tx.send(agent_notification).await.is_err() {
             tracing::warn!("Agent notification channel closed. Cannot forward MCP notification.");
