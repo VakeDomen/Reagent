@@ -1,7 +1,7 @@
 use tracing::instrument;
 
 use crate::{
-    models::{agents::flow::invocation_flows::FlowFuture, notification::NotificationContent}, util::invocations::invoke_with_tool_calls, Agent, Message, Notification
+    models::{agents::flow::invocation_flows::FlowFuture, notification::NotificationContent}, util::invocations::{invoke_with_tool_calls, invoke_without_tools}, Agent, Message, Notification
 };
 
 #[instrument(level = "debug", skip(agent, prompt))]
@@ -11,7 +11,7 @@ pub fn simple_loop_invoke<'a>(
 ) -> FlowFuture<'a> {
     Box::pin(async move {
     
-        agent.history.push(Message::user(prompt));
+        agent.history.push(Message::user(prompt.clone()));
         let mut iteration_number = 1;
 
         loop {
@@ -37,12 +37,17 @@ pub fn simple_loop_invoke<'a>(
             }
 
             if done {
-                agent.notify(NotificationContent::Done(true)).await;
-                return Ok(response.message);
+                break;
             }
 
             iteration_number += 1;
         }
+
+        agent.history.push(Message::user(format!("Based on conversation answer the prompt to the best of your ability: {}", prompt)));
+        let response = invoke_without_tools(agent).await?;
+        agent.history.push(response.message.clone());
+        agent.notify(NotificationContent::Done(true)).await;
+        return Ok(response.message);
     })
 }
 

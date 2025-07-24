@@ -34,11 +34,6 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
         let mut plan = get_plan_from_response(&plan_content)?;
         
         
-        
-
-
-        agent.history.push(Message::user(prompt.clone()));
-
         for _ in 0..max_turns {
             if plan.is_empty() {
                 break;
@@ -415,7 +410,7 @@ pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Recei
         .set_system_prompt(system_prompt)
         .set_model(ref_agent.model.clone())
         .set_stopword("</final>")
-        .set_max_iterations(5)
+        .set_max_iterations(10)
         .build_with_notification()
         .await
 }
