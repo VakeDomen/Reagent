@@ -67,31 +67,24 @@ impl ToRequestParams for Agent {
 
 
 /// Builds a [`ChatRequest`] from the agent’s state, *including* whatever
-/// `agent.tools` currently holds (calling `agent.get_compiled_tools()` if None).  
+/// `agent.tools` currently holds.  
 ///
 /// # Errors  
-/// Returns [`AgentError`] if `get_compiled_tools()` fails.  
 pub async fn generate_llm_request(
-    agent: &mut Agent
-) -> Result<ChatRequest, AgentError> {
-    if agent.tools.is_none() {
-        agent.tools = agent.get_compiled_tools().await?;
-    }
+    agent: &Agent
+) -> ChatRequest {
     let params = agent.to_request_params();
-    Ok(params.into_request())
+    params.into_request()
 }
 
 
 /// Like [`generate_llm_request`] but always sets `tools: None` in the request.
 pub async fn generate_llm_request_without_tools(
-    agent: &mut Agent
-) -> Result<ChatRequest, AgentError> {
-    if agent.tools.is_none() {
-        agent.tools = agent.get_compiled_tools().await?;
-    }
+    agent: &Agent
+) -> ChatRequest {
     let mut params = agent.to_request_params();
     params.tools = None;
-    Ok(params.into_request())
+    params.into_request()
 }
 
 

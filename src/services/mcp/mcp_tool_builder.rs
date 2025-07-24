@@ -41,7 +41,7 @@ impl ClientHandler for AgentMcpHandler {
         params: rmcp::model::ProgressNotificationParam,
         _context: rmcp::service::NotificationContext<rmcp::RoleClient>,
     ) {
-        tracing::info!("Received progress notification: {:?}", params);
+        trace!("Received progress notification: {:?}", params);
         if self.agent_notification_tx.is_none() {
             return;
         }

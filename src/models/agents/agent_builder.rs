@@ -265,7 +265,7 @@ impl AgentBuilder {
             None => format!("Agent-{}", model),
         };
 
-        Ok(Agent::new(
+        Ok(Agent::try_new(
             name,
             &model,
             &ollama_url,
@@ -292,7 +292,7 @@ impl AgentBuilder {
             flow.into(),
             self.template,
             self.max_iterations
-        ))
+        ).await)?
     }
 }
 

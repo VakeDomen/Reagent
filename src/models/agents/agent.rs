@@ -10,7 +10,7 @@ use crate::models::agents::flow::flows::simple_loop::simple_loop_invoke;
 use crate::models::notification::NotificationContent;
 use crate::util::templating::Template;
 
-use crate::models::AgentError;
+use crate::models::{AgentBuildError, AgentError};
 use crate::{
     models::{agents::flow::invocation_flows::InternalFlow, notification::Notification}, 
     services::{
@@ -64,7 +64,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub(crate) fn new(
+    pub(crate) async fn try_new(
         name: String,
         model: &str,
         ollama_host: &str,
@@ -92,10 +92,10 @@ impl Agent {
         template: Option<Arc<Mutex<Template>>>,
         max_iterations: Option<usize>,
 
-    ) -> Self {
+    ) -> Result<Self, AgentBuildError> {
         let history = vec![Message::system(system_prompt.to_string())];
 
-        Self {
+        let mut agent = Self {
             name,
             model: model.into(),
             history,
@@ -124,24 +124,16 @@ impl Agent {
             tools: None,
             template,
             max_iterations,
-        }
+        };
+
+        agent.tools = agent.get_compiled_tools().await?;
+
+        Ok(agent)
     }
 
     pub fn clear_history(&mut self) {
         self.history = vec![Message::system(self.system_prompt.clone())];
     }
-
-    
-
-    // #[instrument(level = "debug", skip(self, data))]
-    // pub async fn invoke_flow_with_with_template<T>(&mut self, data: HashMap<String, Box<dyn ToString + Send + Sync>>) -> Result<Message, AgentError> {
-    //     let flow_to_run = self.flow.clone();
-
-    //     match flow_to_run {
-    //         InternalFlow::Simple => simple_loop_invoke(self, prompt.into()).await,
-    //         InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
-    //     }
-    // }
 
     pub fn save_history<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
         let json_string = serde_json::to_string_pretty(&self.history)?;
@@ -153,8 +145,8 @@ impl Agent {
         let (s, r) = mpsc::channel::<Notification>(100);
         self.notification_channel = Some(s);
         // have to reset mcp tools for notifications as the channel is 
-        // passed on creation of closure
-        self.tools = None;
+        // passed on creation of closures
+        self.tools = self.get_compiled_tools().await?;
         Ok(r)
     }
 
@@ -188,7 +180,7 @@ impl Agent {
         }
     }
 
-    pub async fn get_compiled_tools(&self) -> Result<Option<Vec<Tool>>, AgentError> {
+    pub async fn get_compiled_tools(&self) -> Result<Option<Vec<Tool>>, AgentBuildError> {
         let mut running_tools = self.local_tools.clone();
 
         match self.get_compiled_mcp_tools().await {
@@ -205,13 +197,13 @@ impl Agent {
         Ok(running_tools)
     }
 
-    pub async fn get_compiled_mcp_tools(&self) -> Result<Option<Vec<Tool>>, AgentError> {
+    pub async fn get_compiled_mcp_tools(&self) -> Result<Option<Vec<Tool>>, AgentBuildError> {
         let mut running_tools: Option<Vec<Tool>> = None;
         if let Some(mcp_servers) = &self.mcp_servers {
             for mcp_server in mcp_servers {
                 let mcp_tools = match get_mcp_tools(mcp_server.clone(), self.notification_channel.clone()).await {
                     Ok(t) => t,
-                    Err(e) => return Err(e.into()),
+                    Err(e) => return Err(AgentBuildError::McpError(e)),
                 };
     
                 match running_tools.as_mut() {

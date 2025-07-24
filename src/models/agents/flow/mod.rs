@@ -41,7 +41,6 @@ mod tests {
 
         let weather_ref = Arc::new(Mutex::new(weather_agent.clone()));
         let weather_exec: AsyncToolFn = {
-            println!("Weather tool called");
             let weather_ref = weather_ref.clone();
             Arc::new(move |args: Value| {
                 let weather_ref = weather_ref.clone();
@@ -81,7 +80,6 @@ mod tests {
         let notify_handle = tokio::spawn(async move {
         let mut seen = Vec::new();
             while let Some(note) = notifications_rx.recv().await {
-                println!("Received notification: {:?}", note);
                 seen.push(note.clone());
 
                 if let NotificationContent::Done(_) = note.content {
@@ -95,7 +93,6 @@ mod tests {
         'test'. Is the weather in Koper good enough I can go out to test my new bike? Remember to say 'test'.")
             .await
             .unwrap();
-        println!("MSG: {:#?}", say_test_message);
         assert!(say_test_message.content.unwrap().to_lowercase().contains("test"));
 
         let weather = weather_agent.invoke_flow("What is the current weather in Koper?")
@@ -120,11 +117,8 @@ mod tests {
         // check recieved notifications
 
         let notifications = notify_handle.await?;
-        println!("NOT: {:#?}", notifications);
         // 5. Now, run your assertions on the `notifications` vector.
         assert!(!notifications.is_empty(), "Expected at least one notification");
-        println!("All collected notifications:\n{:#?}", notifications);
-
         assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::PromptRequest(_))));
         assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::ToolCallRequest(_))));
         assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::ToolCallSuccessResult(_))));

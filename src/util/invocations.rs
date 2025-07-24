@@ -1,4 +1,4 @@
-use crate::{models::{agents::flow::invocation_flows::InvokeFuture, AgentError}, services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall}, Agent, Message, Notification, NotificationContent};
+use crate::{models::{agents::flow::invocation_flows::InvokeFuture, AgentError}, services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall}, Agent, Message, NotificationContent};
 use crate::util::request_generation::{generate_llm_request, generate_llm_request_without_tools};
 
 
@@ -12,7 +12,7 @@ pub fn invoke<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
-        let request = generate_llm_request(agent).await?;
+        let request = generate_llm_request(agent).await;
         let response = call_model(agent, request).await?;
         agent.history.push(response.message.clone());
         Ok(response)
@@ -31,7 +31,7 @@ pub fn invoke_with_tool_calls<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
-        let request = generate_llm_request(agent).await?;
+        let request = generate_llm_request(agent).await;
         let response = call_model(agent, request).await?;
 
         agent.history.push(response.message.clone());
@@ -54,7 +54,7 @@ pub fn invoke_without_tools<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
-        let request = generate_llm_request_without_tools(agent).await?;
+        let request = generate_llm_request_without_tools(agent).await;
         let response = call_model(agent, request).await?;
         agent.history.push(response.message.clone());
         Ok(response)

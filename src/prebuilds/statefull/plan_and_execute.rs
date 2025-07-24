@@ -1,7 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use serde_json::Value;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
 
 use crate::{
@@ -28,7 +28,7 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
         agent.forward_notifications(executor_notification_channel);
 
         let plan_content = planner.invoke_flow_with_template(HashMap::from([
-            ("tools", format!("{:#?}", agent.get_compiled_tools().await?)),
+            ("tools", format!("{:#?}", agent.tools)),
             ("prompt", prompt.clone())
         ])).await?;
         let mut plan = get_plan_from_response(&plan_content)?;
@@ -64,7 +64,7 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
 
             replanner.clear_history();
             let new_plan_content = replanner.invoke_flow_with_template(HashMap::from([
-                ("tools", format!("{:#?}", agent.get_compiled_tools().await?)),
+                ("tools", format!("{:#?}", agent.tools)),
                 ("prompt", prompt.clone()),
                 ("plan", format!("{:#?}", plan)),
                 ("past_steps", past_steps_str),
@@ -81,6 +81,11 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
 
             agent.history.push(Message::user(format!("{}", prompt)));
             let response = invoke(agent).await?;
+
+            if let Err(e) = agent.save_history("./converstion.json") {
+                println!("ERROR saving hisopry: {:#?}", e.to_string());
+            };
+
             agent.notify(crate::NotificationContent::Done(true)).await;
             Ok(response.message)
         } else {
@@ -221,6 +226,8 @@ A step like `"Use query_memory to find relevant information"` is useless and str
     if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
     if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
     if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
+    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
+    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
     builder = builder.strip_thinking(ref_agent.strip_thinking);
 
 
@@ -355,6 +362,8 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
     if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
     if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
     if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
+    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
+    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
     builder = builder.strip_thinking(ref_agent.strip_thinking);
 
 
@@ -404,6 +413,8 @@ pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Recei
     if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
     if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
     if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
+    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
+    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
     builder = builder.strip_thinking(true);
 
 
