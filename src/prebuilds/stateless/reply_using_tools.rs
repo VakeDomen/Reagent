@@ -3,8 +3,6 @@ use crate::{models::agents::flow::invocation_flows::{Flow, FlowFuture}, prebuild
 
 fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {
-        agent.clear_history();
-        agent.history.push(Message::system(agent.system_prompt.clone()));
         agent.history.push(Message::user(prompt));
         let response = invoke(agent).await?;
         if let Some(tc) = response.message.tool_calls.clone() {

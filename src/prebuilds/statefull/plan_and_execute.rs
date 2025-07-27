@@ -6,8 +6,8 @@ use tracing::instrument;
 
 use crate::{
     models::{agents::flow::invocation_flows::{Flow, FlowFuture}, AgentBuildError, AgentError}, 
-    prebuilds::stateless::StatelessPrebuild, 
-    util::{invocations::invoke, templating::Template}, 
+    prebuilds::{statefull::StatefullPrebuild, stateless::StatelessPrebuild}, 
+    util::{invocations::{invoke, invoke_without_tools}, templating::Template}, 
     Agent, AgentBuilder, Message, Notification
 };
 
@@ -17,7 +17,6 @@ use crate::{
 pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {
         let mut past_steps: Vec<(String, String)> = Vec::new();
-        let max_turns = 5;
         
         let (mut blueprint_agent, blueprint_notification_channel) = create_blueprint_agent(&agent).await?;
         let (mut planner_agent, planner_notification_channel) = create_planner_agent(&agent).await?;
@@ -51,17 +50,29 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
         
         println!("PLAN: {:#?}", plan);
 
-        for _ in 0..max_turns {
+        
+        for iteration in 0.. {
+             
+            if let Some(max_iterations) = agent.max_iterations {
+                if iteration > max_iterations {
+                    break;
+                }
+            }
+
             if plan.is_empty() {
                 break;
             }
 
-
+            // put the step instruction to the overarching agent history
             let current_step = plan.remove(0);
             agent.history.push(Message::user(current_step.clone()));
 
+            // execute the step and put response to the overarching agent history
             let response = executor_agent.invoke_flow(current_step.clone()).await?;
+            println!("EXECUTOR RESPONSE: {:#?}", response);
             agent.history.push(response.clone());
+
+
             let observation = response.content.clone().unwrap_or_default();
             past_steps.push((current_step, observation));
 
@@ -81,13 +92,15 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
                 ("past_steps", past_steps_str),
             ])).await?;
             plan = get_plan_from_response(&new_plan_content)?;
+
+            println!("NEW PLAN: {:#?}", plan);
         }
 
 
         if let Some(_) = past_steps.last() {
 
             agent.history.push(Message::user(format!("{}", prompt)));
-            let response = invoke(agent).await?;
+            let response = invoke_without_tools(agent).await?;
 
             agent.notify(crate::NotificationContent::Done(true)).await;
             Ok(response.message)
@@ -104,29 +117,59 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
 impl AgentBuilder {
     pub fn plan_and_execute() -> AgentBuilder {
 
-        let system_prompt = r#"You are a Chief Analyst and Reporter Agent. Your primary function is to transform a log of technical steps and results into a comprehensive, well-structured, and easy-to-read report for the end-user.
+        let system_prompt = r#"You are a **Chief Analyst and Reporter Agent**. Your job is to turn an execution log into a clear, well‑structured report for the end user.
 
-The conversation history you will receive is an execution log detailing:
-1.  The user's original high-level objective.
-2.  A sequence of specific tasks that were executed (`User` messages).
-3.  The raw results and observations from each task (`Assistant` messages).
+### What you will receive
+* A conversation history in which  
+  1. **`User` messages** describe tasks that were executed.  
+  2. **`Assistant` messages** contain the raw results, observations, and any source URLs.
 
-**Your Final Task: Create a Detailed Report**
-Your final response must be a comprehensive report that directly answers the user's original objective, which is repeated as the final message in the history. This is your signal to begin.
+### Your final task
+Write **one cohesive report** that directly answers the user’s original objective.  
+The final `User` message in the log restates that objective and tells you to begin.
 
-**Report Structure and Formatting Rules:**
-1.  **Begin with a Direct, Conversational Response:** Start your report by directly answering the user's core question in a natural, conversational tone. **Do not use a generic heading like "Direct Answer" for this opening.**
-2.  **Use Extensive Markdown:** After the initial response, structure the rest of the report using markdown. Use headings (`##`), subheadings (`###`), bold text for emphasis on key terms, and bulleted or numbered lists to break down information.
-3.  **Elaborate on the Findings:** Do not just state the final answer. Elaborate on the key information discovered during the execution process. Create separate sections for different aspects of the findings to build a comprehensive picture.
-4.  **Create a Narrative:** Weave the key findings from the log into a logical narrative. You can explain *what* was found at major stages to build your answer (e.g., "Initial research into the moon landing date confirmed it was July 20, 1969. Subsequent searches for the UK monarch at that time revealed...").
-5.  **Do Not Mention the Process Itself:** Crucially, **do not** talk about the "plan," "steps," or "tools" (e.g., do not say "The first step was to use the search tool"). Instead, focus on the *information* that was uncovered.
+---
 
-**CRITICAL CONSTRAINTS:**
--   Your entire response must be a single, cohesive report.
--   You **must not** attempt to call any tools or re-execute tasks.
--   Base your report **exclusively** on the facts present in the conversation log."#;
+## Report structure
 
-        AgentBuilder::default()
+1. **Direct summary**  
+   Open with a single concise paragraph (no heading) that answers the core question.
+
+2. **Markdown body**  
+   Use headings (`##`), sub‑headings (`###`), **bold** for emphasis, and bulleted or numbered lists to organise the rest of the content.
+
+3. **Narrative from data**  
+   Weave the key findings into a logical story. Do **not** simply list results.
+
+4. **Citations**  
+   * Extract source URLs from the execution log.  
+   * Attach an inline citation immediately after each sourced fact, using a numbered link: `[1](http://example.com)`.  
+   * End the report with a `## References` section listing the full URLs in numeric order.  
+
+   *Citation example*  
+
+   > The programme coordinator is Dr. Jane Doe [1](http://example.com/dr‑jane‑doe).  
+   > Admission requires a completed bachelor’s degree [2](http://example.com/admission‑requirements).  
+   >  
+   > ## References  
+   > [1] http://example.com/dr‑jane‑doe  
+   > [2] http://example.com/admission‑requirements  
+
+5. **Next steps**  
+   After the references, add `### Next Steps` with one or two helpful follow‑up questions or actions.
+
+---
+
+## Critical constraints
+
+* **Never mention your internal process or the tools used**; focus solely on providing the user with the 
+information that was uncovered and the user might want to know.  
+* **Base every statement strictly on the log content**.   
+* Deliver the entire report as a single, self‑contained message.
+
+"#;
+
+        StatefullPrebuild::reply_without_tools()
             .set_temperature(0.)
             .set_system_prompt(system_prompt)
             .set_flow(Flow::Custom(plan_and_execute_flow))
@@ -482,8 +525,18 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
 
 pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     let system_prompt = r#"You are given a task and a set of tools. Complete the task.
-    You may use the tools if they are heplful. Once you have a response for the task ready, wrap the
-    final response to the user in the <final>response</final>"#;
+    Your response must be exhaustive. Hoever respond only with verifiable information that you have recieved int the 
+    context. If possible cite sources of data and provide references. Answer in markdown in the folowind structure:
+    
+    # Answer
+
+    <include your answer>
+
+    # Additional information
+
+    <any additional information that might be usefull but has to be sourced from the context>
+
+    "#;
 
     let mut builder = AgentBuilder::default()
         .set_name("Statefull_prebuild-plan_and_execute-task_executor")
