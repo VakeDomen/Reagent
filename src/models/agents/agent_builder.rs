@@ -61,6 +61,7 @@ pub struct AgentBuilder {
     flow: Option<Flow>,
     template: Option<Arc<Mutex<Template>>>,
     max_iterations: Option<usize>,
+    clear_histroy_on_invoke: Option<bool>
 }
 
 impl AgentBuilder {
@@ -225,6 +226,13 @@ impl AgentBuilder {
         self
     }
 
+    /// if set to true, will clear the conversation histroy on each invocation
+    /// of the agent
+    pub fn set_clear_history_on_invocation(mut self, clear: bool) -> Self {
+        self.clear_histroy_on_invoke = Some(clear);
+        self
+    }
+
     /// Build an [`Agent`] and return also the notification receiver.
     ///
     /// Creates an internal mpsc channel of size 100.
@@ -243,6 +251,7 @@ impl AgentBuilder {
         let ollama_url = self.ollama_url.unwrap_or_else(|| "http://localhost:11434".into());
         let system_prompt = self.system_prompt.unwrap_or_else(|| "You are a helpful agent.".into());
         let strip_thinking = self.strip_thinking.unwrap_or(true);
+        let clear_histroy_on_invoke = self.clear_histroy_on_invoke.unwrap_or(false);
 
         let response_format = if let Some(schema) = self.response_format {
             let trimmed = schema.trim();
@@ -291,7 +300,8 @@ impl AgentBuilder {
             self.mcp_servers,
             flow.into(),
             self.template,
-            self.max_iterations
+            self.max_iterations,
+            clear_histroy_on_invoke,
         ).await)?
     }
 }

@@ -19,32 +19,48 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
         let mut past_steps: Vec<(String, String)> = Vec::new();
         let max_turns = 5;
         
-        let (mut planner, planner_notification_channel) = create_planner_agent(&agent).await?;
-        let (mut replanner, replanner_notification_channel) = create_replanner_agent(&agent).await?;
-        let (mut executor, executor_notification_channel) = create_single_task_agent(&agent).await?;
+        let (mut blueprint_agent, blueprint_notification_channel) = create_blueprint_agent(&agent).await?;
+        let (mut planner_agent, planner_notification_channel) = create_planner_agent(&agent).await?;
+        let (mut replanner_agent, replanner_notification_channel) = create_replanner_agent(&agent).await?;
+        let (mut executor_agent, executor_notification_channel) = create_single_task_agent(&agent).await?;
 
+        agent.forward_notifications(blueprint_notification_channel);
         agent.forward_notifications(planner_notification_channel);
         agent.forward_notifications(replanner_notification_channel);
         agent.forward_notifications(executor_notification_channel);
 
-        let plan_content = planner.invoke_flow_with_template(HashMap::from([
+        let blueprint = blueprint_agent.invoke_flow_with_template(HashMap::from([
             ("tools", format!("{:#?}", agent.tools)),
             ("prompt", prompt.clone())
         ])).await?;
+
+        println!("Attempted to call tools: {:#?}", blueprint.tool_calls);
+
+        let Some(blueprint) = blueprint.content else {
+            return Err(AgentError::RuntimeError("Blueprint was not created".into()));
+        };
+
+        println!("BLUEPRINT: {}", blueprint);
+
+        let plan_content = planner_agent.invoke_flow_with_template(HashMap::from([
+            ("tools", format!("{:#?}", agent.tools)),
+            ("prompt", blueprint)
+        ])).await?;
+
         let mut plan = get_plan_from_response(&plan_content)?;
         
-        
+        println!("PLAN: {:#?}", plan);
+
         for _ in 0..max_turns {
             if plan.is_empty() {
                 break;
             }
 
-            
 
             let current_step = plan.remove(0);
             agent.history.push(Message::user(current_step.clone()));
 
-            let response = executor.invoke_flow(current_step.clone()).await?;
+            let response = executor_agent.invoke_flow(current_step.clone()).await?;
             agent.history.push(response.clone());
             let observation = response.content.clone().unwrap_or_default();
             past_steps.push((current_step, observation));
@@ -57,8 +73,8 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
                .join("\n\n");
 
 
-            replanner.clear_history();
-            let new_plan_content = replanner.invoke_flow_with_template(HashMap::from([
+            replanner_agent.clear_history();
+            let new_plan_content = replanner_agent.invoke_flow_with_template(HashMap::from([
                 ("tools", format!("{:#?}", agent.tools)),
                 ("prompt", prompt.clone()),
                 ("plan", format!("{:#?}", plan)),
@@ -136,32 +152,33 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
 }
 
 pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
-    let system_prompt = r#"You are a meticulous Planner Agent. Your **sole purpose** is to generate a step-by-step plan in a strict JSON format. You will be given an objective and a set of available tools.
+    let system_prompt = r#"You are a meticulous Tactical Planner Agent. You will be given a high-level **strategy** and the original user **objective**. Your **sole purpose** is to convert that strategy into a detailed, step-by-step plan in a strict JSON format.
 
 **Your Task:**
-Create a JSON object with a single key, "steps", whose value is an array of strings representing the plan. Do not add any explanations, introductory text, or markdown formatting. Your entire response must be only the JSON object.
+Based on the provided strategy, create a JSON object with a single key, "steps", whose value is an array of strings representing the plan. Do not add any explanations or introductory text. Your entire response must be only the JSON object.
 
 **Core Principle: The Executor is Blind**
-The Executor agent who runs these steps has **no knowledge** of the original user's objective. Therefore, each step you create must be **100% self-contained and specific**. It must include all necessary context and details within the instruction itself.
+The Executor agent who runs these steps has **no knowledge** of the strategy or objective. Therefore, each step you create must be **100% self-contained and specific**, derived from the strategy and objective.
 
 **Rules for Plan Creation:**
-1.  **Analyze and Decompose:** Carefully analyze the user's objective to understand the user's true goal. Break the goal down into logical, executable sub-tasks.
+1.  **Translate Strategy to Tactics:** Convert each phase of the high-level strategy into one or more concrete, executable sub-tasks.
 2.  **Create Self-Contained Steps:** For each sub-task, formulate a precise, imperative instruction for the Executor. Embed all relevant keywords and context from the user's objective directly into the step's instruction.
 3.  **Specify Expected Output:** For each step, explicitly state what piece of information the Executor agent must find and return.
-4.  **Use Only Provided Tools:** You can **only** use the tools provided to you.
-5.  **Final Answer:** The very last step in the plan must **always** be: "Synthesize all the gathered information and provide the final, comprehensive answer to the user's objective."
+4.  **Final Answer:** The very last step in the plan must **always** be: "Synthesize all the gathered information and provide the final, comprehensive answer to the user's objective."
 
 **Crucial Constraint: No Generic Steps**
-A step like `"Use query_memory to find relevant information"` is useless and strictly forbidden. You **must** be specific.
+A step like `"Use query_memory to find relevant information"` is useless.
 - **Bad:** `Use rag_lookup to find information.`
 - **Good:** `Use rag_lookup to find information about FAMNIT's student exchange programs, partnerships, or support for students interested in visiting the Netherlands.`
 
 ---
 
-**Few-Shot Examples:**
+**Few-Shot Example:**
 
-**Example 1**
 **User Objective:** "Who was the monarch of the UK when the first person landed on the moon, and what was their full name?"
+
+**High-Level Strategy:** "The strategy will be to first establish the precise date of the initial moon landing. With that date confirmed, the next phase is to query historical records to identify who was the reigning monarch of the United Kingdom at that specific time. Finally, once the monarch is identified, a follow-up search will be needed to find their full, formal name to ensure accuracy."
+
 **Correct JSON Plan Output:**
 {
   "steps": [
@@ -171,20 +188,6 @@ A step like `"Use query_memory to find relevant information"` is useless and str
     "Synthesize the gathered information and provide the final answer to the user's objective."
   ]
 }
-
-**Example 2**
-**User Objective:** "I'm planning to visit Netherlands next year. Can FAMNIT help me with anything?"
-**Correct JSON Plan Output:**
-{
-  "steps": [
-    "Use the rag_lookup tool to search for information regarding FAMNIT's international exchange programs, partnerships with universities in the Netherlands, or any support services for students planning to visit the Netherlands, and return the findings.",
-    "Use the ask_programme_expert tool to inquire if any study programmes at FAMNIT have connections, courses, or collaborations related to the Netherlands, and return the response.",
-    "Use the query_memory tool to retrieve any past conversations or stored facts about student travel, study abroad, or FAMNIT's connections to the Netherlands, and return the results.",
-    "Synthesize all the gathered information and provide the final, comprehensive answer to the user's objective."
-  ]
-}
-
-
 "#;
 
     let template = Template::simple(r#"
@@ -197,7 +200,7 @@ A step like `"Use query_memory to find relevant information"` is useless and str
     {{prompt}}
     "#);
 
-    let mut builder = StatelessPrebuild::reply()
+    let mut builder = StatelessPrebuild::reply_without_tools()
         .set_name("Statefull_prebuild-plan_and_execute-planner")
         .set_model(ref_agent.model.clone())
         .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
@@ -239,7 +242,87 @@ A step like `"Use query_memory to find relevant information"` is useless and str
         "#)
         .set_system_prompt(system_prompt)
         .set_template(template)
+        .set_clear_history_on_invocation(true)
         .set_model(ref_agent.model.clone())
+        .build_with_notification()
+        .await
+}
+
+
+
+pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+    let system_prompt = r#"You are a Chief Strategist AI. Your role is to analyze a user's objective and devise a high-level, abstract strategy to achieve it. You do not create step-by-step plans or write code. Your output is a concise, natural language paragraph describing the strategic approach.
+
+**Your Thought Process:**
+1.  **Understand the Core Goal:** What is the fundamental question the user wants answered?
+2.  **Identify Key Information Areas:** What are the major pieces of information needed to reach the goal? (e.g., a date, a name, a location, a technical specification).
+3.  **Outline Logical Phases:** Describe the logical flow of the investigation in broad strokes. What needs to be found first to enable the next phase?
+4.  **Suggest General Capabilities:** Mention the *types* of actions needed (e.g., "search for historical data," "analyze technical documents," "cross-reference information") without specifying exact tool calls.
+
+**Output Rules:**
+-   Your entire response MUST be a single, natural language paragraph.
+-   **DO NOT** use JSON.
+-   **DO NOT** create a list of numbered or bulleted steps.
+-   **DO NOT** mention specific tool names like `search_tool` or `rag_lookup`.
+-   **DO NOT** call any tools yourself.
+
+---
+**Example 1**
+
+**User Objective:** "Who was the monarch of the UK when the first person landed on the moon, and what was their full name?"
+
+**Correct Strategy Output:**
+The strategy will be to first establish the precise date of the initial moon landing. With that date confirmed, the next phase is to query historical records to identify who was the reigning monarch of the United Kingdom at that specific time. Finally, once the monarch is identified, a follow-up search will be needed to find their full, formal name to ensure accuracy.
+
+---
+**Example 2**
+
+**User Objective:** "I'm planning to visit Netherlands next year. Can FAMNIT help me with anything?"
+
+**Correct Strategy Output:**
+The core strategy is to conduct a multi-pronged investigation into FAMNIT's resources. First, we need to explore official information about international student programs, focusing on any partnerships or exchange agreements with institutions in the Netherlands. Concurrently, we should check if specific academic programs have direct ties or collaborations. Finally, we can review internal knowledge bases for any documented precedents or support services related to student travel to that country.
+"#;
+
+    let template = Template::simple(r#"
+    # These tools will later be avalible to the executor agent: 
+
+    {{tools}}
+
+    Users task to create a JSON plan for: 
+
+    {{prompt}}
+    "#);
+
+    let mut builder = StatelessPrebuild::reply_without_tools()
+        .set_name("Statefull_prebuild-plan_and_execute-blueprint")
+        .set_model(ref_agent.model.clone())
+        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
+
+    if let Some(v) = ref_agent.temperature { builder = builder.set_temperature(v); }
+    if let Some(v) = ref_agent.top_p { builder = builder.set_top_p(v); }
+    if let Some(v) = ref_agent.presence_penalty { builder = builder.set_presence_penalty(v); }
+    if let Some(v) = ref_agent.frequency_penalty { builder = builder.set_frequency_penalty(v); }
+    if let Some(v) = ref_agent.num_ctx { builder = builder.set_num_ctx(v); }
+    if let Some(v) = ref_agent.repeat_last_n { builder = builder.set_repeat_last_n(v); }
+    if let Some(v) = ref_agent.repeat_penalty { builder = builder.set_repeat_penalty(v); }
+    if let Some(v) = ref_agent.seed { builder = builder.set_seed(v); }
+    if let Some(v) = &ref_agent.stop { builder = builder.set_stop(v.clone()); }
+    if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
+    if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
+    if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
+    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
+    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
+    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-blueprint", ref_agent.name)) }
+    builder = builder.strip_thinking(ref_agent.strip_thinking);
+
+
+
+
+    builder
+        .set_system_prompt(system_prompt)
+        .set_template(template)
+        .set_model(ref_agent.model.clone())
+        .set_clear_history_on_invocation(true)
         .build_with_notification()
         .await
 }
@@ -254,49 +337,62 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
 
 **Your Thought Process:**
 1.  **Re-evaluate the Objective:** First, carefully re-read the original user objective to ensure you are still on track.
-2.  **Analyze the Results:** Scrutinize the results from the `past_steps`. Did they succeed? Did they fail? Did they return unexpected information?
-3.  **Assess the Plan:** Based on the results, decide if the original plan is still viable.
-    * If the results are useful and the plan is sound, continue with the next logical step from the original plan.
-    * If a step failed or the results indicate a dead end, you **must** formulate a new, alternative step to overcome the obstacle. The goal is to pivot, not give up.
+2.  **Analyze the Results:** Scrutinize the results from the `past_steps`. Did they succeed? Did they fail? Did they return unexpected information? What new facts have been established?
+3.  **Refine and Enrich the Future Plan:** This is your most critical task. Look at the remaining steps in the original plan. If a result from a `past_step` provides concrete data (like a date, a name, a number), you **must** rewrite the future steps to directly include this new data. Replace generic placeholders like "the date from the previous step" with the actual, known information.
+4.  **Assess Viability:** Based on the results and the newly enriched plan, decide if the plan is still sound.
+    * If a step failed or the results indicate a dead end, you **must** formulate a new, alternative step to overcome the obstacle. Pivot the plan.
     * If the results have fully satisfied the user's objective, your new plan should be empty.
 
 **Rules for the New Plan:**
-1.  **Create Self-Contained Steps:** Every step in your new plan must be a precise, imperative instruction with all necessary context embedded.
+1.  **Create Self-Contained and Enriched Steps:** Every step in your new plan must be a precise, imperative instruction with all necessary context and newly acquired data embedded.
 2.  **Do Not Repeat Completed Steps:** Your new plan must only contain steps that have **not** yet been executed.
 3.  **Output Format:** Your response **must** be a JSON object with a single `steps` key. If the objective is complete, the value should be an empty array.
 
-**Crucial Constraint: No Generic Steps**
-- **Bad:** `Use the web search tool to find out more.`
-- **Good:** `Use the get_web_page_content tool to search the official FAMNIT website's staff directory for 'Dr. Janez Novak' to find their contact details.`
-
 ---
 
-**Few-Shot Example:**
+**Few-Shot Example 1: Pivoting on Failure**
 
 **Objective:** "Find the email address for the head of the Computer Science department at FAMNIT."
-
-**Original Plan:**
-{
-  "steps": [
-    "Use the ask_staff_expert tool to find the name of the head of the Computer Science department at FAMNIT and return their name.",
-    "Using the name from the previous step, use the ask_staff_expert tool to find the email address for that person and return the email.",
-    "Synthesize the gathered information and provide the final answer to the user's objective."
-  ]
-}
-
+**Original Plan:** { "steps": ["Use the ask_staff_expert tool to find the name...", "Using the name from the previous step, use the ask_staff_expert tool to find the email...", "Synthesize..."] }
 **Past Steps & Results:**
-[
-  {
-    "step": "Use the ask_staff_expert tool to find the name of the head of the Computer Science department at FAMNIT and return their name.",
-    "result": "Execution Error: The tool 'ask_staff_expert' does not have information categorized by department leadership. It can only look up specific staff members by their full name."
-  }
-]
+[ { "step": "Use the ask_staff_expert tool to find the name...", "result": "Execution Error: The tool 'ask_staff_expert' does not have information categorized by department leadership." } ]
 
 **Correct New JSON Plan Output:**
 {
   "steps": [
     "Use the get_web_page_content tool to search the official FAMNIT website for the 'Computer Science Department' page to identify and return the full name of the department head.",
     "Using the name of the department head found in the previous step, use the ask_staff_expert tool to find the email address for that person and return the email.",
+    "Synthesize the gathered information and provide the final answer to the user's objective."
+  ]
+}
+
+---
+
+**Few-Shot Example 2: Enriching with New Data**
+
+**Objective:** "Who was the monarch of the UK when the first person landed on the moon, and what was their full name?"
+**Original Plan:**
+{
+  "steps": [
+    "Use the search_tool to find the exact date of the first moon landing and return the full date.",
+    "Using the date from the previous step, use the search_tool to find who was the monarch of the United Kingdom at that specific time and return their common name.",
+    "Using the name of the monarch from the previous step, use the search_tool to find their full given name and return that name.",
+    "Synthesize the gathered information and provide the final answer to the user's objective."
+  ]
+}
+**Past Steps & Results:**
+[
+  {
+    "step": "Use the search_tool to find the exact date of the first moon landing and return the full date.",
+    "result": "The first moon landing occurred on July 20, 1969."
+  }
+]
+
+**Correct New JSON Plan Output:**
+{
+  "steps": [
+    "Using the now known date of July 20, 1969, use the search_tool to find who was the monarch of the United Kingdom at that specific time and return their common name.",
+    "Using the name of the monarch from the previous step, use the search_tool to find their full given name and return that name.",
     "Synthesize the gathered information and provide the final answer to the user's objective."
   ]
 }
@@ -336,7 +432,7 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
 
     "#);
 
-    let mut builder = StatelessPrebuild::reply()
+    let mut builder = StatelessPrebuild::reply_without_tools()
         .set_name("Statefull_prebuild-plan_and_execute-replanner")
         .set_model(ref_agent.model.clone())
         .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
@@ -377,6 +473,7 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
             "required": ["steps"]
         }
         "#)
+        .set_clear_history_on_invocation(true)
         .build_with_notification()
         .await
 }
@@ -416,6 +513,7 @@ pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Recei
         .set_model(ref_agent.model.clone())
         .set_stopword("</final>")
         .set_max_iterations(10)
+        .set_clear_history_on_invocation(true)
         .build_with_notification()
         .await
 }

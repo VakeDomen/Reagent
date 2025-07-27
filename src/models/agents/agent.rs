@@ -59,7 +59,8 @@ pub struct Agent {
     pub notification_channel: Option<Sender<Notification>>,
     pub template: Option<Arc<Mutex<Template>>>,
     flow: InternalFlow,
-    pub max_iterations: Option<usize>
+    pub max_iterations: Option<usize>,
+    pub clear_history_on_invoke: bool,
 
 }
 
@@ -91,6 +92,7 @@ impl Agent {
         flow: InternalFlow,
         template: Option<Arc<Mutex<Template>>>,
         max_iterations: Option<usize>,
+        clear_history_on_invoke: bool,
 
     ) -> Result<Self, AgentBuildError> {
         let history = vec![Message::system(system_prompt.to_string())];
@@ -124,6 +126,7 @@ impl Agent {
             tools: None,
             template,
             max_iterations,
+            clear_history_on_invoke
         };
 
         agent.tools = agent.get_compiled_tools().await?;
@@ -259,6 +262,10 @@ impl Agent {
     #[instrument(level = "debug", skip(self, prompt))]
     async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError>  {
         let flow_to_run = self.flow.clone();
+
+        if self.clear_history_on_invoke {
+            self.clear_history();
+        }
 
         match flow_to_run {
             InternalFlow::Default => simple_loop_invoke(self, prompt.into()).await,
