@@ -7,7 +7,7 @@ use tracing::instrument;
 use crate::{
     models::{agents::flow::invocation_flows::{Flow, FlowFuture}, AgentBuildError, AgentError}, 
     prebuilds::{statefull::StatefullPrebuild, stateless::StatelessPrebuild}, 
-    util::{invocations::{invoke, invoke_without_tools}, templating::Template}, 
+    util::{invocations::{invoke_without_tools}, templating::Template}, 
     Agent, AgentBuilder, Message, Notification
 };
 
@@ -33,13 +33,11 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
             ("prompt", prompt.clone())
         ])).await?;
 
-        println!("Attempted to call tools: {:#?}", blueprint.tool_calls);
 
         let Some(blueprint) = blueprint.content else {
             return Err(AgentError::RuntimeError("Blueprint was not created".into()));
         };
 
-        println!("BLUEPRINT: {}", blueprint);
 
         let plan_content = planner_agent.invoke_flow_with_template(HashMap::from([
             ("tools", format!("{:#?}", agent.tools)),
@@ -48,7 +46,6 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
 
         let mut plan = get_plan_from_response(&plan_content)?;
         
-        println!("PLAN: {:#?}", plan);
 
         
         for iteration in 0.. {
@@ -69,7 +66,6 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
 
             // execute the step and put response to the overarching agent history
             let response = executor_agent.invoke_flow(current_step.clone()).await?;
-            println!("EXECUTOR RESPONSE: {:#?}", response);
             agent.history.push(response.clone());
 
 
@@ -92,8 +88,6 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
                 ("past_steps", past_steps_str),
             ])).await?;
             plan = get_plan_from_response(&new_plan_content)?;
-
-            println!("NEW PLAN: {:#?}", plan);
         }
 
 
