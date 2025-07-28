@@ -426,13 +426,13 @@ mod tests {
             .unwrap()
             .send(Notification{
                 agent: "test".to_string()    ,
-                content: NotificationContent::Done(false),
+                content: NotificationContent::Done(false, None),
                 mcp_envelope: None,
             })
             .await
             .unwrap();
         let notified = rx.recv().await.unwrap();
-        assert!(matches!(notified.content, NotificationContent::Done(false)));
+        assert!(matches!(notified.content, NotificationContent::Done(false, None)));
     }
 
     #[tokio::test]

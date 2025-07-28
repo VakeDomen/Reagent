@@ -3,6 +3,12 @@ use serde::{Deserialize, Serialize};
 use crate::services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall};
 
 pub type Success = bool;
+pub type Response = Option<String>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Token {
+    pub tag: Option<String>,
+    pub value: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {
@@ -14,13 +20,14 @@ pub struct Notification {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NotificationContent {
-    Done(Success),
+    Done(Success, Response),
     PromptRequest(ChatRequest),
     PromptSuccessResult(ChatResponse),
     PromptErrorResult(String),
     ToolCallRequest(ToolCall),
     ToolCallSuccessResult(String),
     ToolCallErrorResult(String),
+    Token(Token),
     McpToolNotification(String),
 }
 

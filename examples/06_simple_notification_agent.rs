@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 NotificationContent::ToolCallRequest(notification)=>println!("Recieved tool call reuqest notification: {:#?}",notification),
                 NotificationContent::ToolCallSuccessResult(notification)=>println!("Recieved tool call Success notification: {:#?}",notification),
                 NotificationContent::ToolCallErrorResult(notification)=>println!("Recieved tool call Error notification: {:#?}",notification),
-                NotificationContent::Done(success) => println!("Done with generation: {}", success),
+                NotificationContent::Done(success, _) => println!("Done with generation: {}", success),
                 _ => ()
             }
   

@@ -96,10 +96,10 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
             agent.history.push(Message::user(format!("{}", prompt)));
             let response = invoke_without_tools(agent).await?;
 
-            agent.notify(crate::NotificationContent::Done(true)).await;
+            agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
             Ok(response.message)
         } else {
-            agent.notify(crate::NotificationContent::Done(false)).await;
+            agent.notify(crate::NotificationContent::Done(false, Some("Plan-and-Execute failed to produce a result.".into()))).await;
             Err(AgentError::RuntimeError(
                 "Plan-and-Execute failed to produce a result.".into(),
             ))

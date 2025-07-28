@@ -46,7 +46,7 @@ pub fn simple_loop_invoke<'a>(
         agent.history.push(Message::user(format!("Based on conversation answer the prompt to the best of your ability: {}", prompt)));
         let response = invoke_without_tools(agent).await?;
         agent.history.push(response.message.clone());
-        agent.notify(NotificationContent::Done(true)).await;
+        agent.notify(NotificationContent::Done(true, response.message.content.clone())).await;
         return Ok(response.message);
     })
 }

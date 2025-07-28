@@ -12,7 +12,7 @@ fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
             response = invoke(agent).await?;
         } 
 
-        agent.notify(crate::NotificationContent::Done(true)).await;
+        agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
         Ok(response.message)
     })    
 }

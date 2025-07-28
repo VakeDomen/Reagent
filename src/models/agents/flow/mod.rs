@@ -82,7 +82,7 @@ mod tests {
             while let Some(note) = notifications_rx.recv().await {
                 seen.push(note.clone());
 
-                if let NotificationContent::Done(_) = note.content {
+                if let NotificationContent::Done(_, _) = note.content {
                     break;
                 }
             }
@@ -123,7 +123,7 @@ mod tests {
         assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::ToolCallRequest(_))));
         assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::ToolCallSuccessResult(_))));
         assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::PromptSuccessResult(_))));
-        assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::Done(_))));
+        assert!(notifications.iter().any(|n| matches!(n.content, NotificationContent::Done(_, _))));
 
         Ok(())
     }
