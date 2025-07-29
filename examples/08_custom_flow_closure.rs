@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .set_flow(Flow::new_closure(move |_: &mut Agent, _: String| -> FlowFuture<'_> {
             let api_key_clone = api_key.clone(); 
             Box::pin(async move {
-                Ok(Message::assistant(format!("The key is: {}", api_key_clone)))
+                Ok(Message::assistant(format!("The key is: {api_key_clone}")))
             })
         }))
         .build()

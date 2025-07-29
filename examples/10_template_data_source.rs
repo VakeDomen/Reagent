@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     ]);
 
     let resp = agent.invoke_flow_with_template(prompt_data).await?;
-    println!("\t-> Agent: {:#?}", resp);
+    println!("\t-> Agent: {resp:#?}");
 
     Ok(())
 }

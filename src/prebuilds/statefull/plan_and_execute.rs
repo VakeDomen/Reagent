@@ -18,10 +18,10 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
     Box::pin(async move {
         let mut past_steps: Vec<(String, String)> = Vec::new();
         
-        let (mut blueprint_agent, blueprint_notification_channel) = create_blueprint_agent(&agent).await?;
-        let (mut planner_agent, planner_notification_channel) = create_planner_agent(&agent).await?;
-        let (mut replanner_agent, replanner_notification_channel) = create_replanner_agent(&agent).await?;
-        let (mut executor_agent, executor_notification_channel) = create_single_task_agent(&agent).await?;
+        let (mut blueprint_agent, blueprint_notification_channel) = create_blueprint_agent(agent).await?;
+        let (mut planner_agent, planner_notification_channel) = create_planner_agent(agent).await?;
+        let (mut replanner_agent, replanner_notification_channel) = create_replanner_agent(agent).await?;
+        let (mut executor_agent, executor_notification_channel) = create_single_task_agent(agent).await?;
 
         agent.forward_notifications(blueprint_notification_channel);
         agent.forward_notifications(planner_notification_channel);
@@ -75,7 +75,7 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
             
             let past_steps_str = past_steps
                .iter()
-               .map(|(step, result)| format!("Step: {}\nResult: {}", step, result))
+               .map(|(step, result)| format!("Step: {step}\nResult: {result}"))
                .collect::<Vec<_>>()
                .join("\n\n");
 
@@ -84,16 +84,16 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
             let new_plan_content = replanner_agent.invoke_flow_with_template(HashMap::from([
                 ("tools", format!("{:#?}", agent.tools)),
                 ("prompt", prompt.clone()),
-                ("plan", format!("{:#?}", plan)),
+                ("plan", format!("{plan:#?}")),
                 ("past_steps", past_steps_str),
             ])).await?;
             plan = get_plan_from_response(&new_plan_content)?;
         }
 
 
-        if let Some(_) = past_steps.last() {
+        if past_steps.last().is_some() {
 
-            agent.history.push(Message::user(format!("{}", prompt)));
+            agent.history.push(Message::user(prompt.to_string()));
             let response = invoke_without_tools(agent).await?;
 
             agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
@@ -174,7 +174,7 @@ information that was uncovered and the user might want to know.
 fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentError> {
     let original_plan_string = plan_response.content.clone().unwrap_or_default();
     let plan: Value = serde_json::from_str(&original_plan_string).map_err(|e| {
-        AgentError::RuntimeError(format!("Planner failed to return valid JSON: {}", e))
+        AgentError::RuntimeError(format!("Planner failed to return valid JSON: {e}"))
     })?;
 
     let plan = plan.get("steps").ok_or_else(|| {
@@ -182,7 +182,7 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
     })?;
 
     let plan: Vec<String> = serde_json::from_value(plan.clone()).map_err(|e| {
-        AgentError::RuntimeError(format!("The 'steps' key is not a valid array of strings: {}", e))
+        AgentError::RuntimeError(format!("The 'steps' key is not a valid array of strings: {e}"))
     })?;
 
     Ok(plan)

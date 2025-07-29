@@ -1,5 +1,5 @@
 
-use crate::{models::AgentError, services::ollama::models::{base::{BaseRequest, OllamaOptions}, chat::ChatRequest, tool::Tool}, Agent, Message};
+use crate::{services::ollama::models::{base::{BaseRequest, OllamaOptions}, chat::ChatRequest, tool::Tool}, Agent, Message};
 
 
 

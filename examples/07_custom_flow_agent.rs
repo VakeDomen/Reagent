@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     let resp = agent.invoke_flow("What is the meaning of lige?").await?;
-    println!("{:#?}", resp);
+    println!("{resp:#?}");
 
     Ok(())
 }

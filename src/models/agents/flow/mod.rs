@@ -10,7 +10,7 @@ mod tests {
     use serde_json::Value;
 
     use crate::{
-        models::notification::NotificationContent, AgentBuilder, AsyncToolFn, Notification, ToolBuilder, ToolExecutionError
+        models::notification::NotificationContent, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError
     };
 
     #[tokio::test]
@@ -49,7 +49,7 @@ mod tests {
                     let loc = args.get("location")
                         .and_then(Value::as_str)
                         .ok_or_else(|| ToolExecutionError::ArgumentParsingError("Missing 'location'".into()))?;
-                    let prompt = format!("/no_think What is the weather in {}?", loc);
+                    let prompt = format!("/no_think What is the weather in {loc}?");
                     let resp = agent.invoke_flow(prompt)
                         .await
                         .map_err(|e| ToolExecutionError::ExecutionFailed(e.to_string()))?;

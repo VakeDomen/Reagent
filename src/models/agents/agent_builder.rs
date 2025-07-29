@@ -271,7 +271,7 @@ impl AgentBuilder {
 
         let name = match self.name {
             Some(n) => n,
-            None => format!("Agent-{}", model),
+            None => format!("Agent-{model}"),
         };
 
         Ok(Agent::try_new(
@@ -440,7 +440,7 @@ mod tests {
         
         fn echo_flow<'a>(_agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
             Box::pin(async move {
-                    Ok(Message::system(format!("ECHO: {}", prompt)))
+                    Ok(Message::system(format!("ECHO: {prompt}")))
             })    
         }
 

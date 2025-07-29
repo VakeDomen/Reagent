@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| ToolExecutionError::ArgumentParsingError("Missing 'location' argument".into()))?;
 
-                let prompt = format!("/no_think What is the weather in {}?", loc);
+                let prompt = format!("/no_think What is the weather in {loc}?");
 
                 let resp = agent.invoke_flow(prompt)
                     .await

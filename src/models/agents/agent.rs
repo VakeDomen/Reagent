@@ -256,7 +256,7 @@ impl Agent {
         };
         
 
-        self.execute_invocation(prompt.into()).await
+        self.execute_invocation(prompt).await
     }
 
     #[instrument(level = "debug", skip(self, prompt))]
@@ -268,8 +268,8 @@ impl Agent {
         }
 
         match flow_to_run {
-            InternalFlow::Default => simple_loop_invoke(self, prompt.into()).await,
-            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt.into()).await,
+            InternalFlow::Default => simple_loop_invoke(self, prompt).await,
+            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
         }
     }
 }
