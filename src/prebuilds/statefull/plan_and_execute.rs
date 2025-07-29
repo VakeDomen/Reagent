@@ -5,10 +5,7 @@ use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
 
 use crate::{
-    models::{agents::flow::invocation_flows::{Flow, FlowFuture}, AgentBuildError, AgentError}, 
-    prebuilds::{statefull::StatefullPrebuild, stateless::StatelessPrebuild}, 
-    util::{invocations::{invoke_without_tools}, templating::Template}, 
-    Agent, AgentBuilder, Message, Notification
+    models::{agents::flow::invocation_flows::{Flow, FlowFuture}, configs::PromptConfig, AgentBuildError, AgentError}, prebuilds::{statefull::StatefullPrebuild, stateless::StatelessPrebuild}, services::ollama, util::{invocations::invoke_without_tools, templating::Template}, Agent, AgentBuilder, Message, Notification
 };
 
 
@@ -113,55 +110,55 @@ impl AgentBuilder {
 
         let system_prompt = r#"You are a **Chief Analyst and Reporter Agent**. Your job is to turn an execution log into a clear, well‑structured report for the end user.
 
-### What you will receive
-* A conversation history in which  
-  1. **`User` messages** describe tasks that were executed.  
-  2. **`Assistant` messages** contain the raw results, observations, and any source URLs.
+        ### What you will receive
+        * A conversation history in which  
+        1. **`User` messages** describe tasks that were executed.  
+        2. **`Assistant` messages** contain the raw results, observations, and any source URLs.
 
-### Your final task
-Write **one cohesive report** that directly answers the user’s original objective.  
-The final `User` message in the log restates that objective and tells you to begin.
+        ### Your final task
+        Write **one cohesive report** that directly answers the user’s original objective.  
+        The final `User` message in the log restates that objective and tells you to begin.
 
----
+        ---
 
-## Report structure
+        ## Report structure
 
-1. **Direct summary**  
-   Open with a single concise paragraph (no heading) that answers the core question.
+        1. **Direct summary**  
+        Open with a single concise paragraph (no heading) that answers the core question.
 
-2. **Markdown body**  
-   Use headings (`##`), sub‑headings (`###`), **bold** for emphasis, and bulleted or numbered lists to organise the rest of the content.
+        2. **Markdown body**  
+        Use headings (`##`), sub‑headings (`###`), **bold** for emphasis, and bulleted or numbered lists to organise the rest of the content.
 
-3. **Narrative from data**  
-   Weave the key findings into a logical story. Do **not** simply list results.
+        3. **Narrative from data**  
+        Weave the key findings into a logical story. Do **not** simply list results.
 
-4. **Citations**  
-   * Extract source URLs from the execution log.  
-   * Attach an inline citation immediately after each sourced fact, using a numbered link: `[1](http://example.com)`.  
-   * End the report with a `## References` section listing the full URLs in numeric order.  
+        4. **Citations**  
+        * Extract source URLs from the execution log.  
+        * Attach an inline citation immediately after each sourced fact, using a numbered link: `[1](http://example.com)`.  
+        * End the report with a `## References` section listing the full URLs in numeric order.  
 
-   *Citation example*  
+        *Citation example*  
 
-   > The programme coordinator is Dr. Jane Doe [1](http://example.com/dr‑jane‑doe).  
-   > Admission requires a completed bachelor’s degree [2](http://example.com/admission‑requirements).  
-   >  
-   > ## References  
-   > [1] http://example.com/dr‑jane‑doe  
-   > [2] http://example.com/admission‑requirements  
+        > The programme coordinator is Dr. Jane Doe [1](http://example.com/dr‑jane‑doe).  
+        > Admission requires a completed bachelor’s degree [2](http://example.com/admission‑requirements).  
+        >  
+        > ## References  
+        > [1] http://example.com/dr‑jane‑doe  
+        > [2] http://example.com/admission‑requirements  
 
-5. **Next steps**  
-   After the references, add `### Next Steps` with one or two helpful follow‑up questions or actions.
+        5. **Next steps**  
+        After the references, add `### Next Steps` with one or two helpful follow‑up questions or actions.
 
----
+        ---
 
-## Critical constraints
+        ## Critical constraints
 
-* **Never mention your internal process or the tools used**; focus solely on providing the user with the 
-information that was uncovered and the user might want to know.  
-* **Base every statement strictly on the log content**.   
-* Deliver the entire report as a single, self‑contained message.
+        * **Never mention your internal process or the tools used**; focus solely on providing the user with the 
+        information that was uncovered and the user might want to know.  
+        * **Base every statement strictly on the log content**.   
+        * Deliver the entire report as a single, self‑contained message.
 
-"#;
+        "#;
 
         StatefullPrebuild::reply_without_tools()
             .set_temperature(0.)
@@ -189,43 +186,51 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
 }
 
 pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+    let ollama_config = ref_agent.export_ollama_config();
+    let model_config = ref_agent.export_model_config();
+    let prompt_config = if let Ok(c) = ref_agent.export_prompt_config().await {
+        c
+    } else {
+        PromptConfig::default()
+    };
+    
     let system_prompt = r#"You are a meticulous Tactical Planner Agent. You will be given a high-level **strategy** and the original user **objective**. Your **sole purpose** is to convert that strategy into a detailed, step-by-step plan in a strict JSON format.
 
-**Your Task:**
-Based on the provided strategy, create a JSON object with a single key, "steps", whose value is an array of strings representing the plan. Do not add any explanations or introductory text. Your entire response must be only the JSON object.
+    **Your Task:**
+    Based on the provided strategy, create a JSON object with a single key, "steps", whose value is an array of strings representing the plan. Do not add any explanations or introductory text. Your entire response must be only the JSON object.
 
-**Core Principle: The Executor is Blind**
-The Executor agent who runs these steps has **no knowledge** of the strategy or objective. Therefore, each step you create must be **100% self-contained and specific**, derived from the strategy and objective.
+    **Core Principle: The Executor is Blind**
+    The Executor agent who runs these steps has **no knowledge** of the strategy or objective. Therefore, each step you create must be **100% self-contained and specific**, derived from the strategy and objective.
 
-**Rules for Plan Creation:**
-1.  **Translate Strategy to Tactics:** Convert each phase of the high-level strategy into one or more concrete, executable sub-tasks.
-2.  **Create Self-Contained Steps:** For each sub-task, formulate a precise, imperative instruction for the Executor. Embed all relevant keywords and context from the user's objective directly into the step's instruction.
-3.  **Specify Expected Output:** For each step, explicitly state what piece of information the Executor agent must find and return.
-4.  **Final Answer:** The very last step in the plan must **always** be: "Synthesize all the gathered information and provide the final, comprehensive answer to the user's objective."
+    **Rules for Plan Creation:**
+    1.  **Translate Strategy to Tactics:** Convert each phase of the high-level strategy into one or more concrete, executable sub-tasks.
+    2.  **Create Self-Contained Steps:** For each sub-task, formulate a precise, imperative instruction for the Executor. Embed all relevant keywords and context from the user's objective directly into the step's instruction.
+    3.  **Specify Expected Output:** For each step, explicitly state what piece of information the Executor agent must find and return.
+    4.  **Final Answer:** The very last step in the plan must **always** be: "Synthesize all the gathered information and provide the final, comprehensive answer to the user's objective."
 
-**Crucial Constraint: No Generic Steps**
-A step like `"Use query_memory to find relevant information"` is useless.
-- **Bad:** `Use rag_lookup to find information.`
-- **Good:** `Use rag_lookup to find information about FAMNIT's student exchange programs, partnerships, or support for students interested in visiting the Netherlands.`
+    **Crucial Constraint: No Generic Steps**
+    A step like `"Use query_memory to find relevant information"` is useless.
+    - **Bad:** `Use rag_lookup to find information.`
+    - **Good:** `Use rag_lookup to find information about FAMNIT's student exchange programs, partnerships, or support for students interested in visiting the Netherlands.`
 
----
+    ---
 
-**Few-Shot Example:**
+    **Few-Shot Example:**
 
-**User Objective:** "Who was the monarch of the UK when the first person landed on the moon, and what was their full name?"
+    **User Objective:** "Who was the monarch of the UK when the first person landed on the moon, and what was their full name?"
 
-**High-Level Strategy:** "The strategy will be to first establish the precise date of the initial moon landing. With that date confirmed, the next phase is to query historical records to identify who was the reigning monarch of the United Kingdom at that specific time. Finally, once the monarch is identified, a follow-up search will be needed to find their full, formal name to ensure accuracy."
+    **High-Level Strategy:** "The strategy will be to first establish the precise date of the initial moon landing. With that date confirmed, the next phase is to query historical records to identify who was the reigning monarch of the United Kingdom at that specific time. Finally, once the monarch is identified, a follow-up search will be needed to find their full, formal name to ensure accuracy."
 
-**Correct JSON Plan Output:**
-{
-  "steps": [
-    "Use the search_tool to find the exact date of the first moon landing and return the full date.",
-    "Using the date from the previous step, use the search_tool to find who was the monarch of the United Kingdom at that specific time and return their common name.",
-    "Using the name of the monarch from the previous step, use the search_tool to find their full given name and return that name.",
-    "Synthesize the gathered information and provide the final answer to the user's objective."
-  ]
-}
-"#;
+    **Correct JSON Plan Output:**
+    {
+    "steps": [
+        "Use the search_tool to find the exact date of the first moon landing and return the full date.",
+        "Using the date from the previous step, use the search_tool to find who was the monarch of the United Kingdom at that specific time and return their common name.",
+        "Using the name of the monarch from the previous step, use the search_tool to find their full given name and return that name.",
+        "Synthesize the gathered information and provide the final answer to the user's objective."
+    ]
+    }
+    "#;
 
     let template = Template::simple(r#"
     # These tools will be avalible to the executor agent: 
@@ -237,32 +242,13 @@ A step like `"Use query_memory to find relevant information"` is useless.
     {{prompt}}
     "#);
 
-    let mut builder = StatelessPrebuild::reply_without_tools()
+    StatelessPrebuild::reply_without_tools()
+        .import_ollama_config(ollama_config)
+        .import_model_config(model_config)
+        .import_prompt_config(prompt_config)
         .set_name("Statefull_prebuild-plan_and_execute-planner")
         .set_model(ref_agent.model.clone())
-        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
-
-    if let Some(v) = ref_agent.temperature { builder = builder.set_temperature(v); }
-    if let Some(v) = ref_agent.top_p { builder = builder.set_top_p(v); }
-    if let Some(v) = ref_agent.presence_penalty { builder = builder.set_presence_penalty(v); }
-    if let Some(v) = ref_agent.frequency_penalty { builder = builder.set_frequency_penalty(v); }
-    if let Some(v) = ref_agent.num_ctx { builder = builder.set_num_ctx(v); }
-    if let Some(v) = ref_agent.repeat_last_n { builder = builder.set_repeat_last_n(v); }
-    if let Some(v) = ref_agent.repeat_penalty { builder = builder.set_repeat_penalty(v); }
-    if let Some(v) = ref_agent.seed { builder = builder.set_seed(v); }
-    if let Some(v) = &ref_agent.stop { builder = builder.set_stop(v.clone()); }
-    if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
-    if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
-    if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
-    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
-    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
-    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-planner", ref_agent.name)) }
-    builder = builder.strip_thinking(ref_agent.strip_thinking);
-
-
-
-
-    builder
+        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone())
         .set_response_format(r#"
         {
             "type": "object",
@@ -288,37 +274,45 @@ A step like `"Use query_memory to find relevant information"` is useless.
 
 
 pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+    let ollama_config = ref_agent.export_ollama_config();
+    let model_config = ref_agent.export_model_config();
+    let prompt_config = if let Ok(c) = ref_agent.export_prompt_config().await {
+        c
+    } else {
+        PromptConfig::default()
+    };
+    
     let system_prompt = r#"You are a Chief Strategist AI. Your role is to analyze a user's objective and devise a high-level, abstract strategy to achieve it. You do not create step-by-step plans or write code. Your output is a concise, natural language paragraph describing the strategic approach.
 
-**Your Thought Process:**
-1.  **Understand the Core Goal:** What is the fundamental question the user wants answered?
-2.  **Identify Key Information Areas:** What are the major pieces of information needed to reach the goal? (e.g., a date, a name, a location, a technical specification).
-3.  **Outline Logical Phases:** Describe the logical flow of the investigation in broad strokes. What needs to be found first to enable the next phase?
-4.  **Suggest General Capabilities:** Mention the *types* of actions needed (e.g., "search for historical data," "analyze technical documents," "cross-reference information") without specifying exact tool calls.
+    **Your Thought Process:**
+    1.  **Understand the Core Goal:** What is the fundamental question the user wants answered?
+    2.  **Identify Key Information Areas:** What are the major pieces of information needed to reach the goal? (e.g., a date, a name, a location, a technical specification).
+    3.  **Outline Logical Phases:** Describe the logical flow of the investigation in broad strokes. What needs to be found first to enable the next phase?
+    4.  **Suggest General Capabilities:** Mention the *types* of actions needed (e.g., "search for historical data," "analyze technical documents," "cross-reference information") without specifying exact tool calls.
 
-**Output Rules:**
--   Your entire response MUST be a single, natural language paragraph.
--   **DO NOT** use JSON.
--   **DO NOT** create a list of numbered or bulleted steps.
--   **DO NOT** mention specific tool names like `search_tool` or `rag_lookup`.
--   **DO NOT** call any tools yourself.
+    **Output Rules:**
+    -   Your entire response MUST be a single, natural language paragraph.
+    -   **DO NOT** use JSON.
+    -   **DO NOT** create a list of numbered or bulleted steps.
+    -   **DO NOT** mention specific tool names like `search_tool` or `rag_lookup`.
+    -   **DO NOT** call any tools yourself.
 
----
-**Example 1**
+    ---
+    **Example 1**
 
-**User Objective:** "Who was the monarch of the UK when the first person landed on the moon, and what was their full name?"
+    **User Objective:** "Who was the monarch of the UK when the first person landed on the moon, and what was their full name?"
 
-**Correct Strategy Output:**
-The strategy will be to first establish the precise date of the initial moon landing. With that date confirmed, the next phase is to query historical records to identify who was the reigning monarch of the United Kingdom at that specific time. Finally, once the monarch is identified, a follow-up search will be needed to find their full, formal name to ensure accuracy.
+    **Correct Strategy Output:**
+    The strategy will be to first establish the precise date of the initial moon landing. With that date confirmed, the next phase is to query historical records to identify who was the reigning monarch of the United Kingdom at that specific time. Finally, once the monarch is identified, a follow-up search will be needed to find their full, formal name to ensure accuracy.
 
----
-**Example 2**
+    ---
+    **Example 2**
 
-**User Objective:** "I'm planning to visit Netherlands next year. Can FAMNIT help me with anything?"
+    **User Objective:** "I'm planning to visit Netherlands next year. Can FAMNIT help me with anything?"
 
-**Correct Strategy Output:**
-The core strategy is to conduct a multi-pronged investigation into FAMNIT's resources. First, we need to explore official information about international student programs, focusing on any partnerships or exchange agreements with institutions in the Netherlands. Concurrently, we should check if specific academic programs have direct ties or collaborations. Finally, we can review internal knowledge bases for any documented precedents or support services related to student travel to that country.
-"#;
+    **Correct Strategy Output:**
+    The core strategy is to conduct a multi-pronged investigation into FAMNIT's resources. First, we need to explore official information about international student programs, focusing on any partnerships or exchange agreements with institutions in the Netherlands. Concurrently, we should check if specific academic programs have direct ties or collaborations. Finally, we can review internal knowledge bases for any documented precedents or support services related to student travel to that country.
+    "#;
 
     let template = Template::simple(r#"
     # These tools will later be avalible to the executor agent: 
@@ -330,32 +324,13 @@ The core strategy is to conduct a multi-pronged investigation into FAMNIT's reso
     {{prompt}}
     "#);
 
-    let mut builder = StatelessPrebuild::reply_without_tools()
+    StatelessPrebuild::reply_without_tools()
+        .import_ollama_config(ollama_config)
+        .import_model_config(model_config)
+        .import_prompt_config(prompt_config)
         .set_name("Statefull_prebuild-plan_and_execute-blueprint")
         .set_model(ref_agent.model.clone())
-        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
-
-    if let Some(v) = ref_agent.temperature { builder = builder.set_temperature(v); }
-    if let Some(v) = ref_agent.top_p { builder = builder.set_top_p(v); }
-    if let Some(v) = ref_agent.presence_penalty { builder = builder.set_presence_penalty(v); }
-    if let Some(v) = ref_agent.frequency_penalty { builder = builder.set_frequency_penalty(v); }
-    if let Some(v) = ref_agent.num_ctx { builder = builder.set_num_ctx(v); }
-    if let Some(v) = ref_agent.repeat_last_n { builder = builder.set_repeat_last_n(v); }
-    if let Some(v) = ref_agent.repeat_penalty { builder = builder.set_repeat_penalty(v); }
-    if let Some(v) = ref_agent.seed { builder = builder.set_seed(v); }
-    if let Some(v) = &ref_agent.stop { builder = builder.set_stop(v.clone()); }
-    if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
-    if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
-    if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
-    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
-    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
-    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-blueprint", ref_agent.name)) }
-    builder = builder.strip_thinking(ref_agent.strip_thinking);
-
-
-
-
-    builder
+        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone())
         .set_system_prompt(system_prompt)
         .set_template(template)
         .set_model(ref_agent.model.clone())
@@ -367,6 +342,14 @@ The core strategy is to conduct a multi-pronged investigation into FAMNIT's reso
 
 
 pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+    let ollama_config = ref_agent.export_ollama_config();
+    let model_config = ref_agent.export_model_config();
+    let prompt_config = if let Ok(c) = ref_agent.export_prompt_config().await {
+        c
+    } else {
+        PromptConfig::default()
+    };
+    
     let system_prompt = r#"You are an expert Re-Planner Agent. Your task is to analyze the progress made on a plan and create a new, revised plan to achieve the original objective. You will be given the original objective, the original plan, and a history of the steps that have already been executed along with their results.
 
 **Core Principle: The Executor is Still Blind**
@@ -469,30 +452,13 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
 
     "#);
 
-    let mut builder = StatelessPrebuild::reply_without_tools()
+    StatelessPrebuild::reply_without_tools()
+        .import_ollama_config(ollama_config)
+        .import_model_config(model_config)
+        .import_prompt_config(prompt_config)
         .set_name("Statefull_prebuild-plan_and_execute-replanner")
         .set_model(ref_agent.model.clone())
-        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
-
-    if let Some(v) = ref_agent.temperature { builder = builder.set_temperature(v); }
-    if let Some(v) = ref_agent.top_p { builder = builder.set_top_p(v); }
-    if let Some(v) = ref_agent.presence_penalty { builder = builder.set_presence_penalty(v); }
-    if let Some(v) = ref_agent.frequency_penalty { builder = builder.set_frequency_penalty(v); }
-    if let Some(v) = ref_agent.num_ctx { builder = builder.set_num_ctx(v); }
-    if let Some(v) = ref_agent.repeat_last_n { builder = builder.set_repeat_last_n(v); }
-    if let Some(v) = ref_agent.repeat_penalty { builder = builder.set_repeat_penalty(v); }
-    if let Some(v) = ref_agent.seed { builder = builder.set_seed(v); }
-    if let Some(v) = &ref_agent.stop { builder = builder.set_stop(v.clone()); }
-    if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
-    if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
-    if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
-    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
-    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
-    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-replanner", ref_agent.name)) }
-    builder = builder.strip_thinking(ref_agent.strip_thinking);
-
-
-    builder
+        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone())
         .set_system_prompt(system_prompt)
         .set_template(template)
         .set_model(ref_agent.model.clone())
@@ -518,6 +484,14 @@ The Executor agent who runs your new plan still has **no knowledge** of the orig
 
 
 pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+    let ollama_config = ref_agent.export_ollama_config();
+    let model_config = ref_agent.export_model_config();
+    let prompt_config = if let Ok(c) = ref_agent.export_prompt_config().await {
+        c
+    } else {
+        PromptConfig::default()
+    };
+
     let system_prompt = r#"You are given a task and a set of tools. Complete the task.
     Your response must be exhaustive. Hoever respond only with verifiable information that you have recieved int the 
     context. If possible cite sources of data and provide references. Answer in markdown in the folowind structure:
@@ -532,30 +506,13 @@ pub async fn create_single_task_agent(ref_agent: &Agent) -> Result<(Agent, Recei
 
     "#;
 
-    let mut builder = AgentBuilder::default()
+    AgentBuilder::default()
+        .import_ollama_config(ollama_config)
+        .import_model_config(model_config)
+        .import_prompt_config(prompt_config)
         .set_name("Statefull_prebuild-plan_and_execute-task_executor")
         .set_model(ref_agent.model.clone())
-        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone());
-
-    if let Some(v) = ref_agent.temperature { builder = builder.set_temperature(v); }
-    if let Some(v) = ref_agent.top_p { builder = builder.set_top_p(v); }
-    if let Some(v) = ref_agent.presence_penalty { builder = builder.set_presence_penalty(v); }
-    if let Some(v) = ref_agent.frequency_penalty { builder = builder.set_frequency_penalty(v); }
-    if let Some(v) = ref_agent.num_ctx { builder = builder.set_num_ctx(v); }
-    if let Some(v) = ref_agent.repeat_last_n { builder = builder.set_repeat_last_n(v); }
-    if let Some(v) = ref_agent.repeat_penalty { builder = builder.set_repeat_penalty(v); }
-    if let Some(v) = ref_agent.seed { builder = builder.set_seed(v); }
-    if let Some(v) = &ref_agent.stop { builder = builder.set_stop(v.clone()); }
-    if let Some(v) = ref_agent.num_predict { builder = builder.set_num_predict(v); }
-    if let Some(v) = ref_agent.top_k { builder = builder.set_top_k(v); }
-    if let Some(v) = ref_agent.min_p { builder = builder.set_min_p(v); }
-    if let Some(v) = &ref_agent.local_tools { for t in v {builder = builder.add_tool(t.clone());}}
-    if let Some(v) = &ref_agent.mcp_servers { for t in v {builder = builder.add_mcp_server(t.clone());}}
-    if !ref_agent.name.is_empty() { builder = builder.set_name(format!("{}-executor", ref_agent.name)) }
-    builder = builder.strip_thinking(true);
-
-
-    builder
+        .set_ollama_endpoint(ref_agent.ollama_client.base_url.clone())
         .set_system_prompt(system_prompt)
         .set_model(ref_agent.model.clone())
         .set_stopword("</final>")

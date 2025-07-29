@@ -2,11 +2,12 @@ use core::fmt;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 
-use serde_json::Value;
+use serde_json::{Error, Value};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
 use crate::models::agents::flow::flows::simple_loop::simple_loop_invoke;
+use crate::models::configs::{ModelConfig, OllamaConfig, PromptConfig};
 use crate::models::notification::NotificationContent;
 use crate::util::templating::Template;
 
@@ -272,6 +273,59 @@ impl Agent {
             InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
         }
     }
+
+
+    pub fn export_ollama_config(&self) -> OllamaConfig {
+        OllamaConfig { ollama_url: Some(self.ollama_client.base_url.clone()) }
+    }
+
+    pub fn export_model_config(&self) -> ModelConfig {
+        ModelConfig { 
+            model: Some(self.model.clone()), 
+            temperature: self.temperature, 
+            top_p: self.top_p, 
+            presence_penalty: self.presence_penalty, 
+            frequency_penalty: self.frequency_penalty,
+            num_ctx: self.num_ctx, 
+            repeat_last_n: self.repeat_last_n, 
+            repeat_penalty: self.repeat_penalty, 
+            seed: self.seed, 
+            stop: self.stop.clone(), 
+            num_predict: self.num_predict, 
+            top_k: self.top_k, 
+            min_p: self.min_p 
+        }
+    }
+
+    pub async fn export_prompt_config(&self) -> Result<PromptConfig, Error> {
+        let template = if let Some(t) = self.template.clone() {
+            Some(t.lock().await.clone())
+        } else {
+            None
+        };
+
+        
+
+        let response_format = if let Some(p) = self.response_format.clone() {
+            Some(serde_json::to_string(&p)?)
+        } else {
+            None
+        };
+        Ok(PromptConfig {
+            template,
+            system_prompt: Some(self.system_prompt.clone()),
+            tools: self.tools.clone(),
+            response_format,
+            mcp_servers: self.mcp_servers.clone(),
+            stop_prompt: self.stop_prompt.clone(),
+            stopword: self.stopword.clone(),
+            strip_thinking: Some(self.strip_thinking),
+            max_iterations: self.max_iterations,
+            clear_histroy_on_invoke: Some(self.clear_history_on_invoke),
+        })
+    }
+
+
 }
 
 impl fmt::Debug for Agent {

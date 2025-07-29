@@ -3,14 +3,11 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use crate::{
     models::{
-        agents::flow::invocation_flows::Flow,
-        notification::Notification, AgentBuildError
-    },
-    util::templating::Template,
-    services::{
+        agents::flow::invocation_flows::Flow, configs::{ModelConfig, OllamaConfig, PromptConfig}, notification::Notification, AgentBuildError
+    }, services::{
         mcp::mcp_tool_builder::McpServerType,
         ollama::models::tool::Tool
-    }, Agent
+    }, util::templating::Template, Agent
 };
 
 /// A builder for [`Agent`].
@@ -37,7 +34,10 @@ use crate::{
 pub struct AgentBuilder {
     name: Option<String>,
     model: Option<String>,
+
     ollama_url: Option<String>,
+    
+    template: Option<Arc<Mutex<Template>>>,
     system_prompt: Option<String>,
     tools: Option<Vec<Tool>>,
     response_format: Option<String>,
@@ -45,6 +45,9 @@ pub struct AgentBuilder {
     stop_prompt: Option<String>,
     stopword: Option<String>,
     strip_thinking: Option<bool>,
+    max_iterations: Option<usize>,
+    clear_histroy_on_invoke: Option<bool>,
+    
     temperature: Option<f32>,
     top_p: Option<f32>,
     presence_penalty: Option<f32>,
@@ -57,14 +60,104 @@ pub struct AgentBuilder {
     num_predict: Option<i32>,
     top_k: Option<u32>,
     min_p: Option<f32>,
+    
     notification_channel: Option<mpsc::Sender<Notification>>,
     flow: Option<Flow>,
-    template: Option<Arc<Mutex<Template>>>,
-    max_iterations: Option<usize>,
-    clear_histroy_on_invoke: Option<bool>
+    
+    
 }
 
 impl AgentBuilder {
+
+    pub fn import_ollama_config(mut self, conf: OllamaConfig) -> Self {
+        if let Some(endpoint) = conf.ollama_url {
+            self = self.set_ollama_endpoint(endpoint);
+        }
+        self
+    }
+
+
+    pub fn import_prompt_config(mut self, conf: PromptConfig) -> Self {
+        if let Some(template) = conf.template {
+            self = self.set_template(template);
+        }
+        if let Some(system_prompt) = conf.system_prompt {
+            self = self.set_system_prompt(system_prompt);
+        }
+        if let Some(tools) = conf.tools {
+            for tool in tools {
+                self = self.add_tool(tool);
+            }
+        }
+        if let Some(response_format) = conf.response_format {
+            self = self.set_response_format(response_format);
+        }
+        if let Some(mcp_servers) = conf.mcp_servers {
+            for mcp in mcp_servers {
+                self = self.add_mcp_server(mcp);
+            }
+        }
+        if let Some(stop_prompt) = conf.stop_prompt {
+            self = self.set_stop_prompt(stop_prompt);
+        }
+        if let Some(stopword) = conf.stopword {
+            self = self.set_stopword(stopword);
+        }
+        if let Some(strip_thinking) = conf.strip_thinking {
+            self = self.strip_thinking(strip_thinking);
+        }
+        if let Some(max_iterations) = conf.max_iterations {
+            self = self.set_max_iterations(max_iterations);
+        }
+        if let Some(clear_histroy_on_invoke) = conf.clear_histroy_on_invoke {
+            self = self.set_clear_history_on_invocation(clear_histroy_on_invoke);
+        }
+        self
+    }
+
+    pub fn import_model_config(mut self, conf: ModelConfig) -> Self {
+        if let Some(model) = conf.model {
+            self = self.set_model(model)
+        }
+        if let Some(temperature) = conf.temperature {
+            self = self.set_temperature(temperature)
+        }
+        if let Some(top_p) = conf.top_p {
+            self = self.set_top_p(top_p)
+        }
+        if let Some(presence_penalty) = conf.presence_penalty {
+            self = self.set_presence_penalty(presence_penalty)
+        }
+        if let Some(frequency_penalty) = conf.frequency_penalty {
+            self = self.set_frequency_penalty(frequency_penalty)
+        }
+        if let Some(num_ctx) = conf.num_ctx {
+            self = self.set_num_ctx(num_ctx)
+        }
+        if let Some(repeat_last_n) = conf.repeat_last_n {
+            self = self.set_repeat_last_n(repeat_last_n)
+        }
+        if let Some(repeat_penalty) = conf.repeat_penalty {
+            self = self.set_repeat_penalty(repeat_penalty)
+        }
+        if let Some(seed) = conf.seed {
+            self = self.set_seed(seed)
+        }
+        if let Some(stop) = conf.stop {
+            self = self.set_stop(stop)
+        }
+        if let Some(num_predict) = conf.num_predict {
+            self = self.set_num_predict(num_predict)
+        }
+        if let Some(top_k) = conf.top_k {
+            self = self.set_top_k(top_k)
+        }
+        if let Some(min_p) = conf.min_p {
+            self = self.set_min_p(min_p)
+        }
+
+        self
+    }
 
     /// Set the name of the agent (used in logging)
     pub fn set_name<T>(mut self, name: T) -> Self where T: Into<String> {
