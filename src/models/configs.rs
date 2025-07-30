@@ -1,7 +1,3 @@
-use std::sync::Arc;
-
-use tokio::sync::Mutex;
-
 use crate::{services::ollama::models::tool::Tool, util::templating::Template, McpServerType};
 
 
