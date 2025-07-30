@@ -154,7 +154,7 @@ impl Agent {
         Ok(r)
     }
 
-    pub(crate) async fn notify(&self, content: NotificationContent) -> bool {
+    pub async fn notify(&self, content: NotificationContent) -> bool {
         if self.notification_channel.is_none() {
             return false;
         }
