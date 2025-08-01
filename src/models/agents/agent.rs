@@ -1,7 +1,8 @@
 use core::fmt;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
-
+use tokio_stream::wrappers::ReceiverStream;
+use futures::{stream::SelectAll, StreamExt};
 use serde_json::{Error, Value};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
@@ -186,6 +187,34 @@ impl Agent {
                 }
             });    
         }
+    }
+
+    /// Merge any number of `Receiver<Notification>` streams into one,
+    /// and forward *all* messages (in the order they arrive) into
+    /// this agent’s `notification_channel`.
+    pub fn forward_multiple_notifications<I>(&self, channels: I)
+    where
+        I: IntoIterator<Item = Receiver<Notification>>,
+    {
+        let to_sender = match &self.notification_channel {
+            Some(s) => s.clone(),
+            None    => return,
+        };
+
+        let mut merged = SelectAll::new();
+        for rx in channels {
+            let stream = ReceiverStream::new(rx)
+                .map(|notif| notif);
+            merged.push(stream);
+        }
+
+        tokio::spawn(async move {
+            while let Some(notification) = merged.next().await {
+                if to_sender.send(notification).await.is_err() {
+                    break;
+                }
+            }
+        });
     }
 
     pub async fn get_compiled_tools(&self) -> Result<Option<Vec<Tool>>, AgentBuildError> {

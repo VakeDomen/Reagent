@@ -20,10 +20,17 @@ pub(crate )fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) ->
         let (mut replanner_agent, replanner_notification_channel) = create_replanner_agent(agent).await?;
         let (mut executor_agent, executor_notification_channel) = create_single_task_agent(agent).await?;
 
-        agent.forward_notifications(blueprint_notification_channel);
-        agent.forward_notifications(planner_notification_channel);
-        agent.forward_notifications(replanner_notification_channel);
-        agent.forward_notifications(executor_notification_channel);
+        // agent.forward_notifications(blueprint_notification_channel);
+        // agent.forward_notifications(planner_notification_channel);
+        // agent.forward_notifications(replanner_notification_channel);
+        // agent.forward_notifications(executor_notification_channel);
+
+        agent.forward_multiple_notifications(vec![
+            blueprint_notification_channel,
+            planner_notification_channel,
+            replanner_notification_channel,
+            executor_notification_channel,
+        ]);
 
         let blueprint = blueprint_agent.invoke_flow_with_template(HashMap::from([
             ("tools", format!("{:#?}", agent.tools)),
