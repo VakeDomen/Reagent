@@ -57,6 +57,7 @@ pub struct Agent {
     pub num_predict: Option<i32>,
     pub top_k: Option<u32>,
     pub min_p: Option<f32>,
+    pub stream: bool,
     pub notification_channel: Option<Sender<Notification>>,
     pub template: Option<Arc<Mutex<Template>>>,
     flow: InternalFlow,
@@ -86,6 +87,7 @@ impl Agent {
         seed: Option<i32>,
         stop: Option<String>,
         num_predict: Option<i32>,
+        stream: bool,
         top_k: Option<u32>,
         min_p: Option<f32>,
         notification_channel: Option<Sender<Notification>>,
@@ -127,7 +129,8 @@ impl Agent {
             tools: None,
             template,
             max_iterations,
-            clear_history_on_invoke
+            clear_history_on_invoke,
+            stream,
         };
 
         agent.tools = agent.get_compiled_tools().await?;
@@ -322,6 +325,7 @@ impl Agent {
             strip_thinking: Some(self.strip_thinking),
             max_iterations: self.max_iterations,
             clear_histroy_on_invoke: Some(self.clear_history_on_invoke),
+            stream: self.stream
         })
     }
 

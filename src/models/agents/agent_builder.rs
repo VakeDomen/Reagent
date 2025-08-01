@@ -60,6 +60,7 @@ pub struct AgentBuilder {
     num_predict: Option<i32>,
     top_k: Option<u32>,
     min_p: Option<f32>,
+    stream: Option<bool>,
     
     notification_channel: Option<mpsc::Sender<Notification>>,
     flow: Option<Flow>,
@@ -112,6 +113,8 @@ impl AgentBuilder {
         if let Some(clear_histroy_on_invoke) = conf.clear_histroy_on_invoke {
             self = self.set_clear_history_on_invocation(clear_histroy_on_invoke);
         }
+
+        self = self.set_stream(conf.stream);
         self
     }
 
@@ -162,6 +165,13 @@ impl AgentBuilder {
     /// Set the name of the agent (used in logging)
     pub fn set_name<T>(mut self, name: T) -> Self where T: Into<String> {
         self.name = Some(name.into());
+        self
+    }
+
+    /// Set the streaming value for Ollam
+    /// Will enable Token Notifications
+    pub fn set_stream(mut self, set: bool) -> Self {
+        self.stream = Some(set);
         self
     }
 
@@ -367,6 +377,8 @@ impl AgentBuilder {
             None => format!("Agent-{model}"),
         };
 
+        let stream = self.stream.unwrap_or(false);
+
         Ok(Agent::try_new(
             name,
             &model,
@@ -387,6 +399,7 @@ impl AgentBuilder {
             self.seed,
             self.stop,
             self.num_predict,
+            stream,
             self.top_k,
             self.min_p,
             self.notification_channel,

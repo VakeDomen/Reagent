@@ -53,3 +53,29 @@ pub struct ChatResponse {
     pub eval_duration: Option<u64>,
 }
 
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ChatStreamChunk {
+    pub model: String,
+    pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<Message>,
+    pub done: bool,
+
+    // Optional tail-only stats
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_duration: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_duration: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_duration: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_duration: Option<u64>,
+}
+

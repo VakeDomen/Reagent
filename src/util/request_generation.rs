@@ -57,7 +57,7 @@ impl ToRequestParams for Agent {
                 presence_penalty:   self.presence_penalty,
                 frequency_penalty:  self.frequency_penalty,
             },
-            stream:     false,
+            stream:     self.stream,
             keep_alive: "5m".to_string(),
             messages:   self.history.clone(),
             tools:      self.tools.clone(),

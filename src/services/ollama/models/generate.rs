@@ -60,3 +60,5 @@ pub struct GenerateResponse {
     pub eval_duration: Option<u64>,
 }
 
+/// Streaming `/api/generate` chunks are identical to the existing struct.
+pub type GenerateStreamChunk = super::generate::GenerateResponse;

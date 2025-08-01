@@ -36,4 +36,5 @@ pub struct PromptConfig {
     pub strip_thinking: Option<bool>,
     pub max_iterations: Option<usize>,
     pub clear_histroy_on_invoke: Option<bool>,
+    pub stream: bool,
 }

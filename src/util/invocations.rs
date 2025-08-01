@@ -1,4 +1,16 @@
-use crate::{models::{agents::flow::invocation_flows::InvokeFuture, AgentError}, services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall}, Agent, Message, NotificationContent};
+use futures::{pin_mut, StreamExt};
+
+use crate::{
+    models::{agents::flow::invocation_flows::InvokeFuture, notification::Token, AgentError}, 
+    services::ollama::models::{
+        chat::{ChatRequest, ChatResponse, ChatStreamChunk}, 
+        errors::OllamaError,
+        tool::ToolCall
+    }, 
+    Agent, 
+    Message, 
+    NotificationContent
+};
 use crate::util::request_generation::{generate_llm_request, generate_llm_request_without_tools};
 
 
@@ -13,7 +25,10 @@ pub fn invoke<'a>(
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
         let request = generate_llm_request(agent).await;
-        let response = call_model(agent, request).await?;
+        let response = match &request.base.stream {
+            Some(true) => call_model_streaming(agent, request).await?,
+            _ => call_model(agent, request).await?,
+        };
         agent.history.push(response.message.clone());
         Ok(response)
     })
@@ -32,8 +47,10 @@ pub fn invoke_with_tool_calls<'a>(
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
         let request = generate_llm_request(agent).await;
-        let response = call_model(agent, request).await?;
-
+        let response = match &request.base.stream {
+            Some(true) => call_model_streaming(agent, request).await?,
+            _ => call_model(agent, request).await?,
+        };
         agent.history.push(response.message.clone());
 
         if let Some(tc) = response.message.tool_calls.clone() {
@@ -55,7 +72,10 @@ pub fn invoke_without_tools<'a>(
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
         let request = generate_llm_request_without_tools(agent).await;
-        let response = call_model(agent, request).await?;
+        let response = match &request.base.stream {
+            Some(true) => call_model_streaming(agent, request).await?,
+            _ => call_model(agent, request).await?,
+        };
         agent.history.push(response.message.clone());
         Ok(response)
     })
@@ -96,6 +116,112 @@ pub async fn call_model(
             Err(e.into())
         }
     }
+}
+
+/// Streams `/api/chat`, emits NotificationToken::Token for every chunk,
+/// then returns the reconstructed ChatResponse (so callers behave exactly
+/// like with the non-streaming call).
+///
+/// * Sends the same PromptRequest / PromptSuccessResult / PromptErrorResult
+///   notifications as `call_model`.
+/// * Honors `agent.strip_thinking` on the final text.
+pub async fn call_model_streaming(
+    agent: &Agent,
+    mut request: ChatRequest,
+) -> Result<ChatResponse, AgentError> {
+    request.base.stream = Some(true);
+
+    agent
+        .notify(NotificationContent::PromptRequest(request.clone()))
+        .await;
+
+    let stream = match agent.ollama_client.chat_stream(request).await {
+        Ok(s)  => s,
+        Err(e) => {
+            agent.notify(NotificationContent::PromptErrorResult(e.to_string())).await;
+            return Err(e.into());
+        }
+    };
+
+
+    pin_mut!(stream);  
+
+    let mut full_content = String::new();
+    let mut latest_message: Option<Message> = None;
+
+    let mut last_chunk: Option<ChatStreamChunk> = None;
+
+    while let Some(chunk_res) = stream.next().await {
+        match chunk_res {
+            Ok(chunk) => {
+                if let Some(msg) = chunk.message.clone() {
+                    // Token-level work
+                    if let Some(tok) = &msg.content {
+                        agent.notify(NotificationContent::Token(Token {tag: None, value: tok.clone()})).await;
+                        full_content.push_str(tok);
+                    }
+
+                    latest_message = Some(msg);
+                }
+
+                if chunk.done { 
+                    last_chunk = Some(chunk); 
+                    break; 
+                }
+            }
+            Err(e) => {
+                agent
+                    .notify(NotificationContent::PromptErrorResult(e.to_string()))
+                    .await;
+                return Err(e.into());
+            }
+        }
+    }
+
+    let Some(chunk) = last_chunk else {
+        return Err(OllamaError::Api("stream ended without a final `done` chunk".into()).into());
+    };
+
+    let mut final_msg = latest_message.unwrap_or_else(|| Message::assistant(String::new()));
+
+    // glue together the accumulated text + any trailing content
+    let trailing = final_msg.content.unwrap_or_default();
+    final_msg.content = Some(format!("{full_content}{trailing}"));
+
+    if agent.strip_thinking {
+        if let Some(c) = &final_msg.content {
+            if let Some(after) = c.split("</think>").nth(1) {
+                final_msg.content = Some(after.to_string());
+            }
+        }
+    }
+
+
+    let mut response = ChatResponse {
+        model:         chunk.model,
+        created_at:    chunk.created_at,
+        message:       Message::assistant(full_content),
+        done:          true,
+        done_reason:   chunk.done_reason,
+        total_duration:    chunk.total_duration,
+        load_duration:     chunk.load_duration,
+        prompt_eval_count: chunk.prompt_eval_count,
+        prompt_eval_duration: chunk.prompt_eval_duration,
+        eval_count:        chunk.eval_count,
+        eval_duration:     chunk.eval_duration,
+    };
+
+    if agent.strip_thinking {
+        if let Some(content) = response.message.content.clone() {
+            if let Some(after) = content.split("</think>").nth(1) {
+                response.message.content = Some(after.to_string());
+            }
+        }
+    }
+
+    agent.notify(NotificationContent::PromptSuccessResult(response.clone())).await;
+
+    Ok(response)
 }
 
 /// For each `ToolCall` in `tool_calls`, attempts to find a matching

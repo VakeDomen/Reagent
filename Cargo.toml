@@ -27,6 +27,10 @@ rmcp = { version = "0.2.1", features = [
 tokio = {version ="1.45.1", features = ["rt-multi-thread"]}
 tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+futures = "0.3"
+tokio-stream  = "0.1"
+async-stream  = "0.3"
+
 
 [dev-dependencies]
 futures = "0.3.31"
