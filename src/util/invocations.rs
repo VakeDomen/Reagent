@@ -146,8 +146,9 @@ pub async fn call_model_streaming(
 
     pin_mut!(stream);  
 
-    let mut full_content = String::new();
+    let mut full_content = None;
     let mut latest_message: Option<Message> = None;
+    let mut tool_calls: Option<Vec<ToolCall>> = None;
 
     let mut last_chunk: Option<ChatStreamChunk> = None;
 
@@ -156,9 +157,21 @@ pub async fn call_model_streaming(
             Ok(chunk) => {
                 if let Some(msg) = chunk.message.clone() {
                     // Token-level work
+                    
+                    if let Some(calls) = msg.tool_calls.clone() {
+                        match tool_calls.as_mut() {
+                            Some(tool_call_vec) => tool_call_vec.extend(calls),
+                            None => tool_calls = Some(calls.clone()),
+                        }
+                    }
+
+
                     if let Some(tok) = &msg.content {
                         agent.notify(NotificationContent::Token(Token {tag: None, value: tok.clone()})).await;
-                        full_content.push_str(tok);
+                        match full_content.as_mut() {
+                            None => full_content = Some(tok.to_owned()),
+                            Some(content) => content.push_str(tok),
+                        }
                     }
 
                     latest_message = Some(msg);
@@ -186,7 +199,8 @@ pub async fn call_model_streaming(
 
     // glue together the accumulated text + any trailing content
     let trailing = final_msg.content.unwrap_or_default();
-    final_msg.content = Some(format!("{full_content}{trailing}"));
+    final_msg.content = full_content;
+    final_msg.tool_calls = tool_calls;
 
     if agent.strip_thinking {
         if let Some(c) = &final_msg.content {
@@ -200,7 +214,7 @@ pub async fn call_model_streaming(
     let mut response = ChatResponse {
         model:         chunk.model,
         created_at:    chunk.created_at,
-        message:       Message::assistant(full_content),
+        message:       final_msg,
         done:          true,
         done_reason:   chunk.done_reason,
         total_duration:    chunk.total_duration,
