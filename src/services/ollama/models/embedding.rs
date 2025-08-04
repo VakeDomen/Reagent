@@ -17,6 +17,5 @@ pub struct EmbeddingsRequest {
 /// Response from the `/api/embeddings` endpoint.
 #[derive(Deserialize, Debug, Clone)]
 pub struct EmbeddingsResponse {
-    pub embedding: Vec<f64>, // Ollama typically returns f64
+    pub embedding: Vec<f64>,
 }
-

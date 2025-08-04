@@ -48,8 +48,7 @@ impl std::fmt::Debug for ToolBuilder {
 
 impl ToolBuilder {
     /// Creates a new `ToolBuilder`.
-    /// By default, `tool_type` will be `ToolType::Function` and
-    /// `function_param_type` will be `"object"` if not explicitly set.
+    /// By default, `tool_type` will be `ToolType::Function`
     pub fn new() -> Self {
         ToolBuilder {
             tool_type: Some(ToolType::Function),

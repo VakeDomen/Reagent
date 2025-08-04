@@ -62,7 +62,6 @@ pub struct ChatStreamChunk {
     pub message: Option<Message>,
     pub done: bool,
 
-    // Optional tail-only stats
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub done_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

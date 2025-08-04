@@ -19,7 +19,7 @@ pub fn invoke<'a>(
         let request: ChatRequest = (&*agent).into();
         let response = match &request.base.stream {
             Some(true) => call_model_streaming(agent, request).await?,
-            _ => call_model(agent, request).await?,
+            _ => call_model_nonstreaming(agent, request).await?,
         };
         agent.history.push(response.message.clone());
         Ok(response)
@@ -32,10 +32,9 @@ pub fn invoke_with_tool_calls<'a>(
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
         let request: ChatRequest = (&*agent).into();
-        
         let response = match &request.base.stream {
             Some(true) => call_model_streaming(agent, request).await?,
-            _ => call_model(agent, request).await?,
+            _ => call_model_nonstreaming(agent, request).await?,
         };
 
         agent.history.push(response.message.clone());
@@ -60,7 +59,7 @@ pub fn invoke_without_tools<'a>(
         request.tools = None;
         let response = match &request.base.stream {
             Some(true) => call_model_streaming(agent, request).await?,
-            _ => call_model(agent, request).await?,
+            _ => call_model_nonstreaming(agent, request).await?,
         };
         agent.history.push(response.message.clone());
         Ok(response)
@@ -68,7 +67,7 @@ pub fn invoke_without_tools<'a>(
 }
 
 
-pub async fn call_model(
+async fn call_model_nonstreaming(
     agent: &Agent,
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
@@ -102,11 +101,10 @@ pub async fn call_model(
     Ok(resp)
 }
 
-pub async fn call_model_streaming(
+async fn call_model_streaming(
     agent: &Agent,
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
-
     agent
         .notify(NotificationContent::PromptRequest(request.clone()))
         .await;

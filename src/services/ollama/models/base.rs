@@ -4,7 +4,6 @@ use serde_json::Value;
 
 use super::tool::ToolCall;
 
-/// Represents the role of a message sender in a chat.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -17,19 +16,17 @@ pub enum Role {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     pub role: Role,
-    // Make content optional and provide a default if it's missing in the JSON
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")] // Ensure this is also default
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
 }
 
 impl Message {
-    /// Creates a new message with a specific role and content.
     pub fn new(role: Role, content: String) -> Self {
         Self {
             role,
@@ -40,17 +37,14 @@ impl Message {
         }
     }
 
-    /// Creates a new 'system' message.
     pub fn system<T: Into<String>>(content: T) -> Self {
         Self::new(Role::System, content.into())
     }
 
-    /// Creates a new 'user' message.
     pub fn user<T: Into<String>>(content: T) -> Self {
         Self::new(Role::User, content.into())
     }
 
-    /// Creates a new 'assistant' message.
     pub fn assistant<T: Into<String>>(content: T) -> Self {
         Self::new(Role::Assistant, content.into())
     }
@@ -65,7 +59,6 @@ impl Message {
         }
     }
 }
-/// Base structure for requests.
 #[derive(Serialize, Debug, Clone, Default, Deserialize)]
 pub struct BaseRequest {
     pub model: String,
@@ -80,11 +73,10 @@ pub struct BaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub keep_alive: Option<String>, // e.g., "5m"
+    pub keep_alive: Option<String>, 
 }
 
 
-/// Structured options for customizing Ollama request behavior.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OllamaOptions {
     #[serde(skip_serializing_if = "Option::is_none")]

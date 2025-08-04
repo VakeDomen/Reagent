@@ -40,7 +40,7 @@ pub struct Tool {
     pub executor: AsyncToolFn,
 }
 
-// Manual Debug implementation for Tool
+
 impl fmt::Debug for Tool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Tool")
@@ -76,7 +76,7 @@ pub struct Function {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionParameters {
     #[serde(rename = "type")]
-    pub param_type: String, // Typically "object"
+    pub param_type: String,
     pub properties: HashMap<String, Property>,
     pub required: Vec<String>,
 }
@@ -85,7 +85,7 @@ pub struct FunctionParameters {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Property {
     #[serde(rename = "type")]
-    pub property_type: String, // e.g., "string", "number", "integer"
+    pub property_type: String, 
     pub description: String,
 }
 
@@ -96,7 +96,7 @@ pub struct ToolCall {
     pub id: Option<String>,
     #[serde(default = "default_tool_call_type", skip_serializing_if = "is_default_tool_call_type")]
     #[serde(rename = "type")]
-    pub tool_type: ToolType, // Should always be "function" for now
+    pub tool_type: ToolType,
     pub function: ToolCallFunction,
 }
 
@@ -108,7 +108,7 @@ fn default_tool_call_type() -> ToolType {
 
 // Helper for skip_serializing_if to avoid serializing if it's the default
 // This is more relevant if you were to serialize this struct often and wanted to omit default values.
-#[allow(clippy::trivially_copy_pass_by_ref)] // Added to address potential clippy lint
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_default_tool_call_type(tool_type: &ToolType) -> bool {
     *tool_type == default_tool_call_type()
 }
