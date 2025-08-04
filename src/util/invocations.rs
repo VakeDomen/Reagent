@@ -32,10 +32,12 @@ pub fn invoke_with_tool_calls<'a>(
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
         let request: ChatRequest = (&*agent).into();
+        
         let response = match &request.base.stream {
             Some(true) => call_model_streaming(agent, request).await?,
             _ => call_model(agent, request).await?,
         };
+
         agent.history.push(response.message.clone());
 
         if let Some(tc) = response.message.tool_calls.clone() {
@@ -54,7 +56,6 @@ pub fn invoke_without_tools<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
-        // let request: ChatRequest = generate_llm_request_without_tools(agent).await;
         let mut request: ChatRequest = (&*agent).into();
         request.tools = None;
         let response = match &request.base.stream {
@@ -228,46 +229,74 @@ pub async fn call_tools(
 ) -> Vec<Message> {
     let mut results = Vec::new();
 
-    if let Some(avail) = &agent.tools {
-        for call in tool_calls {
-            tracing::info!(
-                target: "tool",
-                tool = %call.function.name,
-                id   = ?call.id,
-                args = ?call.function.arguments,
-                "executing tool call",
-            );
+    let Some(avail) = &agent.tools else {
+        tracing::error!("No avalible tools specified");
+        
+        agent
+            .notify(NotificationContent::ToolCallErrorResult(
+                "Agent called tools, but no tools avalible to the model".into()
+            ))
+            .await;
 
-            // try to find the tool
-            if let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name) {
-                agent.notify(NotificationContent::ToolCallRequest(call.clone())).await;
-
-                match tool.execute(call.function.arguments.clone()).await {
-                    Ok(output) => {
-                        agent.notify(NotificationContent::ToolCallSuccessResult(output.clone()))
-                            .await;
-                        results.push(Message::tool(output, call.id.clone().unwrap_or(call.function.name.clone())));
-                    }
-                    Err(e) => {
-                        agent.notify(NotificationContent::ToolCallErrorResult(e.to_string())).await;
-                        let msg = format!("Error executing tool {}: {}", call.function.name, e);
-                        results.push(Message::tool(msg, call.id.clone().unwrap_or(call.function.name.clone())));
-                    }
-                }
-            } else {
-                tracing::error!("No corresponding tool found.");
-                let msg = format!("Could not find tool: {}", call.function.name);
-                agent.notify(NotificationContent::ToolCallErrorResult(msg.clone())).await;
-                results.push(Message::tool(msg, "0".to_string()));
-            }
-        }
-    } else {
-        tracing::error!("No tools specified");
-        agent.notify(NotificationContent::ToolCallErrorResult("Empty tool call".into())).await;
         results.push(Message::tool(
             "If you want to use a tool specify the name of the available tool.",
             "Tool".to_string(),
         ));
+
+        return results;
+    };
+    
+    
+
+    for call in tool_calls {
+        tracing::info!(
+            target: "tool",
+            tool = %call.function.name,
+            id   = ?call.id,
+            args = ?call.function.arguments,
+            "executing tool call",
+        );
+
+        // try to find the tool
+        let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name) else {
+            tracing::error!("No corresponding tool found.");
+            let msg = format!("Could not find tool: {}", call.function.name);
+            agent
+                .notify(NotificationContent::ToolCallErrorResult(msg.clone()))
+                .await;
+            results.push(Message::tool(
+                msg, 
+                "0".to_string()
+            ));
+            continue;
+        };
+
+        agent
+            .notify(NotificationContent::ToolCallRequest(call.clone()))
+            .await;
+
+        match tool.execute(call.function.arguments.clone()).await {
+            Ok(output) => {
+                agent
+                    .notify(NotificationContent::ToolCallSuccessResult(output.clone()))
+                    .await;
+                results.push(Message::tool(
+                    output, 
+                    call.id.clone().unwrap_or(call.function.name.clone())
+                ));
+            }
+            Err(e) => {
+                agent
+                    .notify(NotificationContent::ToolCallErrorResult(e.to_string()))
+                    .await;
+                let msg = format!("Error executing tool {}: {}", call.function.name, e);
+                results.push(Message::tool(
+                    msg, 
+                    call.id.clone().unwrap_or(call.function.name.clone())
+                ));
+            }
+        }
+        
     }
 
     results
