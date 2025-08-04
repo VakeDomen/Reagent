@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 NotificationContent::ToolCallSuccessResult(_)=>"ToolCallSuccessResult",
                 NotificationContent::ToolCallErrorResult(_)=>"ToolCallErrorResult",
                 NotificationContent::McpToolNotification(_)=>"McpToolNotification",
-                NotificationContent::Token(_) => "Token",
+                NotificationContent::Token(t) => {print!("{}", t.value); "Token"},
             };
 
             // Increment the count for that type

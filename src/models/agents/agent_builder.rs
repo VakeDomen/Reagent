@@ -21,8 +21,7 @@ use crate::{
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// use reagent::AgentBuilder;
 /// let agent = AgentBuilder::default()
-///     .set_model("mistral-nemo")
-///     .set_ollama_port(8000)
+///     .set_model("qwen3:0.6b")
 ///     .set_system_prompt("Be concise")
 ///     .strip_thinking(false)
 ///     .build()

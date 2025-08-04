@@ -11,20 +11,12 @@ use crate::{
     Message, 
     NotificationContent
 };
-use crate::util::request_generation::{generate_llm_request, generate_llm_request_without_tools};
 
-
-/// Invoke the agent’s normal LLM flow:  
-/// 1. build a request via [`generate_llm_request`],  
-/// 2. call the model via [`call_model`].  
-///  
-/// # Returns  
-/// A pinned, boxed future that resolves to a [`ChatResponse`].  
 pub fn invoke<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
-        let request = generate_llm_request(agent).await;
+        let request: ChatRequest = (&*agent).into();
         let response = match &request.base.stream {
             Some(true) => call_model_streaming(agent, request).await?,
             _ => call_model(agent, request).await?,
@@ -35,18 +27,11 @@ pub fn invoke<'a>(
 }
 
 
-/// Invoke the agent’s normal LLM flow and call tools the LLM requested
-/// 1. build a request via [`generate_llm_request`],  
-/// 2. call the model via [`call_model`].  
-/// 3. optionally call the tools [`call_tools`]
-///  
-/// # Returns  
-/// A pinned, boxed future that resolves to a [`ChatResponse`].  
 pub fn invoke_with_tool_calls<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
-        let request = generate_llm_request(agent).await;
+        let request: ChatRequest = (&*agent).into();
         let response = match &request.base.stream {
             Some(true) => call_model_streaming(agent, request).await?,
             _ => call_model(agent, request).await?,
@@ -65,13 +50,13 @@ pub fn invoke_with_tool_calls<'a>(
 
 
 
-/// Exactly like [`invoke`], but omits all tool definitions in the request.
-/// Useful when you know no tools should be present.  
 pub fn invoke_without_tools<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
     Box::pin(async move {
-        let request = generate_llm_request_without_tools(agent).await;
+        // let request: ChatRequest = generate_llm_request_without_tools(agent).await;
+        let mut request: ChatRequest = (&*agent).into();
+        request.tools = None;
         let response = match &request.base.stream {
             Some(true) => call_model_streaming(agent, request).await?,
             _ => call_model(agent, request).await?,
@@ -82,24 +67,20 @@ pub fn invoke_without_tools<'a>(
 }
 
 
-
-/// Actually dispatches to `agent.ollama_client.chat(...)`, emits
-/// `Notification::PromptRequest`, then on success `PromptSuccessResult`,
-/// on failure `PromptErrorResult`. Strips any `<think>…</think>` prefix
-/// if `agent.strip_thinking` is set.
-///
-/// # Errors  
-/// Bubbles up any error from the underlying client as [`AgentError`].
 pub async fn call_model(
     agent: &Agent,
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
-    agent.notify(NotificationContent::PromptRequest(request.clone())).await;
+    agent
+        .notify(NotificationContent::PromptRequest(request.clone()))
+        .await;
 
     let raw = agent.ollama_client.chat(request).await;
     match raw {
         Ok(mut resp) => {
-            agent.notify(NotificationContent::PromptSuccessResult(resp.clone())).await;
+            agent
+                .notify(NotificationContent::PromptSuccessResult(resp.clone()))
+                .await;
 
             if agent.strip_thinking {
                 if let Some(content) = resp.message.content.clone() {
@@ -112,24 +93,18 @@ pub async fn call_model(
             Ok(resp)
         }
         Err(e) => {
-            agent.notify(NotificationContent::PromptErrorResult(e.to_string())).await;
+            agent
+                .notify(NotificationContent::PromptErrorResult(e.to_string()))
+                .await;
             Err(e.into())
         }
     }
 }
 
-/// Streams `/api/chat`, emits NotificationToken::Token for every chunk,
-/// then returns the reconstructed ChatResponse (so callers behave exactly
-/// like with the non-streaming call).
-///
-/// * Sends the same PromptRequest / PromptSuccessResult / PromptErrorResult
-///   notifications as `call_model`.
-/// * Honors `agent.strip_thinking` on the final text.
 pub async fn call_model_streaming(
     agent: &Agent,
-    mut request: ChatRequest,
+    request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
-    request.base.stream = Some(true);
 
     agent
         .notify(NotificationContent::PromptRequest(request.clone()))
@@ -138,7 +113,9 @@ pub async fn call_model_streaming(
     let stream = match agent.ollama_client.chat_stream(request).await {
         Ok(s)  => s,
         Err(e) => {
-            agent.notify(NotificationContent::PromptErrorResult(e.to_string())).await;
+            agent
+                .notify(NotificationContent::PromptErrorResult(e.to_string()))
+                .await;
             return Err(e.into());
         }
     };
@@ -149,14 +126,12 @@ pub async fn call_model_streaming(
     let mut full_content = None;
     let mut latest_message: Option<Message> = None;
     let mut tool_calls: Option<Vec<ToolCall>> = None;
-
     let mut last_chunk: Option<ChatStreamChunk> = None;
 
     while let Some(chunk_res) = stream.next().await {
         match chunk_res {
             Ok(chunk) => {
                 if let Some(msg) = chunk.message.clone() {
-                    // Token-level work
                     
                     if let Some(calls) = msg.tool_calls.clone() {
                         match tool_calls.as_mut() {
@@ -165,9 +140,10 @@ pub async fn call_model_streaming(
                         }
                     }
 
-
                     if let Some(tok) = &msg.content {
-                        agent.notify(NotificationContent::Token(Token {tag: None, value: tok.clone()})).await;
+                        agent
+                            .notify(NotificationContent::Token(Token {tag: None, value: tok.clone()}))
+                            .await;
                         match full_content.as_mut() {
                             None => full_content = Some(tok.to_owned()),
                             Some(content) => content.push_str(tok),
@@ -196,9 +172,6 @@ pub async fn call_model_streaming(
     };
 
     let mut final_msg = latest_message.unwrap_or_else(|| Message::assistant(String::new()));
-
-    // glue together the accumulated text + any trailing content
-    let trailing = final_msg.content.unwrap_or_default();
     final_msg.content = full_content;
     final_msg.tool_calls = tool_calls;
 
@@ -233,7 +206,9 @@ pub async fn call_model_streaming(
         }
     }
 
-    agent.notify(NotificationContent::PromptSuccessResult(response.clone())).await;
+    agent
+        .notify(NotificationContent::PromptSuccessResult(response.clone()))
+        .await;
 
     Ok(response)
 }

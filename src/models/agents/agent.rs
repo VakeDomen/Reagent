@@ -12,6 +12,8 @@ use tracing::instrument;
 use crate::models::agents::flow::flows::default_flow::default_flow;
 use crate::models::configs::{ModelConfig, OllamaConfig, PromptConfig};
 use crate::models::notification::NotificationContent;
+use crate::services::ollama::models::base::{BaseRequest, OllamaOptions};
+use crate::services::ollama::models::chat::ChatRequest;
 use crate::util::templating::Template;
 
 use crate::models::{AgentBuildError, AgentError};
@@ -377,6 +379,38 @@ impl Agent {
 
 
 }
+
+
+impl Into<ChatRequest> for &Agent {
+    fn into(self) -> ChatRequest {
+        let options = OllamaOptions {
+            num_ctx:            self.num_ctx,
+            repeat_last_n:      self.repeat_last_n,
+            repeat_penalty:     self.repeat_penalty,
+            temperature:        self.temperature,
+            seed:               self.seed,
+            stop:               self.stop.clone(),
+            num_predict:        self.num_predict,
+            top_k:              self.top_k,
+            top_p:              self.top_p,
+            min_p:              self.min_p,
+            presence_penalty:   self.presence_penalty,
+            frequency_penalty:  self.frequency_penalty,
+        };
+        ChatRequest {
+            base: BaseRequest {
+                model:      self.model.clone(),
+                format:     self.response_format.clone(),
+                options:    Some(options),
+                stream:     Some(self.stream),
+                keep_alive: Some("5m".to_string()),
+            },
+            messages: self.history.clone(),
+            tools:    self.tools.clone(),
+        }
+    }
+}
+
 
 impl fmt::Debug for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

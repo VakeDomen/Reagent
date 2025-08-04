@@ -206,10 +206,9 @@ impl OllamaClient {
 
     pub async fn chat_stream(
         &self,
-        mut req: ChatRequest,
+        req: ChatRequest,
     ) -> Result<impl Stream<Item = Result<ChatStreamChunk, OllamaError>> + Send + 'static, OllamaError>
     {
-        req.base.stream = Some(true);
         self.post_stream("/api/chat", &req).await
     }
 
