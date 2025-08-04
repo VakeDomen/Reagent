@@ -1,6 +1,14 @@
 
 use std::error::Error;
 use reagent::{init_default_tracing, AgentBuilder};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct MyWeatherOuput {
+  windy: bool,
+  temperature: i32,
+  description: String
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -30,8 +38,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // however the "invoke_flow" still returns a general Message 
     // struct and you have to parse the message.content Option<string> to
     // own struct
-    let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+
+    // If you call `invoke_flow_structured_output` the agent will return your 
+    // deserialized object
+    let resp: MyWeatherOuput = agent.invoke_flow_structured_output("What is the current weather in Koper?").await?;
+    println!("\n-> Agent: {:#?}", resp);
 
     Ok(())
 }

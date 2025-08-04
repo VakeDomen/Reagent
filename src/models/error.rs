@@ -5,7 +5,8 @@ pub enum AgentError {
     OllamaError(OllamaError),
     AgentBuildError(AgentBuildError),
     McpError(McpIntegrationError),
-    RuntimeError(String)
+    RuntimeError(String),
+    Deserialization(serde_json::Error)
 }
 
 // Implement Display and Error for AgentError
@@ -16,7 +17,8 @@ impl std::fmt::Display for AgentError {
             AgentError::AgentBuildError(agent_build_error) => write!(f, "Agent Build Error: {agent_build_error}"),
             AgentError::McpError(mcp_integration_error) => write!(f, "Mcp Error: {mcp_integration_error}"),
             AgentError::RuntimeError(s) => write!(f, "Runtime error: {s}"),
-                    }
+            AgentError::Deserialization(error) => write!(f, "Deserialize error: {error}"),
+        }
     }
 }
 
@@ -27,6 +29,7 @@ impl std::error::Error for AgentError {
             AgentError::AgentBuildError(agent_build_error) => Some(agent_build_error),
             AgentError::McpError(mcp_integration_error) => Some(mcp_integration_error),
             AgentError::RuntimeError(_) => Some(self),
+            AgentError::Deserialization(error) => Some(error),
         }
     }
 }

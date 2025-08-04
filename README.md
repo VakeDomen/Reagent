@@ -1,161 +1,64 @@
-# Ragent - Simple rust Agents with Ollama
+# Reagent 🦀
 
+Reagent is a Rust library for building, composing, and running Language Model (LLM) based agents. It provides a flexible and extensible framework for creating agents with custom tools, structured outputs, and complex invocation flows, designed with simplicity and composability in mind.
 
+Currently only works with [Ollama](https://ollama.com/).
 
+### Disclaimer
 
-**Rust Ollama Agent Library**
-
-A zero-boilerplate Rust library for building simple AI agents on top of Ollama. It provides a flexible builder-pattern API for defining system prompts, JSON-schema response formats, and both static and dynamic tools (MCP and custom tool-calling). Designed for simplicity and extensibility.
-
-...does not yet support streaming tho...
-
-
-## 📖 Table of Contents
-
-1. [Introduction](#introduction)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Getting Started](#getting-started)
-5. [Examples](#examples)
-6. [API Reference](#api-reference)
-7. [Contributing](#contributing)
-8. [License](#license)
-
----
-
-## Introduction
-
-**Ragent** is a lightweight Rust library that abstracts away the boilerplate of interacting with Ollama language models. With a flexible `AgentBuilder` and `ToolBuilder`, you can quickly assemble:
-
-* A core agent powered by any Ollama model
-* Custom tools with arbitrary async executors
-* Dynamic tool discovery via MCP (Model Context Protocol) servers
-* Structured responses enforced by JSON Schema
-
-Whether you need a single-purpose assistant or a complex multi-tool pipeline, **Ragent** makes it straightforward.
+⚠️ **This library is experimental and created for educational purposes.** The API is under active development and is subject to breaking changes. It is not yet recommended for production use. Documentation is currently limited to the examples provided here and in the repository, as the library is not yet published to `crates.io`.
 
 ---
 
 ## Features
 
-* **Builder Pattern API**
-  Configure every aspect of your agent with ergonomic, chainable methods.
-
-* **Custom Tools**
-  Define function signatures and attach async Rust executors via `ToolBuilder`.
-
-* **MCP Tool Integration**
-  Automatically discover and load tools exposed by local or remote MCP servers.
-
-* **JSON-Schema Response Formats**
-  Enforce structured output from the LLM for reliable downstream parsing.
-
-* **Default-Friendly**
-  Sensible defaults for endpoint, port, and system prompt reduce initial setup.
-
-* **Async & Tokio-Ready**
-  Non-blocking, thread-safe design with `Arc<Mutex<Agent>>` support for shared tools.
-
-> *Streaming support is on our roadmap for v0.2.0*
+* **Tool Use**: Equip agents with local asynchronous Rust functions or connect to external tool providers.
+* **Structured Output**: Force model responses into a specific JSON schema and deserialize them directly into your Rust structs.
+* **Customizable Flows**: Replace the default agent invocation logic with your own custom functions or closures to implement patterns like ReAct, Plan-and-Execute, etc.
+* **Event Notifications**: Subscribe to an agent's internal events (e.g., prompt generation, tool calls, final response) for logging, debugging, or streaming.
+* **Prompt Templating**: Use simple or dynamic templates to construct prompts from variables and on-the-fly data sources.
+* **MCP Integration**: Connect to external tool servers compliant with the Multi-Component Protocol (MCP) via SSE, stdio, or HTTP.
 
 ---
 
-## Installation 
+## Installation
 
-Waiting for `rmcp` to be stable before publish.
-<!-- 
-Add **Ragent** to your `Cargo.toml`:
+Currently, `Reagent` is only available on GitHub. You can add it to your project by including the following in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ragent = "0.1"
+reagent = { git = "https://github.com/VakeDomen/reagent.git" }
 ```
-
-Or via the CLI:
-
-```bash
-cargo add ragent
-``` --> -->
-
-Ensure you have a compatible Rust toolchain (Rust 1.65+).
 
 ---
 
-## Getting Started
+## Quick Start: A Simple Agent
 
-1. **Define Sub-Agents as Tools**
-   You can encapsulate mini-agents—each with its own model, prompt, and schema—as reusable tools.
-
-2. **Build the Main Agent**
-   Compose your main agent with system prompt, attached tools, and optional MCP servers.
-
-3. **Invoke and React**
-   Use `agent.invoke("...")` to ask questions; tool calls are handled transparently.
-
-### Basic Example
+Creating and interacting with an agent is straightforward. Use the `AgentBuilder` to configure your agent and `invoke_flow` to run it.
 
 ```rust
-use Ragent::{AgentBuilder, ToolBuilder, AsyncToolFn, McpServerType};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use serde_json::Value;
-
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // 1. Create a mini "weather" agent as a tool
-    let weather_agent = AgentBuilder::default()
-        .set_model("qwen3:30b")
-        .set_system_prompt("/no_think \nAnswer in JSON: { wind, temp, desc }")
-        .set_response_format(r#"
-            {
-              "type":"object",
-              "properties":{ "wind":{"type":"integer"}, "temp":{"type":"integer"}, "desc":{"type":"string"} },
-              "required":["wind","temp","desc"]
-            }
-        "#)
-        .build()
-        .await?;
-
-    let weather_ref = Arc::new(Mutex::new(weather_agent));
-    let weather_exec: AsyncToolFn = {
-        let weather_ref = Arc::clone(&weather_ref);
-        Arc::new(move |args: Value| {
-            let weather_ref = Arc::clone(&weather_ref);
-            Box::pin(async move {
-                let mut agent = weather_ref.lock().await;
-                let loc = args.get("location").and_then(|v| v.as_str())
-                    .ok_or("Missing 'location' arg".to_string())?;
-                let prompt = format!("/no_think What is the weather in {}?", loc);
-                let res = agent.invoke(prompt).await.map_err(|e| e.to_string())?;
-                Ok(res.content.unwrap_or_default())
-            })
-        })
-    };
-
-    let weather_tool = ToolBuilder::new()
-        .function_name("get_current_weather")
-        .function_description("Get a made-up weather forecast for a city")
-        .add_property("location", "string", "City name")
-        .add_required_property("location")
-        .executor(weather_exec)
-        .build()?;
-
-    // 2. Compose the primary agent with MCP and custom tools
+async fn main() -> Result<(), Box<dyn Error>> {
+    // 1. Create an agent using the builder pattern
     let mut agent = AgentBuilder::default()
-        .set_model("qwen3:30b")
-        .set_system_prompt("/no_think \nYou are a helpful, tool-enabled assistant.")
-        .add_tool(weather_tool)
-        .add_mcp_server(McpServerType::stdio("npx -y @modelcontextprotocol/server-everything"))
-        .add_mcp_server(McpServerType::streamable_http("http://localhost:8000/mcp"))
+        .set_model("qwen3:0.6b") // The only required setting
+        .set_system_prompt("You are a helpful assistant.")
+        .set_temperature(0.6)
+        .set_num_ctx(2048) // lol
+        .set_ollama_endpoint("http://localhost:2222")
         .build()
         .await?;
 
-    // 3. Use it!
-    let greeting = agent.invoke("Say hello").await?;
-    println!("Greeting: {}", greeting.content.unwrap_or_default());
+    // 2. Invoke the agent with a prompt
+    let resp = agent.invoke_flow("How do I increase the context size in Ollama?").await?;
+    println!("-> Agent: {}", resp.content.unwrap_or_default());
 
-    let forecast = agent.invoke("What is the current weather in Berlin?").await?;
-    println!("Forecast: {}", forecast.content.unwrap_or_default());
+    // The agent maintains conversation history automatically
+    let resp = agent.invoke_flow("What did you just say?").await?;
+    println!("-> Agent: {}", resp.content.unwrap_or_default());
+
+    // You can clear the history at any time (system prompt remains)
+    agent.clear_history();
 
     Ok(())
 }
@@ -163,80 +66,205 @@ async fn main() -> anyhow::Result<()> {
 
 ---
 
-## API Reference
+## Core Concepts & Examples
 
-### `AgentBuilder`
+For more examples, see [examples](https://github.com/VakeDomen/Reagent/tree/main/examples) folder.
 
-* `set_model(model: impl Into<String>) -> Self`
-  Choose the Ollama model identifier.
+### 1. Structured JSON Output
 
-* `set_ollama_endpoint(url: impl Into<String>) -> Self`
-  Base URL (default: `http://localhost`).
+Ensure the model's output conforms to a specific JSON schema and deserialize it directly into your custom `struct`. This is ideal for predictable, machine-readable responses.
 
-* `set_ollama_port(port: u16) -> Self`
-  Port (default: `11434`).
+```rust
+#[derive(Debug, Deserialize)]
+struct MyWeatherOuput {
+  windy: bool,
+  temperature: i32,
+  description: String
+}
 
-* `set_system_prompt(prompt: impl Into<String>) -> Self`
-  Initial system message to steer behaviour.
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    init_default_tracing();
 
-* `set_response_format(schema: impl Into<String>) -> Self`
-  JSON Schema string for structured replies.
+    let mut agent = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
+        .set_system_prompt("You make up weather info in JSON.")
+        // Set the desired JSON schema for the response
+        .set_response_format(r#"
+            {
+              "type":"object",
+              "properties":{
+                "windy":{"type":"boolean"},
+                "temperature":{"type":"integer"},
+                "description":{"type":"string"}
+              },
+              "required":["windy","temperature","description"]
+            }
+        "#)
+        .build()
+        .await?;
+    
+    // `invoke_flow_structured_output` automatically deserializes the JSON
+    let resp: MyWeatherOuput = agent.invoke_flow_structured_output("What is the weather in Koper?").await?;
+    println!("\n-> Agent: {:#?}", resp);
 
-* `add_tool(tool: Tool) -> Self`
-  Attach a prebuilt `Tool`.
+    Ok(())
+}
+```
 
-* `add_mcp_server(server: McpServerType) -> Self`
-  Discover tools via MCP.
+### 2. Using Local Tools
 
-* `build() -> Result<Agent, AgentBuildError>`
-  Finalize and return an `Agent`.
+You can give an agent access to local asynchronous Rust functions. The agent will intelligently decide when to call them based on the user's prompt.
 
-### `Agent`
+```rust
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    init_default_tracing();
 
-* `invoke(prompt: impl Into<String>) -> Result<Message, AgentError>`
-  Send a user prompt, handle tool calls, and return the final message.
+    // 1. Define the tool's executor logic as an async closure
+    let weather_exec: AsyncToolFn = {
+        Arc::new(move |_model_args_json: Value| {
+            Box::pin(async move {
+                // Your logic goes here. For this example, we return a fixed JSON string.
+                Ok(r#"{"temperature": 18, "description": "Partly cloudy"}"#.into())
+            })
+        })
+    };
 
-* **History** stored internally: sequence of system, user, model, and tool messages.
+    // 2. Build the tool with a name, description, and argument schema
+    let weather_tool = ToolBuilder::new()
+        .function_name("get_current_weather")
+        .function_description("Returns a weather forecast for a given location")
+        .add_property("location", "string", "City name")
+        .add_required_property("location")
+        .executor(weather_exec)
+        .build()?;
 
-### `ToolBuilder`
+    // 3. Add the tool to the agent
+    let mut agent = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
+        .set_system_prompt("You are a helpful assistant.")
+        .add_tool(weather_tool)
+        .build()
+        .await?;
 
-* `new() -> Self`
-  Start a fresh builder.
+    // The agent will use the tool when appropriate
+    let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
+    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
-* `function_name(name: impl Into<String>) -> Self`
-  Required: name of the tool in LLM schema.
+    Ok(())
+}
+```
 
-* `function_description(desc: impl Into<String>) -> Self`
-  Required: description for the tool.
 
-* `add_property(key, type, desc) -> Self`
-  Define an argument property.
+### 3. Notifications & Streaming
 
-* `add_required_property(key) -> Self`
-  Mark a property as required.
+You can receive real-time notifications about an agent's internal operations by creating a notification channel. This is useful for streaming tokens to the user, logging tool calls, and observing the agent's state.
 
-* `executor(fn: AsyncToolFn) -> Self`
-  Required: async executor closure.
+```rust
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Use `build_with_notification` to get a receiver channel
+    let (mut agent, mut notification_reciever) = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
+        .set_stream(true) // Optionally enable token streaming notifications
+        .build_with_notification()
+        .await?;
 
-* `build() -> Result<Tool, ToolBuilderError>`
-  Validate and return a `Tool`.
+    // Spawn a task to listen for notifications
+    let handle = tokio::spawn(async move {
+        while let Some(msg) = notification_reciever.recv().await {
+            match msg.content {
+                NotificationContent::Token(token) => print!("{}", token),
+                NotificationContent::ToolCallRequest(req) => println!("\n[Tool Call: {}]", req.tool_name),
+                NotificationContent::Done(_, _) => println!("\n[Done]"),
+                _ => {} // Handle other notification types
+            }
+        }
+    });
 
----
+    let _ = agent.invoke_flow("Say 'Hello, World!' and then tell me the weather in Paris.").await?;
 
-## Contributing
+    Ok(())
+}
+```
 
-We welcome your contributions to **Ragent**! Whether it’s bug fixes, new features, or improved docs, please:
+### 4. Custom Invocation Flows
 
-1. Fork this repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes (`git commit -m "Add feature"\`)
-4. Push to your fork (`git push origin feature/my-feature`)
-5. Open a Pull Request against `main`
+For advanced use cases like ReAct or Plan-and-Execute, you can override the agent's default invocation logic with your own asynchronous function or closure. This gives you complete control over the interaction loop between the user, the model, and the tools.
 
-Please ensure all tests pass (`cargo test`) and adhere to Rustfmt/style guidelines.
+```rust
+// you can create own functions as the flows for invoking an agent
+// when invoke_flow or invoke_flow_with_template is called,
+// this is the function that will override the default flow if the 
+// agent
+// Box::pin to make the agent clonable. You can return Ok(Message)
+// or Err(AgentError) from the fn
+fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
+    Box::pin(async move {
+        agent.history.push(Message::user(prompt));
+        let mut last_response = None;
+        // do your thing
+        for _ in 0..agent.max_iterations.unwrap_or(1) {
+            let response = invoke_without_tools(agent).await?;
+            agent.history.push(response.message.clone());
+            last_response = Some(response.message);
+        }
+        
+        Ok(last_response.unwrap())
+    })    
+}
 
----
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    init_default_tracing();
+    
+    let mut agent = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
+        .set_system_prompt("You are a helpful assistant.")
+        .set_flow(Flow::Custom(custom_flow)) // Set the custom flow
+        .set_max_iterations(3)
+        .build()
+        .await?;
 
-## License
+    let resp = agent.invoke_flow("What is the meaning of life?").await?;
+    println!("{:#?}", resp);
 
-Project is released under the MIT License. See [LICENSE](LICENSE) for details.
+    Ok(())
+}
+```
+
+### 5. Prompt Templating
+
+Define reusable prompt templates and populate them with data at invocation time. You can use a simple `HashMap` or implement a `TemplateDataSource` for dynamic values like the current date.
+
+```rust
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    init_default_tracing();
+    
+    // Define a template with placeholders
+    let template = Template::simple(r#"
+        Your name is {{name}}.
+        Answer the following question: {{question}}
+    "#);
+
+    let mut agent = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
+        .set_template(template)
+        .build()
+        .await?;
+
+    // Create a map with values for the placeholders
+    let prompt_data = HashMap::from([
+        ("name", "Gregor"),
+        ("question", "What is your name?")
+    ]);
+
+    // Use `invoke_flow_with_template` to run the agent with the data
+    let resp = agent.invoke_flow_with_template(prompt_data).await?;
+    println!("-> Agent: {}", resp.content.unwrap_or_default());
+
+    Ok(())
+}
+```

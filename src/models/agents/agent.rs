@@ -1,6 +1,8 @@
 use core::fmt;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use tokio_stream::wrappers::ReceiverStream;
 use futures::{stream::SelectAll, StreamExt};
 use serde_json::{Error, Value};
@@ -263,6 +265,21 @@ impl Agent {
         T: Into<String>,
     {
         self.execute_invocation(prompt.into()).await
+    }
+
+    #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
+    pub async fn invoke_flow_structured_output<T, O>(&mut self, prompt: T) -> Result<O, AgentError>
+    where
+        T: Into<String>,
+        O: DeserializeOwned
+    {
+        let response = self.execute_invocation(prompt.into()).await?;
+        let Some(json) = response.content else {
+            return Err(AgentError::RuntimeError("Agent did not produce answer".into()))
+        };
+        let out: O = serde_json::from_str(&json)
+            .map_err(|e| AgentError::Deserialization(e))?; 
+        Ok(out)
     }
 
     #[instrument(level = "debug", skip(self, template_data))]
