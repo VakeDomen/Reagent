@@ -8,34 +8,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
 
     // what do you want to happen when the model calls the function?
-    // Arcs and Boxes are needed to make the tool clonable
+    // Arcs and Boxes are needed to make the tool async and clonable
     let weather_exec: AsyncToolFn = {
         Arc::new(move |_model_args_json: Value| {
             Box::pin(async move {
                 // dummy functionality jsut returning a fixed JSON
+                // put your logic here
                 Ok(r#"
                 {
                     "windy": false,
                     "temperature": 18,
                     "description": "Partly cloudy"
                 }
-                "#.into())
+                "#.into()) // return Ok(String) or Err(AgentError)
             })
         })
     };
 
-
+    // consturct the tool
     let weather_tool = ToolBuilder::new()
         .function_name("get_current_weather")
         .function_description("Returns a weather forecast for a given location")
         .add_property("location", "string", "City name")
         .add_required_property("location")
+        // closure that triggers on tool use
         .executor(weather_exec)
         .build()?;
 
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         .set_system_prompt("You are a helpful assistant.")
+        // add the tool to agent
         .add_tool(weather_tool)
         .build()
         .await?;

@@ -4,10 +4,8 @@ use reagent::{init_default_tracing, prebuilds::{statefull::StatefullPrebuild, st
 
 
 const SCRAPER_AGENT_URL: &str = "http://localhost:8000/sse"; 
-const STAFF_AGENT_URL: &str = "http://localhost:8001/sse";
-const MEMORY_URL: &str = "http://localhost:8002/sse";
-const PROGRAMME_AGENT_URL: &str = "http://localhost:8003/sse";
-const RAG_SERVICE: &str = "http://localhost:8005/sse"; 
+const MEMORY_URL: &str = "npx -y @<something/memory>";
+const RAG_SERVICE: &str = "http://localhost:8001/mcp"; 
 
 
 #[tokio::main]
@@ -72,11 +70,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // and flows and not use prebuils as they may not be stable for your usecase and 
     // currently does not yet support overriding system prompts of sub-agents
     let mut plan_and_execute_agent = StatefullPrebuild::plan_and_execute()
-        .add_mcp_server(McpServerType::Sse(STAFF_AGENT_URL.into()))
-        .add_mcp_server(McpServerType::Sse(PROGRAMME_AGENT_URL.into()))
-        .add_mcp_server(McpServerType::Sse(SCRAPER_AGENT_URL.into()))
-        .add_mcp_server(McpServerType::Sse(MEMORY_URL.into()))
-        .add_mcp_server(McpServerType::Sse(RAG_SERVICE.into()))
+        .add_mcp_server(McpServerType::sse(SCRAPER_AGENT_URL))
+        .add_mcp_server(McpServerType::stdio(MEMORY_URL))
+        .add_mcp_server(McpServerType::streamable_http(RAG_SERVICE))
         .set_model("qwen3:30b")
         .build()
         .await?;

@@ -11,16 +11,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // if stream is set to true, the agent
         // will also return Token notifications
         .set_stream(true)
+        // when you use `build_with_notification` 
+        // instead of `build`, the AgentBuilder
+        // also returns a `Reviecer<Notification>`
+        // channel that you can use to recieve 
+        // notifications from the agent
         .build_with_notification()
         .await?;
 
-
+    // spawn an async task that counts the number of notification
+    // types recieved from the agent
     let handle = tokio::spawn(async move {
-        let mut counts: HashMap<&'static str, usize> = HashMap::new();
         println!("Counting...");
+        // store counts
+        let mut counts: HashMap<&'static str, usize> = HashMap::new();
 
         while let Some(msg) = notification_reciever.recv().await {
-
+            // map notification type
             let type_name = match msg.content {
                 NotificationContent::Done(_,_)=>"Done",
                 NotificationContent::PromptRequest(_)=>"PromptRequest",
@@ -44,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("No notifications were received.");
         } else {
             for (name, count) in counts {
-                println!("{name: <16}: {count}");
+                println!("{name}: {count}");
             }
         }
         println!("--------------------------\n");
