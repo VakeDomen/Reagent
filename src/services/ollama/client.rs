@@ -6,9 +6,13 @@ use futures::StreamExt;
 use tracing::{debug, error, info_span, trace, instrument, Instrument};
 use std::fmt;
 
-use crate::services::ollama::models::{chat::ChatStreamChunk, generate::GenerateStreamChunk};
+use crate::services::ollama::models::chat::ChatStreamChunk;
 
-use super::models::{chat::{ChatRequest, ChatResponse}, embedding::{EmbeddingsRequest, EmbeddingsResponse}, errors::OllamaError, generate::{GenerateRequest, GenerateResponse}};
+use super::models::{
+    chat::{ChatRequest, ChatResponse}, 
+    embedding::{EmbeddingsRequest, EmbeddingsResponse}, 
+    errors::OllamaError
+};
 
 
 /// The main client for interacting with the Ollama API.
@@ -29,11 +33,6 @@ impl OllamaClient {
             client: Client::new(),
             base_url,
         }
-    }
-
-    /// Creates a new `OllamaClient` with the default base URL ("http://localhost:11434").
-    pub fn default() -> Self {
-        Self::new("http://localhost:11434".to_string())
     }
 
     /// Executes a POST request to the specified Ollama API endpoint.
@@ -59,15 +58,11 @@ impl OllamaClient {
         T: serde::Serialize + fmt::Debug,
         R: DeserializeOwned + fmt::Debug,
     {
-        // Build full URL once so we can record it
         let url = format!("{}{}", self.base_url, endpoint);
-
-        // Attach a child span for the HTTP call itself
         let span = info_span!("http.request", %url);
         async {
             // debug!("{} {:?}", "sending request", serde_json::to_string(request_body));
 
-            // Perform the POST
             let response = self
                 .client
                 .post(&url)
@@ -79,35 +74,35 @@ impl OllamaClient {
             let status = response.status();
             debug!(%status, "received response");
 
-            // Successful status path
-            if status.is_success() {
-                let response_text = response
-                    .text()
-                    .await
-                    .map_err(|e| OllamaError::Api(format!("Failed to read response text: {e}")))?;
-
-                match serde_json::from_str::<R>(&response_text) {
-                    Ok(parsed) => {
-                        trace!(?parsed, "deserialized response");
-                        Ok(parsed)
-                    }
-                    Err(e) => {
-                        error!(%e, raw = %response_text, "deserialization error");
-                        Err(OllamaError::Serialization(format!(
-                            "Error decoding response body: {e}. Raw JSON was: '{response_text}'"
-                        )))
-                    }
-                }
-            } else {
+            if !status.is_success() {
                 let error_text = response
                     .text()
                     .await
                     .unwrap_or_else(|_| "Failed to read error body".into());
 
                 error!(%status, body = %error_text, "request failed");
-                Err(OllamaError::Api(format!(
+                
+                return Err(OllamaError::Api(format!(
                     "Request failed: {status} - {error_text}"
                 )))
+            }
+
+            let response_text = response
+                .text()
+                .await
+                .map_err(|e| OllamaError::Api(format!("Failed to read response text: {e}")))?;
+
+            match serde_json::from_str::<R>(&response_text) {
+                Ok(parsed) => {
+                    trace!(?parsed, "deserialized response");
+                    Ok(parsed)
+                }
+                Err(e) => {
+                    error!(%e, raw = %response_text, "deserialization error");
+                    Err(OllamaError::Serialization(format!(
+                        "Error decoding response body: {e}. Raw JSON was: '{response_text}'"
+                    )))
+                }
             }
         }
         .instrument(span)
@@ -142,7 +137,7 @@ impl OllamaClient {
 
         let byte_stream = resp.bytes_stream();
 
-        let s = try_stream! {
+        Ok(try_stream! {
             let mut buf = Vec::<u8>::new();
             tokio::pin!(byte_stream);
 
@@ -150,36 +145,29 @@ impl OllamaClient {
                 let chunk = chunk.map_err(|e| OllamaError::Request(e.to_string()))?;
                 buf.extend_from_slice(&chunk);
 
-                // split on LF – Ollama always sends \n-terminated JSON lines
-                while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-                    let line: Vec<u8> = buf.drain(..=pos).collect();
-                    let line = &line[..line.len() - 1]; // trim LF
-                    if line.is_empty() { continue; }    // heartbeat newline
+                // split on line feed – ollama always sends \n-terminated JSON lines
+                // yield chunk when line ends
+                while let Some(pos) = buf
+                    .iter()
+                    .position(|&b| b == b'\n') 
+                {
+                    let line: Vec<u8> = buf
+                        .drain(..=pos)
+                        .collect();
+
+                    let line = &line[..line.len() - 1]; // trim line feed
+                    
+                    if line.is_empty() { 
+                        continue; 
+                    }
 
                     let parsed: R = serde_json::from_slice(line)
                         .map_err(|e| OllamaError::Serialization(e.to_string()))?;
+
                     yield parsed;
                 }
             }
-        };
-
-        Ok(s)
-    }
-
-    /// Sends a generation request to the Ollama API.
-    ///
-    /// # Arguments
-    ///
-    /// * `request` - The `GenerateRequest` containing the model, prompt, and options.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` with the `GenerateResponse` or an `OllamaError`.
-    pub async fn generate(
-        &self,
-        request: GenerateRequest,
-    ) -> Result<GenerateResponse, OllamaError> {
-        self.post("/api/generate", &request).await
+        })
     }
 
     /// Sends a chat request to the Ollama API.
@@ -193,15 +181,6 @@ impl OllamaClient {
     /// A `Result` with the `ChatResponse` or an `OllamaError`.
     pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, OllamaError> {
         self.post("/api/chat", &request).await
-    }
-
-    pub async fn generate_stream(
-        &self,
-        mut req: GenerateRequest,
-    ) -> Result<impl Stream<Item = Result<GenerateStreamChunk, OllamaError>> + Send + 'static, OllamaError>
-    {
-        req.base.stream = Some(true);
-        self.post_stream("/api/generate", &req).await
     }
 
     pub async fn chat_stream(
@@ -231,20 +210,6 @@ impl OllamaClient {
         self.post("/api/embeddings", &request).await
     }
 
-
-    /// Checks if the Ollama server is running.
-    /// Corresponds to the `HEAD /` endpoint (we use GET for simplicity).
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing `true` if the server is up, or an `OllamaError`.
-    pub async fn heartbeat(&self) -> Result<bool, OllamaError> {
-        let url = &self.base_url;
-        match self.client.get(url).send().await {
-            Ok(response) => Ok(response.status().is_success()),
-            Err(e) => Err(OllamaError::Request(e.to_string())),
-        }
-    }
 }
 
 impl From<ReqwestError> for OllamaError {

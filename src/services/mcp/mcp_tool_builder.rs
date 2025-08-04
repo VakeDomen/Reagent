@@ -66,7 +66,7 @@ impl ClientHandler for AgentMcpHandler {
 #[instrument(level = "debug", skip(mcp_server_type, notification_channel))]
 pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel: Option<Sender<Notification>>) -> Result<Vec<Tool>, McpIntegrationError> {
     
-    let (mcp_client_arc, mcp_raw_tools) = match mcp_server_type {
+    let (mcp_client, mcp_raw_tools) = match mcp_server_type {
         McpServerType::Sse(url) => get_mcp_sse_tools(url, notification_channel).await?,
         McpServerType::StreamableHttp(url) => get_mcp_streamable_http_tools(url, notification_channel).await?,
         McpServerType::Stdio(command) => get_mcp_stdio_tools(command, notification_channel).await?,
@@ -83,43 +83,47 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
     for mcp_tool_def in mcp_raw_tools {
         
 
-        let client_for_executor = Arc::clone(&mcp_client_arc);
-        let action_name_for_executor = mcp_tool_def.name.clone();
+        let arc_mcp_client = Arc::clone(&mcp_client);
+        let tool_namme_cow = mcp_tool_def.name.clone();
 
 
+        // MCP tool executor closure
         let executor: AsyncToolFn = Arc::new(move |args: Value| {
-            let client_captured_arc = Arc::clone(&client_for_executor);
-            let action_name_captured = action_name_for_executor.clone().into_owned();
+            
+            let mcp_client_ref = Arc::clone(&arc_mcp_client);
+            let tool_name = tool_namme_cow.clone().into_owned();
+            
             Box::pin(async move {
-                let client_captured = client_captured_arc.lock().await;
-                match client_captured
+                let inner_mcp_client = mcp_client_ref.lock().await;
+
+                // call remote tool
+                let result = match inner_mcp_client
                     .call_tool(CallToolRequestParam {
-                        name: action_name_captured.clone().into(),
+                        name: tool_name.clone().into(),
                         arguments: serde_json::json!(args).as_object().cloned(),
                     })
                     .await
                 {
-                    Ok(result) => {
-                        let CallToolResult {content, is_error } = result;
-                        match (content, is_error) {
-                            (content, Some(true))  => {
-                                Err(ToolExecutionError::ExecutionFailed(format!("tool call failed, mcp call error: {content:#?}")))
-                            }
-                            (content, _) => {
-                                let mut out_result = "".to_string();
-                                for content in content.iter() {
-                                    if let Some(content_text) = content.as_text() {
-                                        out_result = format!("{}\n{}", out_result, content_text.text);
-                                    }
-                                }
-                                Ok(out_result.to_string())
-                            }
-                        }
-                    }
-                    Err(e) => Err(ToolExecutionError::ExecutionFailed(format!(
-                        "MCP tool '{action_name_captured}' execution failed: {e}"
+                    Ok(result) => result,
+                    Err(e) => return Err(ToolExecutionError::ExecutionFailed(format!(
+                        "MCP tool '{tool_name}' execution failed: {e}"
                     ))),
+                };
+
+                let CallToolResult {content, is_error } = result;
+
+                if let Some(true) = is_error {
+                    return Err(ToolExecutionError::ExecutionFailed(format!("tool call failed, mcp call error: {content:#?}")));
                 }
+
+                
+                let mut out_result = "".to_string();
+                for content in content.iter() {
+                    if let Some(content_text) = content.as_text() {
+                        out_result = format!("{}\n{}", out_result, content_text.text);
+                    }
+                }
+                Ok(out_result.to_string())
             })
         });
 
@@ -133,7 +137,9 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
             .function_name(tool_name)
             .function_description(tool_desciption)
             .executor(executor);
- 
+
+        // create tool description
+        
         let input_schema_json_obj: &JsonObject = &mcp_tool_def.input_schema;
 
         if let Some(Value::Object(properties_map)) = input_schema_json_obj.get("properties") {

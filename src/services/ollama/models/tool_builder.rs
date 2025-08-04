@@ -81,9 +81,9 @@ impl ToolBuilder {
     /// Adds a property to the function's parameters.
     ///
     /// # parameters
-    /// * `name` - The name of the property.
-    /// * `property_type` - The JSON schema type of the property (e.g., "string", "number", "boolean").
-    /// * `description` - A description of what the property represents.
+    /// - `name` - The name of the property.
+    /// - `property_type` - The JSON schema type of the property (e.g., "string", "number", "boolean").
+    /// - `description` - A description of what the property represents.
     pub fn add_property(
         mut self,
         name: impl Into<String>,
