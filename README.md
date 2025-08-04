@@ -1,6 +1,6 @@
 # Reagent 🦀
 
-Reagent is a Rust library for building, composing, and running Language Model (LLM) based agents. It provides a flexible and extensible framework for creating agents with custom tools, structured outputs, and complex invocation flows, designed with simplicity and composability in mind.
+Reagent is a Rust library for building, composing, and running LLM agents via Ollama. It provides a flexible and extensible framework for creating agents with custom tools, structured outputs, and complex invocation flows, designed with simplicity and composability in mind.
 
 Currently only works with [Ollama](https://ollama.com/).
 
