@@ -7,23 +7,23 @@ use serde_json::Value;
 async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
 
+    // what do you want to happen when the model calls the function?
+    // Arcs and Boxes are needed to make the tool clonable
     let weather_exec: AsyncToolFn = {
         Arc::new(move |_model_args_json: Value| {
             Box::pin(async move {
+                // dummy functionality jsut returning a fixed JSON
                 Ok(r#"
                 {
-                "type":"object",
-                "properties":{
-                    "windy":{"type":"boolean"},
-                    "temperature":{"type":"integer"},
-                    "description":{"type":"string"}
-                },
-                "required":["windy","temperature","description"]
+                    "windy": false,
+                    "temperature": 18,
+                    "description": "Partly cloudy"
                 }
                 "#.into())
             })
         })
     };
+
 
     let weather_tool = ToolBuilder::new()
         .function_name("get_current_weather")
@@ -44,9 +44,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
     let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
-
-    let resp = agent.invoke_flow("What do you remember?").await?;
     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
     Ok(())

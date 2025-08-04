@@ -1,84 +1,64 @@
 
-use std::{error::Error, sync::Arc};
-use tokio::sync::Mutex;
-use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, NotificationContent, ToolBuilder, ToolExecutionError};
-use serde_json::Value;
+use std::{collections::HashMap, error::Error};
+use reagent::{AgentBuilder, NotificationContent};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
-    let weather_agent = AgentBuilder::default()
-        .set_model("granite3-moe")
-        .set_system_prompt("/no_think \nYou make up weather info in JSON. You always say it's sowing")
-        .set_response_format(
-            r#"
-            {
-              "type":"object",
-              "properties":{
-                "windy":{"type":"boolean"},
-                "temperature":{"type":"integer"},
-                "description":{"type":"string"}
-              },
-              "required":["windy","temperature","description"]
-            }
-            "#,
-        )
-        .build()
-        .await?;
-
-    let weather_ref = Arc::new(Mutex::new(weather_agent));
-    let weather_exec: AsyncToolFn = {
-        let weather_ref = weather_ref.clone();
-        Arc::new(move |args: Value| {
-            let weather_ref = weather_ref.clone();
-            Box::pin(async move {
-                let mut agent = weather_ref.lock().await;
-                
-                let loc = args.get("location")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| ToolExecutionError::ArgumentParsingError("Missing 'location' argument".into()))?;
-
-                let prompt = format!("/no_think What is the weather in {loc}?");
-
-                let resp = agent.invoke_flow(prompt)
-                    .await
-                    .map_err(|e| ToolExecutionError::ExecutionFailed(e.to_string()))?;
-                Ok(resp.content.unwrap_or_default())
-            })
-        })
-    };
-
-    let weather_tool = ToolBuilder::new()
-        .function_name("get_current_weather")
-        .function_description("Returns a weather forecast for a given location")
-        .add_property("location", "string", "City name")
-        .add_required_property("location")
-        .executor(weather_exec)
-        .build()?;
 
     let (mut agent, mut notification_reciever) = AgentBuilder::default()
-        .set_model("qwen3:30b")
+        .set_model("qwen3:0.6b")
         .set_system_prompt("You are a helpful, assistant.")
-        .add_tool(weather_tool)
+        // if stream is set to true, the agent
+        // will also return Token notifications
+        .set_stream(true)
         .build_with_notification()
         .await?;
 
-    tokio::spawn(async move {
+
+    let handle = tokio::spawn(async move {
+        let mut counts: HashMap<&'static str, usize> = HashMap::new();
+        println!("Counting...");
+
         while let Some(msg) = notification_reciever.recv().await {
-            match msg.content {
-                NotificationContent::ToolCallRequest(notification)=>println!("Recieved tool call reuqest notification: {notification:#?}"),
-                NotificationContent::ToolCallSuccessResult(notification)=>println!("Recieved tool call Success notification: {notification:#?}"),
-                NotificationContent::ToolCallErrorResult(notification)=>println!("Recieved tool call Error notification: {notification:#?}"),
-                NotificationContent::Done(success, _) => println!("Done with generation: {success}"),
-                _ => ()
-            }
-  
+
+            let type_name = match msg.content {
+                NotificationContent::Done(_,_)=>"Done",
+                NotificationContent::PromptRequest(_)=>"PromptRequest",
+                NotificationContent::PromptSuccessResult(_)=>"PromptSuccessResult",
+                NotificationContent::PromptErrorResult(_)=>"PromptErrorResult",
+                NotificationContent::ToolCallRequest(_)=>"ToolCallRequest",
+                NotificationContent::ToolCallSuccessResult(_)=>"ToolCallSuccessResult",
+                NotificationContent::ToolCallErrorResult(_)=>"ToolCallErrorResult",
+                NotificationContent::McpToolNotification(_)=>"McpToolNotification",
+                NotificationContent::Token(_) => "Token",
+            };
+
+            // Increment the count for that type
+            *counts.entry(type_name).or_default() += 1;
+
         }
+
+        // This block runs after the channel closes (i.e., the agent is dropped).
+        println!("\n--- Notification Summary ---");
+        if counts.is_empty() {
+            println!("No notifications were received.");
+        } else {
+            for (name, count) in counts {
+                println!("{name: <16}: {count}");
+            }
+        }
+        println!("--------------------------\n");
     });
 
     let _resp = agent.invoke_flow("Say hello").await?;
     let _resp = agent.invoke_flow("What is the current weather in Koper?").await?;
     let _resp = agent.invoke_flow("What do you remember?").await?;
+
+    // dropping agent so the comm channel closes and the tokio thread desplays 
+    // the counts of notifications
+    drop(agent);
+
+    handle.await?;
 
     Ok(())
 }

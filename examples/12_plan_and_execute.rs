@@ -1,8 +1,7 @@
 
 use std::{collections::HashMap, error::Error};
-use crate::{init_default_tracing, models::{agents::flow::invocation_flows::{Flow, FlowFuture}, configs::{ModelConfig, OllamaConfig, PromptConfig}, AgentBuildError, AgentError}, prebuilds::{statefull::StatefullPrebuild, stateless::StatelessPrebuild}, util::{invocations::invoke_without_tools, templating::Template}, Agent, AgentBuilder, Message, Notification, NotificationContent, Value};
+use reagent::{init_default_tracing, models::{agents::flow::invocation_flows::{Flow, FlowFuture}, configs::{ModelConfig, OllamaConfig, PromptConfig}, AgentBuildError, AgentError}, prebuilds::{statefull::StatefullPrebuild, stateless::StatelessPrebuild}, util::{invocations::invoke_without_tools, templating::Template}, Agent, AgentBuilder, Message, Notification, NotificationContent, Value};
 use tokio::sync::mpsc::Receiver;
-use tracing::instrument;
 
 
 const PLAN_AND_EXECUTE_SYSTEM_PROMPT: &str = r#"You are a **Chief Analyst and Reporter Agent**. Your job is to turn an execution log into a clear, well‑structured report for the end user.
@@ -227,23 +226,51 @@ const EXECUTOR_SYSTEM_PROMPT: &str = r#"You are given a task and a set of tools.
 
     "#;
 
-impl StatefullPrebuild {
-    pub fn plan_and_execute() -> AgentBuilder {
-        // this is the builder for the top-level agent
-        StatefullPrebuild::reply_without_tools()
-            .set_temperature(0.7)
-            .set_min_p(0.0)
-            .set_top_p(0.8)
-            .set_top_k(20)
-            .set_max_iterations(3)
-            .set_system_prompt(PLAN_AND_EXECUTE_SYSTEM_PROMPT)
-            .set_flow(Flow::Custom(plan_and_execute_flow))
-            .set_name("Statefull_prebuild-plan_and_execute")
-    }
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    init_default_tracing();
+    
+    // build your agent
+    let (mut agent, mut notification_reciever) = plan_and_execute()
+        .build_with_notification()
+        .await?;
+
+    // build thread that will recieve notifications via the channel
+    tokio::spawn(async move {
+        while let Some(msg) = notification_reciever.recv().await {
+            match msg.content {
+                NotificationContent::Token(t)=>print!("{}", t.value),
+                _ => ()
+            }
+        }
+    });
+
+    // use it
+    let _resp = agent.invoke_flow("Say hello").await?;
+    let _resp = agent.invoke_flow("What is the current weather in Koper?").await?;
+    let _resp = agent.invoke_flow("What do you remember?").await?;
+
+    Ok(())
 }
 
-#[instrument(level = "debug", skip(agent, prompt))]
-fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
+
+
+
+pub fn plan_and_execute() -> AgentBuilder {
+    // this is the builder for the top-level agent
+    StatefullPrebuild::reply_without_tools()
+        .set_temperature(0.7)
+        .set_min_p(0.0)
+        .set_top_p(0.8)
+        .set_top_k(20)
+        .set_max_iterations(3)
+        .set_system_prompt(PLAN_AND_EXECUTE_SYSTEM_PROMPT)
+        .set_flow(Flow::Custom(plan_and_execute_flow))
+        .set_name("Statefull_prebuild-plan_and_execute")
+}
+
+
+pub fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {
 
         // ------ setup before agent flow loops ------ 
@@ -395,7 +422,7 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
     Ok(plan)
 }
 
-async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
     let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
     
@@ -446,7 +473,7 @@ async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Noti
 
 
 
-async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
     let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
     
@@ -481,7 +508,7 @@ async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<No
 
 
 
-async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
     let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
     
@@ -542,7 +569,7 @@ async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<No
 
 
 
-async fn create_executor_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+pub async fn create_executor_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
 
     AgentBuilder::default()
@@ -571,6 +598,3 @@ async fn extract_configurations(agent: &Agent) -> (OllamaConfig, ModelConfig, Pr
     };
     (ollama_config, model_config, prompt_config)
 }
-
-
-

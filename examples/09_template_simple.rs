@@ -6,9 +6,9 @@ struct MyCustomDataHolder {
     pub value: String,
 }
 
-impl From<MyCustomDataHolder> for String {
-    fn from(val: MyCustomDataHolder) -> Self {
-        val.value
+impl Into<String> for MyCustomDataHolder {
+    fn into(self) -> String {
+        self.value
     }
 }
 
@@ -17,36 +17,52 @@ async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
     
 
+    // you can define your prompt template
+    // the {{values}} will be replaced by your 
+    // values when prompted. 
     let template = Template::simple(r#"
     Yout name is {{name}}
     Answer the following question: {{question}}
     "#);
 
+    // build the agent
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         .set_template(template)
         .build()
         .await?;
 
-    let mut prompt_data = HashMap::new();
-    prompt_data.insert("name", "Gregor");
-    prompt_data.insert("question", "How do you do?");
+    // we won't pass the string as a prompt but HashMap of values
+    // the map is <K, V> where K and V are Into<String> so you can
+    // pass your own types
+    let prompt_data = HashMap::from([
+        ("name", "Gregor"),
+        ("question", "What's your name?")
+    ]);
 
-    let _ = agent.invoke_flow_with_template(prompt_data).await?;
-
-
-    let mut prompt_data = HashMap::new();
-    prompt_data.insert("name", MyCustomDataHolder { 
-        value: String::from("Peter") 
-    });
-    prompt_data.insert("question", MyCustomDataHolder { 
-        value: String::from("Can I fill template from custom structs?") 
-    });
-
-    let _ = agent.invoke_flow_with_template(prompt_data).await?;
+    // if you are using a template invoke the agent using
+    // invoke_flow_with_template instead invoke_flow
+    // you pass it the HashMap of values
+    let resp = agent.invoke_flow_with_template(prompt_data).await?;
+    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
 
-    println!("{:#?}", agent.history);
+
+    // ...custom structs that implement Into<String>
+    let name = MyCustomDataHolder { 
+        value: "Peter".into()
+    };
+    let question = MyCustomDataHolder { 
+        value: "What's your name?".into() 
+    };
+
+    let prompt_data = HashMap::from([
+        ("name", name),
+        ("question", question)
+    ]);
+
+    let resp = agent.invoke_flow_with_template(prompt_data).await?;
+    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
     Ok(())
 }

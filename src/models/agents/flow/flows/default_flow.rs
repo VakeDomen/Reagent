@@ -1,7 +1,7 @@
-use crate::{models::agents::flow::invocation_flows::{Flow, FlowFuture}, prebuilds::stateless::StatelessPrebuild, util::invocations::{call_tools, invoke}, Agent, AgentBuilder, Message};
+use crate::{models::agents::flow::invocation_flows::FlowFuture, util::invocations::{call_tools, invoke}, Agent, Message};
 
 
-fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
+pub fn default_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {
         agent.history.push(Message::user(prompt));
         let mut response = invoke(agent).await?;
@@ -15,12 +15,4 @@ fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
         agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
         Ok(response.message)
     })    
-}
-
-impl StatelessPrebuild {
-    pub fn call_tools_and_reply() -> AgentBuilder {
-        AgentBuilder::default()
-            .set_flow(Flow::Custom(custom_flow))
-            .set_name("Stateless_prebuild-call_tools_and_reply")
-    }
 }

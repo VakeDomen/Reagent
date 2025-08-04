@@ -7,7 +7,7 @@ use serde_json::{Error, Value};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::models::agents::flow::flows::simple_loop::simple_loop_invoke;
+use crate::models::agents::flow::flows::default_flow::default_flow;
 use crate::models::configs::{ModelConfig, OllamaConfig, PromptConfig};
 use crate::models::notification::NotificationContent;
 use crate::util::templating::Template;
@@ -301,7 +301,7 @@ impl Agent {
         }
 
         match flow_to_run {
-            InternalFlow::Default => simple_loop_invoke(self, prompt).await,
+            InternalFlow::Default => default_flow(self, prompt).await,
             InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
         }
     }

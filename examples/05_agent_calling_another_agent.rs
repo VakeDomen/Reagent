@@ -8,6 +8,13 @@ use serde_json::Value;
 async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
 
+    // agent 1 will be able to call agent 2 via a tool call
+    // we just pack invoking agent 2 into a tool and pass it to 
+    // the agent 1 on construction
+
+    // in this case the agent 2 (tool) will make-up some weather data
+
+
     // another agent inside a local tool
     let weather_agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")

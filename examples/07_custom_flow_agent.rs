@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
     
     let mut agent = AgentBuilder::default()
-        .set_model("qwen3:4b")
+        .set_model("qwen3:0.6b")
         .set_system_prompt("You are a helpful, assistant.")
         .set_flow(Flow::Custom(custom_flow))
         .build()

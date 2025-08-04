@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     
 
     let mut agent = AgentBuilder::default()
-        .set_model("qwen3:30b")
+        .set_model("qwen3:0.6b")
         .set_system_prompt("You are a helpful assistant.")
         .set_temperature(0.6)
         .set_num_ctx(2048) // lol

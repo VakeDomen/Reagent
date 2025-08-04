@@ -1,19 +1,10 @@
-use crate::{models::agents::flow::invocation_flows::{Flow, FlowFuture}, prebuilds::stateless::StatelessPrebuild, util::invocations::invoke_without_tools, Agent, AgentBuilder, Message};
-
-
-fn custom_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
-    Box::pin(async move {
-        agent.history.push(Message::user(prompt));
-        let response = invoke_without_tools(agent).await?;
-        agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
-        Ok(response.message)
-    })    
-}
+use crate::{models::agents::flow::{flows::reply_without_tools::reply_without_tools_flow, invocation_flows::{Flow, FlowFuture}}, prebuilds::stateless::StatelessPrebuild, util::invocations::invoke_without_tools, Agent, AgentBuilder, Message};
 
 impl StatelessPrebuild {
     pub fn reply_without_tools() -> AgentBuilder {
         AgentBuilder::default()
-            .set_flow(Flow::Custom(custom_flow))
-            .set_name("Stateless_prebuild-reply_without_tools")
+            .set_flow(Flow::Custom(reply_without_tools_flow))
+            .set_clear_history_on_invocation(true)
+            .set_name("Stateless-reply_without_tools")
     }
 }
