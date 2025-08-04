@@ -77,29 +77,29 @@ pub async fn call_model(
         .await;
 
     let raw = agent.ollama_client.chat(request).await;
-    match raw {
-        Ok(mut resp) => {
-            agent
-                .notify(NotificationContent::PromptSuccessResult(resp.clone()))
-                .await;
-
-            if agent.strip_thinking {
-                if let Some(content) = resp.message.content.clone() {
-                    if let Some(after) = content.split("</think>").nth(1) {
-                        resp.message.content = Some(after.to_string());
-                    }
-                }
-            }
-
-            Ok(resp)
-        }
+    let mut resp = match raw {
+        Ok(resp) => resp,
         Err(e) => {
             agent
                 .notify(NotificationContent::PromptErrorResult(e.to_string()))
                 .await;
-            Err(e.into())
+            return Err(e.into())
+        }
+    };
+
+    agent
+        .notify(NotificationContent::PromptSuccessResult(resp.clone()))
+        .await;
+
+    if agent.strip_thinking {
+        if let Some(content) = resp.message.content.clone() {
+            if let Some(after) = content.split("</think>").nth(1) {
+                resp.message.content = Some(after.to_string());
+            }
         }
     }
+
+    Ok(resp)
 }
 
 pub async fn call_model_streaming(
@@ -121,58 +121,60 @@ pub async fn call_model_streaming(
         }
     };
 
-
     pin_mut!(stream);  
 
     let mut full_content = None;
     let mut latest_message: Option<Message> = None;
     let mut tool_calls: Option<Vec<ToolCall>> = None;
-    let mut last_chunk: Option<ChatStreamChunk> = None;
+    let mut done_chunk: Option<ChatStreamChunk> = None;
 
     while let Some(chunk_res) = stream.next().await {
-        match chunk_res {
-            Ok(chunk) => {
-                if let Some(msg) = chunk.message.clone() {
-                    
-                    if let Some(calls) = msg.tool_calls.clone() {
-                        match tool_calls.as_mut() {
-                            Some(tool_call_vec) => tool_call_vec.extend(calls),
-                            None => tool_calls = Some(calls.clone()),
-                        }
-                    }
-
-                    if let Some(tok) = &msg.content {
-                        agent
-                            .notify(NotificationContent::Token(Token {tag: None, value: tok.clone()}))
-                            .await;
-                        match full_content.as_mut() {
-                            None => full_content = Some(tok.to_owned()),
-                            Some(content) => content.push_str(tok),
-                        }
-                    }
-
-                    latest_message = Some(msg);
-                }
-
-                if chunk.done { 
-                    last_chunk = Some(chunk); 
-                    break; 
-                }
-            }
+        let chunk = match chunk_res {
+            Ok(c) => c,
             Err(e) => {
                 agent
                     .notify(NotificationContent::PromptErrorResult(e.to_string()))
                     .await;
                 return Err(e.into());
             }
+        };
+
+        let Some(msg) = chunk.message.clone() else {
+            continue;
+        };
+                    
+        if let Some(calls) = msg.tool_calls.clone() {
+            match tool_calls.as_mut() {
+                Some(tool_call_vec) => tool_call_vec.extend(calls),
+                None => tool_calls = Some(calls.clone()),
+            }
+        }
+
+        if let Some(tok) = &msg.content {
+            agent
+                .notify(NotificationContent::Token(Token {tag: None, value: tok.clone()}))
+                .await;
+            match full_content.as_mut() {
+                None => full_content = Some(tok.to_owned()),
+                Some(content) => content.push_str(tok),
+            }
+        }
+
+        latest_message = Some(msg);
+
+        if chunk.done { 
+            done_chunk = Some(chunk); 
+            break; 
         }
     }
 
-    let Some(chunk) = last_chunk else {
+    let Some(chunk) = done_chunk else {
         return Err(OllamaError::Api("stream ended without a final `done` chunk".into()).into());
     };
 
-    let mut final_msg = latest_message.unwrap_or_else(|| Message::assistant(String::new()));
+    let mut final_msg = latest_message.unwrap_or_else(
+        || Message::assistant(String::new())
+    );
     final_msg.content = full_content;
     final_msg.tool_calls = tool_calls;
 
@@ -184,20 +186,23 @@ pub async fn call_model_streaming(
         }
     }
 
-
     let mut response = ChatResponse {
-        model:         chunk.model,
-        created_at:    chunk.created_at,
-        message:       final_msg,
-        done:          true,
-        done_reason:   chunk.done_reason,
-        total_duration:    chunk.total_duration,
-        load_duration:     chunk.load_duration,
-        prompt_eval_count: chunk.prompt_eval_count,
-        prompt_eval_duration: chunk.prompt_eval_duration,
-        eval_count:        chunk.eval_count,
-        eval_duration:     chunk.eval_duration,
+        model:                  chunk.model,
+        created_at:             chunk.created_at,
+        message:                final_msg,
+        done:                   chunk.done,
+        done_reason:            chunk.done_reason,
+        total_duration:         chunk.total_duration,
+        load_duration:          chunk.load_duration,
+        prompt_eval_count:      chunk.prompt_eval_count,
+        prompt_eval_duration:   chunk.prompt_eval_duration,
+        eval_count:             chunk.eval_count,
+        eval_duration:          chunk.eval_duration,
     };
+
+    agent
+        .notify(NotificationContent::PromptSuccessResult(response.clone()))
+        .await;
 
     if agent.strip_thinking {
         if let Some(content) = response.message.content.clone() {
@@ -207,22 +212,11 @@ pub async fn call_model_streaming(
         }
     }
 
-    agent
-        .notify(NotificationContent::PromptSuccessResult(response.clone()))
-        .await;
-
+    
     Ok(response)
 }
 
-/// For each `ToolCall` in `tool_calls`, attempts to find a matching
-/// `Tool` in `agent.tools`.  If found, invokes `tool.execute(...)`:
-/// on `Ok(v)`, emits `ToolCallSuccessResult` & returns a tool‐message;
-/// on `Err(e)`, emits `ToolCallErrorResult` & returns an error‐message.
-/// If no matching tool is found at all, returns a single `.tool(...)`
-/// message complaining that the tool is missing.
-///
-/// # Panics  
-/// Never panics; always returns at least one `Message::tool(...)`.
+
 pub async fn call_tools(
     agent: &Agent,
     tool_calls: &[ToolCall]
