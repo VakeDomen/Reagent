@@ -1,6 +1,6 @@
 
 use std::{collections::HashMap, error::Error, future::Future};
-use reagent::{init_default_tracing, util::templating::{Template, TemplateDataSource}, AgentBuilder};
+use reagent::{init_default_tracing, util::{Template, TemplateDataSource}, AgentBuilder};
 
 
 // sometimes you want to template values that should be generated on 

@@ -1,6 +1,11 @@
 use std::error::Error;
-use reagent::{init_default_tracing, models::{agents::flow::invocation_flows::{Flow, FlowFuture}}, Agent, AgentBuilder, Message};
-
+use reagent::{
+    init_default_tracing, 
+    flow_types::{Flow, FlowFuture}, 
+    Agent, 
+    AgentBuilder, 
+    Message 
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

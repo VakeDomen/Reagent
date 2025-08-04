@@ -1,2 +1,4 @@
-pub mod invocations;
-pub mod templating;
+pub mod notification;
+mod templating;
+
+pub use templating::{Template, TemplateDataSource};

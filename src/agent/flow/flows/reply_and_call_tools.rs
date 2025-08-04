@@ -1,4 +1,5 @@
-use crate::{models::agents::flow::invocation_flows::FlowFuture, util::invocations::{call_tools, invoke}, Agent, Message};
+use crate::{flow_types::FlowFuture, invocations::{call_tools, invoke}, Agent, Message};
+
 
 pub fn reply_and_call_tools_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {

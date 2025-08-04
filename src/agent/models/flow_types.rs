@@ -1,6 +1,6 @@
 use std::{fmt, future::Future, pin::Pin, sync::Arc};
 
-use crate::{models::AgentError, services::ollama::models::chat::ChatResponse, Agent, Message};
+use crate::{agent::models::error::AgentError, services::ollama::models::chat::ChatResponse, Agent, Message};
 
 
 pub type InvokeFn = for<'a> fn(&'a mut Agent, String) -> InvokeFuture<'a>;
@@ -32,7 +32,7 @@ pub enum Flow {
 /// the user defined flows to versions 
 /// understandable to the library.
 #[derive(Clone)]
-pub enum InternalFlow {
+pub(crate) enum InternalFlow {
   Default,
   Custom(FlowFn),
 }

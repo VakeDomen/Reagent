@@ -1,5 +1,9 @@
-pub mod invocation_flows;
-pub mod flows;
+mod flows;
+
+pub use flows::default_flow::default_flow;
+pub use flows::reply_and_call_tools::reply_and_call_tools_flow;
+pub use flows::reply_with_tools::reply_with_tools_flow;
+pub use flows::reply_without_tools::reply_without_tools_flow;
 
 
 #[cfg(test)]
@@ -10,7 +14,7 @@ mod tests {
     use serde_json::Value;
 
     use crate::{
-        models::notification::NotificationContent, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError
+        util::notification::NotificationContent, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError
     };
 
     #[tokio::test]

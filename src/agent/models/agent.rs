@@ -2,34 +2,35 @@ use core::fmt;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
 use tokio_stream::wrappers::ReceiverStream;
 use futures::{stream::SelectAll, StreamExt};
 use serde_json::{Error, Value};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::models::agents::flow::flows::default_flow::default_flow;
-use crate::models::configs::{ModelConfig, OllamaConfig, PromptConfig};
-use crate::models::notification::NotificationContent;
+use crate::agent::models::configs::{ModelConfig, OllamaConfig, PromptConfig};
+use crate::agent::models::error::{AgentBuildError, AgentError};
+use crate::flow::default_flow;
 use crate::services::ollama::models::base::{BaseRequest, OllamaOptions};
 use crate::services::ollama::models::chat::ChatRequest;
-use crate::util::templating::Template;
+use crate::util::notification::NotificationContent;
+use crate::util::Template;
 
-use crate::models::{AgentBuildError, AgentError};
 use crate::{
-    models::{agents::flow::invocation_flows::InternalFlow, notification::Notification}, 
+    flow_types::InternalFlow, 
+    util::notification::Notification, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
         ollama::{
             client::OllamaClient, 
             models::{
                 base::Message, 
-                tool::Tool}
+                tool::Tool
             }
-        }, 
-        McpServerType
-    };
+        }
+    }, 
+    McpServerType
+};
 
 
 #[derive(Clone)]

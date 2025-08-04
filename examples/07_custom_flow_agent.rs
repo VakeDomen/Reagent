@@ -2,8 +2,11 @@
 use std::error::Error;
 use reagent::{
     init_default_tracing, 
-    models::agents::flow::invocation_flows::{Flow, FlowFuture}, Agent, AgentBuilder, Message,
-    util::invocations::invoke_without_tools
+    flow_types::{Flow, FlowFuture}, 
+    invocations::invoke_without_tools, 
+    Agent, 
+    AgentBuilder, 
+    Message 
 };
 
 #[tokio::main]
