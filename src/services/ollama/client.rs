@@ -132,7 +132,7 @@ impl OllamaClient {
             .map_err(|e| OllamaError::Api(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(OllamaError::Api(format!("Request failed: {:#?}", resp)));
+            return Err(OllamaError::Api(format!("Request failed: {resp:#?}")));
         }
 
         let byte_stream = resp.bytes_stream();

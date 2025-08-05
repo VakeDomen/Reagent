@@ -1,5 +1,5 @@
 
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 use serde_json::Value;
 use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
@@ -399,7 +399,7 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
 
 async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     // define planner sub-agent's template
     let template = Template::simple(r#"
@@ -450,7 +450,7 @@ async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Noti
 
 async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     // define blueprint sub-agent's template
     let template = Template::simple(r#"
@@ -485,7 +485,7 @@ async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<No
 
 async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     
     // define replanner sub-agent's template
@@ -545,7 +545,7 @@ async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<No
 
 
 async fn create_executor_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
 
     AgentBuilder::default()
         // we transfer the settings set to the top-level agent

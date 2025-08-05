@@ -281,7 +281,7 @@ impl Agent {
             return Err(AgentError::RuntimeError("Agent did not produce answer".into()))
         };
         let out: O = serde_json::from_str(&json)
-            .map_err(|e| AgentError::Deserialization(e))?; 
+            .map_err(AgentError::Deserialization)?; 
         Ok(out)
     }
 
@@ -382,32 +382,32 @@ impl Agent {
 }
 
 
-impl Into<ChatRequest> for &Agent {
-    fn into(self) -> ChatRequest {
+impl From<&Agent> for ChatRequest {
+    fn from(val: &Agent) -> Self {
         let options = OllamaOptions {
-            num_ctx:            self.num_ctx,
-            repeat_last_n:      self.repeat_last_n,
-            repeat_penalty:     self.repeat_penalty,
-            temperature:        self.temperature,
-            seed:               self.seed,
-            stop:               self.stop.clone(),
-            num_predict:        self.num_predict,
-            top_k:              self.top_k,
-            top_p:              self.top_p,
-            min_p:              self.min_p,
-            presence_penalty:   self.presence_penalty,
-            frequency_penalty:  self.frequency_penalty,
+            num_ctx:            val.num_ctx,
+            repeat_last_n:      val.repeat_last_n,
+            repeat_penalty:     val.repeat_penalty,
+            temperature:        val.temperature,
+            seed:               val.seed,
+            stop:               val.stop.clone(),
+            num_predict:        val.num_predict,
+            top_k:              val.top_k,
+            top_p:              val.top_p,
+            min_p:              val.min_p,
+            presence_penalty:   val.presence_penalty,
+            frequency_penalty:  val.frequency_penalty,
         };
         ChatRequest {
             base: BaseRequest {
-                model:      self.model.clone(),
-                format:     self.response_format.clone(),
+                model:      val.model.clone(),
+                format:     val.response_format.clone(),
                 options:    Some(options),
-                stream:     Some(self.stream),
+                stream:     Some(val.stream),
                 keep_alive: Some("5m".to_string()),
             },
-            messages: self.history.clone(),
-            tools:    self.tools.clone(),
+            messages: val.history.clone(),
+            tools:    val.tools.clone(),
         }
     }
 }

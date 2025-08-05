@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // If you call `invoke_flow_structured_output` the agent will return your 
     // deserialized object
     let resp: MyWeatherOuput = agent.invoke_flow_structured_output("What is the current weather in Koper?").await?;
-    println!("\n-> Agent: {:#?}", resp);
+    println!("\n-> Agent: {resp:#?}");
 
     Ok(())
 }

@@ -7,9 +7,9 @@ struct MyCustomDataHolder {
     pub value: String,
 }
 
-impl Into<String> for MyCustomDataHolder {
-    fn into(self) -> String {
-        self.value
+impl From<MyCustomDataHolder> for String {
+    fn from(val: MyCustomDataHolder) -> Self {
+        val.value
     }
 }
 

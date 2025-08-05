@@ -130,7 +130,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
         let tool_name = mcp_tool_def.name.clone().into_owned();
         let tool_desciption = match mcp_tool_def.description {
             Some(d) => d.into_owned(),
-            None => return Err(McpIntegrationError::ToolConversionError("No description".to_string())),
+            None => return Err(McpIntegrationError::ToolConversion("No description".to_string())),
         };
 
         let mut tool_builer = ToolBuilder::new()
@@ -176,7 +176,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
 
         let created_tool = match tool_builer.build() {
             Ok(tool) => tool,
-            Err(e) => return Err(McpIntegrationError::ToolConversionError(e.to_string())),
+            Err(e) => return Err(McpIntegrationError::ToolConversion(e.to_string())),
         };
 
        
@@ -192,7 +192,7 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
 pub async fn get_mcp_sse_tools<T>(url: T, notification_channel: Option<Sender<Notification>>) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let transport = match  SseClientTransport::start(url.into()).await {
         Ok(t) => t,
-        Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+        Err(e) => return Err(McpIntegrationError::Connection(e.to_string())),
     };
     
     let handler = AgentMcpHandler {
@@ -201,12 +201,12 @@ pub async fn get_mcp_sse_tools<T>(url: T, notification_channel: Option<Sender<No
 
     let client = match handler.serve(transport).await {
         Ok(c) =>c,
-        Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+        Err(e) => return Err(McpIntegrationError::Connection(e.to_string())),
     };
 
     let tool_list = match client.list_tools(Default::default()).await {
         Ok(l) => l,
-        Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
+        Err(e) => return Err(McpIntegrationError::Discovery(e.to_string())),
     };
     Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }
@@ -219,8 +219,8 @@ pub async fn get_mcp_streamable_http_tools<T>(url: T, notification_channel: Opti
         agent_notification_tx: notification_channel,
     };
 
-    let client = handler.serve(transport).await.map_err(|e| McpIntegrationError::ConnectionError(e.to_string()))?;
-    let tool_list = client.list_tools(Default::default()).await.map_err(|e| McpIntegrationError::DiscoveryError(e.to_string()))?;
+    let client = handler.serve(transport).await.map_err(|e| McpIntegrationError::Connection(e.to_string()))?;
+    let tool_list = client.list_tools(Default::default()).await.map_err(|e| McpIntegrationError::Discovery(e.to_string()))?;
     
     Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }
@@ -231,7 +231,7 @@ pub async fn get_mcp_stdio_tools<T>(full_command: T, notification_channel: Optio
     let mut command_args = full_command_string.split(" ");
     let first = command_args.next();
     if first.is_none() {
-        return Err(McpIntegrationError::ConnectionError("Invalid command.".into()));
+        return Err(McpIntegrationError::Connection("Invalid command.".into()));
     }
     let transport = match TokioChildProcess::new(Command::new(first.unwrap()).configure(
         |cmd| {
@@ -241,7 +241,7 @@ pub async fn get_mcp_stdio_tools<T>(full_command: T, notification_channel: Optio
         },
     )) {
         Ok(t) =>t,
-        Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+        Err(e) => return Err(McpIntegrationError::Connection(e.to_string())),
     };
 
     let handler = AgentMcpHandler {
@@ -251,12 +251,12 @@ pub async fn get_mcp_stdio_tools<T>(full_command: T, notification_channel: Optio
     let client = match handler.serve(transport)
         .await {
             Ok(c) =>c,
-            Err(e) => return Err(McpIntegrationError::ConnectionError(e.to_string())),
+            Err(e) => return Err(McpIntegrationError::Connection(e.to_string())),
         };
 
     let tool_list = match client.list_tools(Default::default()).await {
         Ok(l) => l,
-        Err(e) => return Err(McpIntegrationError::DiscoveryError(e.to_string())),
+        Err(e) => return Err(McpIntegrationError::Discovery(e.to_string())),
     };
     Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }

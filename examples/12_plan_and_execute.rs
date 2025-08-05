@@ -252,10 +252,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // build thread that will recieve notifications via the channel
     tokio::spawn(async move {
         while let Some(msg) = notification_reciever.recv().await {
-            match msg.content {
-                NotificationContent::Token(t)=>print!("{}", t.value),
-                _ => ()
-            }
+            if let NotificationContent::Token(t) = msg.content { print!("{}", t.value) }
         }
     });
 
@@ -438,7 +435,7 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
 
 pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     // define planner sub-agent's template
     let template = Template::simple(r#"
@@ -489,7 +486,7 @@ pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<
 
 pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     // define blueprint sub-agent's template
     let template = Template::simple(r#"
@@ -524,7 +521,7 @@ pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receive
 
 pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     
     // define replanner sub-agent's template
@@ -584,7 +581,7 @@ pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receive
 
 
 pub async fn create_executor_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
-    let (ollama_config, model_config, prompt_config) = extract_configurations(&ref_agent).await;
+    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
 
     AgentBuilder::default()
         // we transfer the settings set to the top-level agent
