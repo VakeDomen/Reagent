@@ -8,6 +8,7 @@ use super::tool::ToolCall;
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
+    Developer,
     User,
     Assistant,
     Tool,
@@ -39,6 +40,10 @@ impl Message {
 
     pub fn system<T: Into<String>>(content: T) -> Self {
         Self::new(Role::System, content.into())
+    }
+
+    pub fn developer<T: Into<String>>(content: T) -> Self {
+        Self::new(Role::Developer, content.into())
     }
 
     pub fn user<T: Into<String>>(content: T) -> Self {
