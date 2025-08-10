@@ -1,8 +1,5 @@
 use crate::{flow::reply_and_call_tools_flow, flow_types::Flow, prebuilds::StatefullPrebuild, AgentBuilder};
 
-
-
-
 impl StatefullPrebuild {
     pub fn reply_and_call_tools() -> AgentBuilder {
         AgentBuilder::default()

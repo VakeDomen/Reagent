@@ -278,7 +278,7 @@ impl Agent {
     {
         let response = self.execute_invocation(prompt.into()).await?;
         let Some(json) = response.content else {
-            return Err(AgentError::RuntimeError("Agent did not produce answer".into()))
+            return Err(AgentError::RuntimeError("Agent did not produce content in response".into()))
         };
         let out: O = serde_json::from_str(&json)
             .map_err(AgentError::Deserialization)?; 
@@ -310,6 +310,40 @@ impl Agent {
         
 
         self.execute_invocation(prompt).await
+    }
+
+    #[instrument(level = "debug", skip(self, template_data))]
+    pub async fn invoke_flow_with_template_structured_output<K, V, O>(&mut self, template_data: HashMap<K, V>) -> Result<O, AgentError>
+    where
+        K: Into<String>,
+        V: Into<String>,
+        O: DeserializeOwned,
+    {
+        let Some(template) = &self.template else {
+            return Err(AgentError::RuntimeError("No template defined".into()));
+        };
+
+        let string_map: HashMap<String, String> = template_data
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+
+        let prompt = {
+            template
+                .lock()
+                .await
+                .compile(&string_map)
+                .await
+        };
+        
+
+        let response = self.execute_invocation(prompt).await?;
+        let Some(json) = response.content else {
+            return Err(AgentError::RuntimeError("Agent did not content in response".into()))
+        };
+        let out: O = serde_json::from_str(&json)
+            .map_err(AgentError::Deserialization)?; 
+        Ok(out)
     }
 
     #[instrument(level = "debug", skip(self, prompt))]
