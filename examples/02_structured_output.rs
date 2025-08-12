@@ -5,9 +5,9 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 struct MyWeatherOuput {
-  windy: bool,
-  temperature: i32,
-  description: String
+  _windy: bool,
+  _temperature: i32,
+  _description: String
 }
 
 #[tokio::main]

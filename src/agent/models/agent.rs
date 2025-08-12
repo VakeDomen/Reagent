@@ -260,7 +260,25 @@ impl Agent {
     } 
 
 
+    pub fn get_tool_ref_by_name<T>(
+        &self, 
+        name: T
+    ) -> Option<&Tool> 
+    where 
+        T: Into<String> 
+    {
+        let Some(tools) = self.tools.as_ref() else {
+            return None;
+        };
 
+        let name = name.into();
+        for tool in tools {
+            if tool.function.name.eq(&name) {
+                return Some(tool)
+            }
+        }
+        return None;
+    }
 
     #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
     pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
