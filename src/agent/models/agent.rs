@@ -296,7 +296,7 @@ impl Agent {
     {
         let response = self.execute_invocation(prompt.into()).await?;
         let Some(json) = response.content else {
-            return Err(AgentError::RuntimeError("Agent did not produce content in response".into()))
+            return Err(AgentError::Runtime("Agent did not produce content in response".into()))
         };
         let out: O = serde_json::from_str(&json)
             .map_err(AgentError::Deserialization)?; 
@@ -310,7 +310,7 @@ impl Agent {
         V: Into<String>,
     {
         let Some(template) = &self.template else {
-            return Err(AgentError::RuntimeError("No template defined".into()));
+            return Err(AgentError::Runtime("No template defined".into()));
         };
 
         let string_map: HashMap<String, String> = template_data
@@ -338,7 +338,7 @@ impl Agent {
         O: DeserializeOwned,
     {
         let Some(template) = &self.template else {
-            return Err(AgentError::RuntimeError("No template defined".into()));
+            return Err(AgentError::Runtime("No template defined".into()));
         };
 
         let string_map: HashMap<String, String> = template_data
@@ -357,7 +357,7 @@ impl Agent {
 
         let response = self.execute_invocation(prompt).await?;
         let Some(json) = response.content else {
-            return Err(AgentError::RuntimeError("Agent did not content in response".into()))
+            return Err(AgentError::Runtime("Agent did not content in response".into()))
         };
         let out: O = serde_json::from_str(&json)
             .map_err(AgentError::Deserialization)?; 

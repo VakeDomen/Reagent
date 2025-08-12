@@ -323,7 +323,7 @@ pub fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFu
 
         // if for some reason the blueprint was not created, throw a runtime error
         let Some(blueprint) = blueprint.content else {
-            return Err(AgentError::RuntimeError("Blueprint was not created".into()));
+            return Err(AgentError::Runtime("Blueprint was not created".into()));
         };
 
         // 2. plan
@@ -406,7 +406,7 @@ pub fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFu
             Ok(response.message)
         } else {
             agent.notify(crate::NotificationContent::Done(false, Some("Plan-and-Execute failed to produce a result.".into()))).await;
-            Err(AgentError::RuntimeError(
+            Err(AgentError::Runtime(
                 "Plan-and-Execute failed to produce a result.".into(),
             ))
         }
@@ -419,15 +419,15 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
     let original_plan_string = plan_response.content.clone().unwrap_or_default();
 
     let plan: Value = serde_json::from_str(&original_plan_string).map_err(|e| {
-        AgentError::RuntimeError(format!("Planner failed to return valid JSON: {e}"))
+        AgentError::Runtime(format!("Planner failed to return valid JSON: {e}"))
     })?;
 
     let plan = plan.get("steps").ok_or_else(|| {
-        AgentError::RuntimeError("JSON object is missing the required 'steps' key.".to_string())
+        AgentError::Runtime("JSON object is missing the required 'steps' key.".to_string())
     })?;
 
     let plan: Vec<String> = serde_json::from_value(plan.clone()).map_err(|e| {
-        AgentError::RuntimeError(format!("The 'steps' key is not a valid array of strings: {e}"))
+        AgentError::Runtime(format!("The 'steps' key is not a valid array of strings: {e}"))
     })?;
 
     Ok(plan)
