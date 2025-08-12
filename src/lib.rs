@@ -3,7 +3,13 @@ pub mod util;
 pub mod prebuilds;
 pub mod agent;
 
-pub use services::ollama::tool_builder::{ToolBuilder, ToolBuilderError};
+pub use services::ollama::tool_builder::{
+    ToolBuilder, 
+    ToolBuilderError
+};
+
+pub use services::ollama::models::tool::*;
+
 pub use agent::models::{
     agent_builder::AgentBuilder, 
     agent::Agent,
