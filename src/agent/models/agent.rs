@@ -13,12 +13,12 @@ use crate::agent::models::error::{AgentBuildError, AgentError};
 use crate::default_flow;
 use crate::services::ollama::models::base::{BaseRequest, OllamaOptions};
 use crate::services::ollama::models::chat::ChatRequest;
-use crate::util::notification::NotificationContent;
-use crate::util::Template;
+use crate::templates::Template;
+use crate::notifications::NotificationContent;
 
 use crate::{
     InternalFlow, 
-    util::notification::Notification, 
+    notifications::Notification, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
         ollama::{

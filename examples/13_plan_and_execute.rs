@@ -7,7 +7,7 @@ use reagent::{
     init_default_tracing,
     invocations::invoke_without_tools, 
     prebuilds::{StatefullPrebuild, StatelessPrebuild}, 
-    util::Template, 
+    templates::Template, 
     Agent, 
     AgentBuilder, 
     Message, 

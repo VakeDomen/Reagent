@@ -1,7 +1,7 @@
 
 use std::{collections::HashMap, error::Error};
 use reagent::{
-    init_default_tracing, util::Template, AgentBuilder 
+    init_default_tracing, templates::Template, AgentBuilder 
 };
 struct MyCustomDataHolder {
     pub value: String,

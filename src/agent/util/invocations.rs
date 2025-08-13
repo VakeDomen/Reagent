@@ -4,7 +4,7 @@ use crate::{
     services::ollama::models::{
         chat::{ChatRequest, ChatResponse, ChatStreamChunk}, 
         errors::OllamaError,
-    }, util::notification::Token, Agent, AgentError, InvokeFuture, Message, NotificationContent, ToolCall
+    }, notifications::Token, Agent, AgentError, InvokeFuture, Message, NotificationContent, ToolCall
 };
 
 pub fn invoke<'a>(

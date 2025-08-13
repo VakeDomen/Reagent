@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, Mutex};
 use crate::{
-    agent::models::{configs::{ModelConfig, OllamaConfig, PromptConfig}, error::AgentBuildError}, services::mcp::mcp_tool_builder::McpServerType, util::{notification::Notification, Template}, Agent, Flow, Tool
+    agent::models::{configs::{ModelConfig, OllamaConfig, PromptConfig}, error::AgentBuildError}, services::mcp::mcp_tool_builder::McpServerType, templates::Template, notifications::Notification, Agent, Flow, Tool
 };
 
 /// A builder for [`Agent`].
@@ -413,7 +413,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::{FlowFuture, util::notification::NotificationContent, Agent, AsyncToolFn, Message, ToolBuilder};
+    use crate::{FlowFuture, notifications::NotificationContent, Agent, AsyncToolFn, Message, ToolBuilder};
 
     #[tokio::test]
     async fn defaults_fail_without_model() {

@@ -1,4 +1,4 @@
-use crate::{util::Template, McpServerType, Tool};
+use crate::{templates::Template, McpServerType, Tool};
 
 
 #[derive(Debug, Clone, Default)]
