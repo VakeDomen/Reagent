@@ -68,8 +68,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let agent_b_tool = ToolBuilder::new()
         .function_name("get_current_weather")
         .function_description("Returns a weather forecast for a given location")
-        .add_property("location", "string", "City name")
-        .add_required_property("location")
+        .add_required_property("location", "string", "City name")
         .executor(weather_exec)
         .build()?;
 

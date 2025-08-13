@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{clone, collections::HashMap};
 
 use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
 
@@ -102,11 +102,21 @@ impl ToolBuilder {
 
     /// Marks a property as required for the function.
     /// The property must have been previously added using `add_property`.
-    pub fn add_required_property(mut self, name: impl Into<String>) -> Self {
-        // It's good practice to ensure the property exists before adding it to required,
-        // but for simplicity in the builder, we'll assume the user calls add_property first.
-        // Alternatively, the build method could validate this.
-        self.function_required.push(name.into());
+    pub fn add_required_property(
+        mut self, 
+        name: impl Into<String>,
+        property_type: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        let name = name.into();
+        self.function_properties.insert(
+            name.clone(),
+            Property {
+                property_type: property_type.into(),
+                description: description.into(),
+            },
+        );
+        self.function_required.push(name);
         self
     }
 
@@ -166,8 +176,7 @@ mod tests {
         let tool_result = ToolBuilder::new()
             .function_name("test_tool")
             .function_description("A tool for testing")
-            .add_property("param1", "string", "A string parameter")
-            .add_required_property("param1")
+            .add_required_property("param1", "string", "A string parameter")
             .executor(create_dummy_executor())
             .build();
 

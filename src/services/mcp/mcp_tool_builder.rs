@@ -148,28 +148,20 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
                     let property_type = prop_details
                         .get("type")
                         .and_then(Value::as_str)
-                        .unwrap_or("string") // Default to string if type not specified
+                        .unwrap_or("string")
                         .to_string();
                     
                     let description = prop_details
                         .get("description")
                         .and_then(Value::as_str)
-                        .unwrap_or("") // Default to empty string for description
+                        .unwrap_or("")
                         .to_string();
                     
-                    tool_builer = tool_builer.add_property(
-                        prop_name.clone(), // prop_name is &String from properties_map keys
+                    tool_builer = tool_builer.add_required_property(
+                        prop_name.clone(),
                         property_type,
                         description,
                     );
-                }
-            }
-        }
-
-        if let Some(Value::Array(required_array)) = input_schema_json_obj.get("required") {
-            for req_val in required_array {
-                if let Value::String(req_name) = req_val {
-                    tool_builer = tool_builer.add_required_property(req_name.clone());
                 }
             }
         }

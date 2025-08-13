@@ -19,7 +19,7 @@ pub type AsyncToolFn = Arc<
 >;
 
 /// A placeholder function for deserialization.
-/// It should panic if called, indicating a logic error where a tool was
+/// panic if called, indicating a logic error where a tool was
 /// deserialized but not properly re-initialized.
 fn default_executor() -> AsyncToolFn {
     Arc::new(|_| {
