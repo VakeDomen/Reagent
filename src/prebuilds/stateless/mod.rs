@@ -1,6 +1,6 @@
 pub mod reply_without_tools;
-pub mod reply_and_call_tools;
-pub mod reply_using_tools;
+pub mod call_tools;
+pub mod reply;
 
 
 pub struct StatelessPrebuild;

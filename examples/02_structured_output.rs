@@ -1,9 +1,10 @@
 
 use std::error::Error;
 use reagent::{init_default_tracing, AgentBuilder};
+use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 struct MyWeatherOuput {
   windy: bool,
   temperature: i32,
@@ -41,6 +42,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // If you call `invoke_flow_structured_output` the agent will return your 
     // deserialized object
+    let resp: MyWeatherOuput = agent.invoke_flow_structured_output("What is the current weather in Koper?").await?;
+    println!("\n-> Agent: {resp:#?}");
+
+    let mut agent = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
+        .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
+        // you can also use the schemars with serde to construct schema from struct
+        .set_response_format(serde_json::to_string_pretty(&schema_for!(MyWeatherOuput))?)
+        .build()
+        .await?;
+
     let resp: MyWeatherOuput = agent.invoke_flow_structured_output("What is the current weather in Koper?").await?;
     println!("\n-> Agent: {resp:#?}");
 

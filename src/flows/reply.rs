@@ -1,6 +1,6 @@
 use crate::{FlowFuture, invocations::invoke, Agent, Message};
 
-pub fn reply_with_tools_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
+pub fn reply_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {
         agent.history.push(Message::user(prompt));
         let response = invoke(agent).await?;

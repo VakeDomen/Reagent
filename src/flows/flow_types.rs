@@ -1,6 +1,7 @@
 use std::{fmt, future::Future, pin::Pin, sync::Arc};
 
-use crate::{agent::models::error::AgentError, services::ollama::models::chat::ChatResponse, Agent, Message};
+use crate::{services::ollama::models::chat::ChatResponse, Agent, AgentError, Message};
+
 
 
 pub type InvokeFn = for<'a> fn(&'a mut Agent, String) -> InvokeFuture<'a>;

@@ -1,4 +1,4 @@
-use crate::{FlowFuture, invocations::{call_tools, invoke}, Agent, Message};
+use crate::{invocations::{call_tools, invoke, invoke_without_tools}, Agent, FlowFuture, Message};
 
 pub fn default_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {
@@ -8,7 +8,7 @@ pub fn default_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> 
             for tool_msg in call_tools(agent, &tc).await {
                 agent.history.push(tool_msg);
             }
-            response = invoke(agent).await?;
+            response = invoke_without_tools(agent).await?;
         } 
 
         agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;

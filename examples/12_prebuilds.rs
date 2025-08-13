@@ -1,6 +1,6 @@
 
 use std::error::Error;
-use reagent::{init_default_tracing, prebuilds::{StatefullPrebuild, StatelessPrebuild}, McpServerType};
+use reagent::{init_default_tracing, prebuilds::{StatefullPrebuild, StatelessPrebuild}, AgentBuilder, McpServerType};
 
 
 const SCRAPER_AGENT_URL: &str = "http://localhost:8000/sse"; 
@@ -23,12 +23,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // and passing the message to the user. If the agent has access
     // to tools the message may contain tool calls but the user
     // has to invoke the actual tool themselves
-    let _ = StatelessPrebuild::reply_using_tools()
+    let _ = StatelessPrebuild::reply()
         .set_model("qwen3:0.6b")
         .build()
         .await?;
 
-    let _ = StatefullPrebuild::reply_using_tools()
+    let _ = StatefullPrebuild::reply()
         .set_model("qwen3:0.6b")
         .build()
         .await?;
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // simple agent whose flow is simply invoking the agent
     // and passing the message to the user. However even if
     // the agent has tools set, the request will not pass the
-    // tool calls. Returned is the message response of the 
+    // tool calls to the api. Returned is the message response of the 
     // assistant
     let _ = StatelessPrebuild::reply_without_tools()
         .set_model("qwen3:0.6b")
@@ -54,12 +54,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // however the agent will automatically invoke the tool calls.
     // if you use the StatefullPrebuild the history will not be reset
     // and the tool responses (Tool message) are pushed to the histroy
-    let _ = StatelessPrebuild::reply_and_call_tools()
+    let _ = StatelessPrebuild::call_tools()
         .set_model("qwen3:0.6b")
         .build()
         .await?;
 
-    let _ = StatefullPrebuild::reply_and_call_tools()
+    let _ = StatefullPrebuild::call_tools()
+        .set_model("qwen3:0.6b")
+        .build()
+        .await?;
+
+    // the default flow is a combination on call_tools and reply
+    // first the agent will be invoked normally. if the agent decides
+    // to call any tools, all tools will be invoked. The tools responses
+    // will be added to the histroy of the agent and the agent will be invoked
+    // again with reply_without_tools to respond with any summaries of the 
+    // tools
+    let _ = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         .build()
         .await?;
