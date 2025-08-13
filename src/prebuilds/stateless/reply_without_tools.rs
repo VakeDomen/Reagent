@@ -1,4 +1,4 @@
-use crate::{flow::reply_without_tools_flow, flow_types::Flow, prebuilds::StatelessPrebuild, AgentBuilder};
+use crate::{reply_without_tools_flow, Flow, prebuilds::StatelessPrebuild, AgentBuilder};
 
 impl StatelessPrebuild {
     pub fn reply_without_tools() -> AgentBuilder {

@@ -1,4 +1,4 @@
-use crate::{flow_types::FlowFuture, invocations::invoke_without_tools, Agent, Message};
+use crate::{FlowFuture, invocations::invoke_without_tools, Agent, Message};
 
 
 pub fn reply_without_tools_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {

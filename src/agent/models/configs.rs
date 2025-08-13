@@ -1,4 +1,4 @@
-use crate::{services::ollama::models::tool::Tool, util::Template, McpServerType};
+use crate::{util::Template, McpServerType, Tool};
 
 
 #[derive(Debug, Clone, Default)]

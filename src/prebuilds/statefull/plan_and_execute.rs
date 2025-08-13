@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
 
-use crate::{configs::{ModelConfig, OllamaConfig, PromptConfig}, error::{AgentBuildError, AgentError}, flow_types::{Flow, FlowFuture}, invocations::invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, util::Template, Agent, AgentBuilder, Message, Notification};
+use crate::{ModelConfig, OllamaConfig, PromptConfig, AgentBuildError, AgentError,Flow, FlowFuture, invocations::invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, util::Template, Agent, AgentBuilder, Message, Notification};
 
 
 const PLAN_AND_EXECUTE_SYSTEM_PROMPT: &str = r#"You are a **Chief Analyst and Reporter Agent**. Your job is to turn an execution log into a clear, well‑structured report for the end user.

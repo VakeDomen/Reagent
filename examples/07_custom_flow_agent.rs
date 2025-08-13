@@ -2,7 +2,8 @@
 use std::error::Error;
 use reagent::{
     init_default_tracing, 
-    flow_types::{Flow, FlowFuture}, 
+    Flow, 
+    FlowFuture, 
     invocations::invoke_without_tools, 
     Agent, 
     AgentBuilder, 

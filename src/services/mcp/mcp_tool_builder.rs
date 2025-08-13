@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::{process::Command, sync::{mpsc::Sender, Mutex}};
 use tracing::{info, instrument, trace};
 
-use crate::{services::ollama::models::tool::Tool, Notification, NotificationContent, ToolBuilder, ToolExecutionError};
+use crate::{Tool, Notification, NotificationContent, ToolBuilder, ToolExecutionError};
 
 use super::error::McpIntegrationError;
 use rmcp::{model::{CallToolRequestParam, CallToolResult, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceExt};

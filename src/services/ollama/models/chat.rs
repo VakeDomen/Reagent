@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{base::{BaseRequest, Message}, tool::Tool};
+use crate::{services::ollama::models::base::BaseRequest, Message, Tool};
 
 
 /// Request for the `/api/chat` endpoint.

@@ -1,11 +1,10 @@
 use futures::{pin_mut, StreamExt};
 
 use crate::{
-    agent::models::error::AgentError, flow_types::InvokeFuture, services::ollama::models::{
+    services::ollama::models::{
         chat::{ChatRequest, ChatResponse, ChatStreamChunk}, 
         errors::OllamaError,
-        tool::ToolCall
-    }, util::notification::Token, Agent, Message, NotificationContent
+    }, util::notification::Token, Agent, AgentError, InvokeFuture, Message, NotificationContent, ToolCall
 };
 
 pub fn invoke<'a>(

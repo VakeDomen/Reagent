@@ -1,4 +1,4 @@
-use crate::{flow_types::FlowFuture, invocations::{call_tools, invoke}, Agent, Message};
+use crate::{FlowFuture, invocations::{call_tools, invoke}, Agent, Message};
 
 pub fn default_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
     Box::pin(async move {

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::services::ollama::models::{chat::{ChatRequest, ChatResponse}, tool::ToolCall};
+use crate::{services::ollama::models::chat::{ChatRequest, ChatResponse}, ToolCall};
 
 pub type Success = bool;
 pub type Response = Option<String>;

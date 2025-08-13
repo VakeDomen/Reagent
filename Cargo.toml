@@ -34,4 +34,4 @@ async-stream  = "0.3"
 
 [dev-dependencies]
 futures = "0.3.31"
-
+schemars = { version = "0.8", features = ["derive_json_schema"] }
