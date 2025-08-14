@@ -15,7 +15,7 @@ pub struct MistralClient {
 
 impl MistralClient {
     pub fn new(cfg: ClientConfig) -> Result<Self, ModelClientError> {
-        Ok(Self { _cfg: cfg })
+       Err(ModelClientError::Unsupported("Mistral chat not implemented yet".into()))
     }
 
     pub async fn chat(&self, _req: ChatRequest) -> Result<ChatResponse, ModelClientError> {

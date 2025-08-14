@@ -15,10 +15,7 @@ pub struct OpenAiClient {
 
 impl OpenAiClient {
     pub fn new(cfg: ClientConfig) -> Result<Self, ModelClientError> {
-        if cfg.api_key.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
-            return Err(ModelClientError::Config("OpenAI requires api_key".into()));
-        }
-        Ok(Self { _cfg: cfg })
+        Err(ModelClientError::Unsupported("OpenAI chat not implemented yet".into()))
     }
 
     pub async fn chat(&self, _req: ChatRequest) -> Result<ChatResponse, ModelClientError> {

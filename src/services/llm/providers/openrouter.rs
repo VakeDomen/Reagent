@@ -15,7 +15,7 @@ pub struct OpenRouterClient {
 
 impl OpenRouterClient {
     pub fn new(cfg: ClientConfig) -> Result<Self, ModelClientError> {
-        Ok(Self { _cfg: cfg })
+        Err(ModelClientError::Unsupported("OpenRouter chat not implemented yet".into()))
     }
 
     pub async fn chat(&self, _req: ChatRequest) -> Result<ChatResponse, ModelClientError> {

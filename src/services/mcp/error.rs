@@ -1,17 +1,15 @@
 use std::fmt;
 
 
-// Custom error for MCP integration
 #[derive(Debug)]
 pub enum McpIntegrationError {
-    Sdk(rmcp::Error), // Assuming mcp_sdk::Error is a concrete type
+    Sdk(rmcp::Error),
     Connection(String),
     Discovery(String),
     ToolConversion(String),
     InvalidSchema(String),
 }
 
-// Implement Display for McpIntegrationError
 impl fmt::Display for McpIntegrationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -32,15 +30,10 @@ impl fmt::Display for McpIntegrationError {
     }
 }
 
-// Implement Error for McpIntegrationError
 impl std::error::Error for McpIntegrationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            McpIntegrationError::Sdk(e) => Some(e), // `e` must be 'static or live long enough
-            // Other variants currently don't wrap another error directly in a way
-            // that `source()` can return, unless their String content is from an error.
-            // If the String fields store error messages from other errors, you might not
-            // be able to return the original error object here without boxing or changing structure.
+            McpIntegrationError::Sdk(e) => Some(e),
             McpIntegrationError::Connection(_) => None,
             McpIntegrationError::Discovery(_) => None,
             McpIntegrationError::ToolConversion(_) => None,
@@ -49,8 +42,6 @@ impl std::error::Error for McpIntegrationError {
     }
 }
 
-// Implement From<mcp_sdk::Error> for McpIntegrationError for easy conversion (like `?` operator)
-// This replaces the `#[from]` attribute that `thiserror` provides.
 impl From<rmcp::Error> for McpIntegrationError {
     fn from(err: rmcp::Error) -> Self {
         McpIntegrationError::Sdk(err)

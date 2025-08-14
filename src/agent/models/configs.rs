@@ -1,12 +1,5 @@
 use crate::{templates::Template, McpServerType, Tool};
 
-
-// #[derive(Debug, Clone, Default)]
-// pub struct OllamaConfig {
-//     pub ollama_url: Option<String>
-// }
-
-
 #[derive(Debug, Clone, Default)]
 pub struct ModelConfig {
     pub model: Option<String>,
