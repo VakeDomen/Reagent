@@ -76,7 +76,7 @@ impl Agent {
     pub(crate) async fn try_new(
         name: String,
         model: &str,
-        client_config: Option<ClientConfig>,
+        client_config: ClientConfig,
         system_prompt: &str,
         local_tools: Option<Vec<Tool>>,
         response_format: Option<Value>,
@@ -110,9 +110,7 @@ impl Agent {
             name,
             model: model.into(),
             history,
-            model_client: ModelClient::try_new(
-                client_config.unwrap_or(ClientConfig::default())
-            )?,
+            model_client: ModelClient::try_from(client_config)?,
             response_format,
             system_prompt: system_prompt.into(),
             stop_prompt,
@@ -300,6 +298,7 @@ impl Agent {
         let Some(json) = response.content else {
             return Err(AgentError::Runtime("Agent did not produce content in response".into()))
         };
+        println!("{json}");
         let out: O = serde_json::from_str(&json)
             .map_err(AgentError::Deserialization)?; 
         Ok(out)

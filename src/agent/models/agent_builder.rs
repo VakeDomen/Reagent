@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{mpsc, Mutex};
 use crate::{
-    agent::models::{configs::{ModelConfig, PromptConfig}, error::AgentBuildError}, notifications::Notification, services::{llm::ClientConfig, mcp::mcp_tool_builder::McpServerType}, templates::Template, Agent, Flow, Tool
+    agent::models::{configs::{ModelConfig, PromptConfig}, error::AgentBuildError}, notifications::Notification, services::{llm::{client, ClientConfig, Provider}, mcp::mcp_tool_builder::McpServerType}, templates::Template, Agent, Flow, Tool
 };
 
 /// A builder for [`Agent`].
@@ -29,7 +29,12 @@ pub struct AgentBuilder {
     name: Option<String>,
     model: Option<String>,
 
-    client_config: Option<ClientConfig>,
+    // client_config: Option<ClientConfig>,
+    provider: Option<Provider>,
+    base_url: Option<String>,
+    api_key: Option<String>,
+    organization: Option<String>,
+    extra_headers: Option<HashMap<String, String>>,
     
     template: Option<Arc<Mutex<Template>>>,
     system_prompt: Option<String>,
@@ -65,7 +70,19 @@ pub struct AgentBuilder {
 impl AgentBuilder {
 
     pub fn import_client_config(mut self, conf: ClientConfig) -> Self {
-        self.client_config = Some(conf);
+        self = self.set_provider(conf.provider);
+        if let Some(base_url) = conf.base_url {
+            self = self.set_base_url(base_url);
+        }
+        if let Some(api_key) = conf.api_key {
+            self = self.set_api_key(api_key);
+        }
+        if let Some(organization) = conf.organization {
+            self = self.set_organization(organization);
+        }
+        if let Some(extra_headers) = conf.extra_headers {
+            self = self.set_extra_headers(extra_headers);
+        }
         self
     }
 
@@ -160,6 +177,32 @@ impl AgentBuilder {
         self
     }
 
+    pub fn set_provider(mut self, provider: Provider) -> Self {
+        self.provider = Some(provider);
+        self
+    }
+
+    pub fn set_base_url<T>(mut self, base_url: T) -> Self where T: Into<String> {
+        self.base_url = Some(base_url.into());
+        self
+    }
+
+    pub fn set_api_key<T>(mut self, api_key:  T) -> Self where T: Into<String> {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    pub fn set_organization<T>(mut self, organization:  T) -> Self where T: Into<String> {
+        self.organization = Some(organization.into());
+        self
+    }
+
+    pub fn set_extra_headers(mut self, extra_headers:HashMap<String, String>) -> Self {
+        self.extra_headers = Some(extra_headers);
+        self
+    }
+
+
     /// Set the streaming value for Ollam
     /// Will enable Token Notifications
     pub fn set_stream(mut self, set: bool) -> Self {
@@ -242,12 +285,6 @@ impl AgentBuilder {
     /// Select the underlying model name.
     pub fn set_model<T: Into<String>>(mut self, model: T) -> Self {
         self.model = Some(model.into());
-        self
-    }
-
-    /// URL of the Ollama service. Note port is set separately in `set_ollama_port`
-    pub fn set_ollama_endpoint<T: Into<String>>(mut self, url: T) -> Self {
-        // self.client_config = Some(url.into());
         self
     }
 
@@ -371,10 +408,27 @@ impl AgentBuilder {
 
         let stream = self.stream.unwrap_or(false);
 
+        let mut client_config = ClientConfig::default();
+        if let Some(provider) = self.provider {
+            client_config.provider = provider
+        }
+        if let Some(base_url) = self.base_url {
+            client_config.base_url = Some(base_url)
+        }
+        if let Some(api_key) = self.api_key {
+            client_config.api_key = Some(api_key)
+        }
+        if let Some(organization) = self.organization {
+            client_config.organization = Some(organization)
+        }
+        if let Some(extra_headers) = self.extra_headers {
+            client_config.extra_headers = Some(extra_headers)
+        }
+
         Agent::try_new(
             name,
             &model,
-            self.client_config,
+            client_config,
             &system_prompt,
             self.tools.clone(),
             response_format,

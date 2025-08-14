@@ -18,7 +18,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // defined inline
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
-
         // use Flow::new_closure to define the closture
         .set_flow(Flow::new_closure(move |_: &mut Agent, _prompt: String| -> FlowFuture<'_> {
             let api_key_clone = api_key.clone(); 

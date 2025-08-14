@@ -129,34 +129,33 @@ async fn call_model_streaming(
             }
         };
 
-        let Some(msg) = chunk.message.clone() else {
-            continue;
-        };
-                    
-        if let Some(calls) = msg.tool_calls.clone() {
-            match tool_calls.as_mut() {
-                Some(tool_call_vec) => tool_call_vec.extend(calls),
-                None => tool_calls = Some(calls.clone()),
-            }
+        if chunk.done {
+            done_chunk = Some(chunk);
+            break;
         }
 
-        if let Some(tok) = &msg.content {
-            agent
-                .notify(NotificationContent::Token(Token {tag: None, value: tok.clone()}))
-                .await;
-            match full_content.as_mut() {
-                None => full_content = Some(tok.to_owned()),
-                Some(content) => content.push_str(tok),
+        if let Some(msg) = &chunk.message {
+            if let Some(calls) = &msg.tool_calls {
+                match tool_calls.as_mut() {
+                    Some(tool_call_vec) => tool_call_vec.extend(calls.clone()),
+                    None => tool_calls = Some(calls.clone()),
+                }
             }
-        }
 
-        latest_message = Some(msg);
+            if let Some(tok) = &msg.content {
+                agent
+                    .notify(NotificationContent::Token(Token { tag: None, value: tok.clone() }))
+                    .await;
+                match full_content.as_mut() {
+                    None => full_content = Some(tok.to_owned()),
+                    Some(content) => content.push_str(tok),
+                }
+            }
 
-        if chunk.done { 
-            done_chunk = Some(chunk); 
-            break; 
+            latest_message = Some(msg.clone());
         }
     }
+
 
     let Some(chunk) = done_chunk else {
         return Err(ModelClientError::Api("stream ended without a final `done` chunk".into()).into());

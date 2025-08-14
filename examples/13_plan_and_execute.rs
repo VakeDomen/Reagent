@@ -3,7 +3,6 @@ use std::{collections::HashMap, error::Error};
 use reagent::{
     init_default_tracing, invocations::invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, templates::Template, Agent, AgentBuildError, AgentBuilder, AgentError, ClientConfig, Flow, FlowFuture, Message, ModelConfig, Notification, NotificationContent, PromptConfig, Value 
 };
-use rmcp::transport::sse_client::SseClientConfig;
 use tokio::sync::mpsc::Receiver;
 
 

@@ -51,21 +51,6 @@ pub struct ModelClient {
 }
 
 impl ModelClient {
-    pub fn try_new(cfg: ClientConfig) -> Result<Self, ModelClientError> {
-        let config = cfg.clone();
-        let inner = match cfg.provider {
-            Provider::Ollama => ClientInner::Ollama(OllamaClient::new(cfg)?),
-            Provider::OpenAi => ClientInner::OpenAi(OpenAiClient::new(cfg)?),
-            Provider::Mistral => ClientInner::Mistral(MistralClient::new(cfg)?),
-            Provider::Anthropic => ClientInner::Anthropic(AnthropicClient::new(cfg)?),
-            Provider::OpenRouter => ClientInner::OpenRouter(OpenRouterClient::new(cfg)?),
-        };
-        Ok(Self { 
-            config,
-            inner: Arc::new(inner) 
-        })
-    }
-
     pub fn get_config(&self) -> ClientConfig {
         self.config.clone()
     }
@@ -101,5 +86,24 @@ impl ModelClient {
             ClientInner::Anthropic(c) => c.embeddings(req).await,
             ClientInner::OpenRouter(c) => c.embeddings(req).await,
         }
+    }
+}
+
+impl TryFrom<ClientConfig> for ModelClient {
+    type Error = ModelClientError;
+
+    fn try_from(cfg: ClientConfig) -> Result<Self, Self::Error> {
+        let config = cfg.clone();
+        let inner = match cfg.provider {
+            Provider::Ollama => ClientInner::Ollama(OllamaClient::new(cfg)?),
+            Provider::OpenAi => ClientInner::OpenAi(OpenAiClient::new(cfg)?),
+            Provider::Mistral => ClientInner::Mistral(MistralClient::new(cfg)?),
+            Provider::Anthropic => ClientInner::Anthropic(AnthropicClient::new(cfg)?),
+            Provider::OpenRouter => ClientInner::OpenRouter(OpenRouterClient::new(cfg)?),
+        };
+        Ok(Self { 
+            config,
+            inner: Arc::new(inner) 
+        })
     }
 }
