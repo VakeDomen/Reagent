@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{services::ollama::models::chat::{ChatRequest, ChatResponse}, ToolCall};
+use crate::{services::llm::models::chat::{ChatRequest, ChatResponse}, ToolCall};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

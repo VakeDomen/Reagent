@@ -1,20 +1,9 @@
 
 use std::{collections::HashMap, error::Error};
 use reagent::{
-    ModelConfig, OllamaConfig, PromptConfig, 
-    AgentBuildError, AgentError, 
-    Flow, FlowFuture, 
-    init_default_tracing,
-    invocations::invoke_without_tools, 
-    prebuilds::{StatefullPrebuild, StatelessPrebuild}, 
-    templates::Template, 
-    Agent, 
-    AgentBuilder, 
-    Message, 
-    Notification, 
-    NotificationContent, 
-    Value 
+    init_default_tracing, invocations::invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, templates::Template, Agent, AgentBuildError, AgentBuilder, AgentError, ClientConfig, Flow, FlowFuture, Message, ModelConfig, Notification, NotificationContent, PromptConfig, Value 
 };
+use rmcp::transport::sse_client::SseClientConfig;
 use tokio::sync::mpsc::Receiver;
 
 
@@ -435,7 +424,7 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
 
 pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
+    let (client_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     // define planner sub-agent's template
     let template = Template::simple(r#"
@@ -452,7 +441,7 @@ pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<
     // not allowed to use tools for the base
     StatelessPrebuild::reply_without_tools()
         // we transfer the settings set to the top-level agent
-        .import_ollama_config(ollama_config)
+        .import_client_config(client_config)
         .import_model_config(model_config)
         .import_prompt_config(prompt_config)
         // set custom name of the sub-agent for 
@@ -486,7 +475,7 @@ pub async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<
 
 pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
+    let (client_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     // define blueprint sub-agent's template
     let template = Template::simple(r#"
@@ -503,7 +492,7 @@ pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receive
     // not allowed to use tools for the base
     StatelessPrebuild::reply_without_tools()
         // we transfer the settings set to the top-level agent
-        .import_ollama_config(ollama_config)
+        .import_client_config(client_config)
         .import_model_config(model_config)
         .import_prompt_config(prompt_config)
         // set custom name of the sub-agent for 
@@ -521,7 +510,7 @@ pub async fn create_blueprint_agent(ref_agent: &Agent) -> Result<(Agent, Receive
 
 pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
-    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
+    let (client_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
     
     
     // define replanner sub-agent's template
@@ -548,7 +537,7 @@ pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receive
     // not allowed to use tools for the base
     StatelessPrebuild::reply_without_tools()
         // we transfer the settings set to the top-level agent
-        .import_ollama_config(ollama_config)
+        .import_client_config(client_config)
         .import_model_config(model_config)
         .import_prompt_config(prompt_config)
         // set custom name of the sub-agent for 
@@ -581,11 +570,11 @@ pub async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receive
 
 
 pub async fn create_executor_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
-    let (ollama_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
+    let (client_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
 
     AgentBuilder::default()
         // we transfer the settings set to the top-level agent
-        .import_ollama_config(ollama_config)
+        .import_client_config(client_config)
         .import_model_config(model_config)
         .import_prompt_config(prompt_config)
         // set custom name of the sub-agent for 
@@ -599,13 +588,13 @@ pub async fn create_executor_agent(ref_agent: &Agent) -> Result<(Agent, Receiver
 }
 
 
-async fn extract_configurations(agent: &Agent) -> (OllamaConfig, ModelConfig, PromptConfig) {
-    let ollama_config = agent.export_ollama_config();
+async fn extract_configurations(agent: &Agent) -> (ClientConfig, ModelConfig, PromptConfig) {
+    let client_config = agent.export_client_config();
     let model_config = agent.export_model_config();
     let prompt_config = if let Ok(c) = agent.export_prompt_config().await {
         c
     } else {
         PromptConfig::default()
     };
-    (ollama_config, model_config, prompt_config)
+    (client_config, model_config, prompt_config)
 }

@@ -1,10 +1,7 @@
 use futures::{pin_mut, StreamExt};
 
 use crate::{
-    services::ollama::models::{
-        chat::{ChatRequest, ChatResponse, ChatStreamChunk}, 
-        errors::OllamaError,
-    }, notifications::Token, Agent, AgentError, InvokeFuture, Message, NotificationContent, ToolCall
+    notifications::Token, services::llm::{models::chat::{ChatRequest, ChatResponse, ChatStreamChunk}, ModelClientError}, Agent, AgentError, InvokeFuture, Message, NotificationContent, ToolCall
 };
 
 pub fn invoke<'a>(
@@ -70,7 +67,7 @@ async fn call_model_nonstreaming(
         .notify(NotificationContent::PromptRequest(request.clone()))
         .await;
 
-    let raw = agent.ollama_client.chat(request).await;
+    let raw = agent.model_client.chat(request).await;
     let mut resp = match raw {
         Ok(resp) => resp,
         Err(e) => {
@@ -104,7 +101,7 @@ async fn call_model_streaming(
         .notify(NotificationContent::PromptRequest(request.clone()))
         .await;
 
-    let stream = match agent.ollama_client.chat_stream(request).await {
+    let stream = match agent.model_client.chat_stream(request).await {
         Ok(s)  => s,
         Err(e) => {
             agent
@@ -162,7 +159,7 @@ async fn call_model_streaming(
     }
 
     let Some(chunk) = done_chunk else {
-        return Err(OllamaError::Api("stream ended without a final `done` chunk".into()).into());
+        return Err(ModelClientError::Api("stream ended without a final `done` chunk".into()).into());
     };
 
     let mut final_msg = latest_message.unwrap_or_else(

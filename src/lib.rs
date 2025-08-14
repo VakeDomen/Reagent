@@ -14,7 +14,8 @@ pub use agent::*;
 pub use notifications::{Notification, NotificationContent};
 pub use services::mcp::mcp_tool_builder::McpServerType;
 pub use serde_json::*;
-pub use services::ollama::models::base::{Message, Role};
+pub use services::llm::models::base::{Message, Role};
+pub use services::llm::ClientConfig;
 pub use services::logging::init_default_tracing;
 
 pub use agent::invocations;

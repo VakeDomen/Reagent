@@ -1,8 +1,8 @@
-use crate::{services::{mcp::error::McpIntegrationError, ollama::models::errors::OllamaError}, ToolExecutionError};
+use crate::{services::{mcp::error::McpIntegrationError, llm::models::errors::ModelClientError}, ToolExecutionError};
 
 #[derive(Debug)]
 pub enum AgentError {
-    Ollama(OllamaError),
+    ModelClient(ModelClientError),
     AgentBuild(AgentBuildError),
     Mcp(McpIntegrationError),
     Runtime(String),
@@ -14,7 +14,7 @@ pub enum AgentError {
 impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AgentError::Ollama(e) => write!(f, "Ollama API Error: {e}"),
+            AgentError::ModelClient(e) => write!(f, "ModelClientError API Error: {e}"),
             AgentError::AgentBuild(agent_build_error) => write!(f, "Agent Build Error: {agent_build_error}"),
             AgentError::Mcp(mcp_integration_error) => write!(f, "Mcp Error: {mcp_integration_error}"),
             AgentError::Runtime(s) => write!(f, "Runtime error: {s}"),
@@ -27,7 +27,7 @@ impl std::fmt::Display for AgentError {
 impl std::error::Error for AgentError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            AgentError::Ollama(e) => Some(e),
+            AgentError::ModelClient(e) => Some(e),
             AgentError::AgentBuild(agent_build_error) => Some(agent_build_error),
             AgentError::Mcp(mcp_integration_error) => Some(mcp_integration_error),
             AgentError::Runtime(_) => Some(self),
@@ -37,9 +37,9 @@ impl std::error::Error for AgentError {
     }
 }
 
-impl From<OllamaError> for AgentError {
-    fn from(err: OllamaError) -> Self {
-        AgentError::Ollama(err)
+impl From<ModelClientError> for AgentError {
+    fn from(err: ModelClientError) -> Self {
+        AgentError::ModelClient(err)
     }
 }
 
@@ -66,6 +66,7 @@ impl From<ToolExecutionError> for AgentError {
 pub enum AgentBuildError {
     InvalidJsonSchema(String),
     McpError(McpIntegrationError),
+    ModelClient(ModelClientError),
     ModelNotSet
 }
 
@@ -75,7 +76,16 @@ impl std::fmt::Display for AgentBuildError {
             AgentBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {e}"),
             AgentBuildError::ModelNotSet => write!(f, "Model not set."),
             AgentBuildError::McpError(e) => write!(f, "Mcp error: {e}"),
+            AgentBuildError::ModelClient(e) => write!(f, "ModelClient error: {e}"),
         }
     }
 }
+
+impl From<ModelClientError> for AgentBuildError {
+    fn from(err: ModelClientError) -> Self {
+        AgentBuildError::ModelClient(err)
+    }
+}
+
+
 impl std::error::Error for AgentBuildError {}

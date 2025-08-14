@@ -8,11 +8,12 @@ use serde_json::{Error, Value};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::agent::models::configs::{ModelConfig, OllamaConfig, PromptConfig};
+use crate::agent::models::configs::{ModelConfig, PromptConfig};
 use crate::agent::models::error::{AgentBuildError, AgentError};
 use crate::default_flow;
-use crate::services::ollama::models::base::{BaseRequest, OllamaOptions};
-use crate::services::ollama::models::chat::ChatRequest;
+use crate::services::llm::models::base::{BaseRequest};
+use crate::services::llm::models::chat::ChatRequest;
+use crate::services::llm::{ClientConfig, InferenceOptions, ModelClient};
 use crate::templates::Template;
 use crate::notifications::NotificationContent;
 
@@ -21,8 +22,7 @@ use crate::{
     notifications::Notification, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
-        ollama::{
-            client::OllamaClient, 
+        llm::{
             models::{
                 base::Message, 
             }
@@ -45,7 +45,7 @@ pub struct Agent {
     pub tools: Option<Vec<Tool>>,
 
     pub response_format: Option<Value>,
-    pub(crate) ollama_client: OllamaClient,
+    pub(crate) model_client: ModelClient,
 
     pub system_prompt: String,
     pub stop_prompt: Option<String>,
@@ -76,7 +76,7 @@ impl Agent {
     pub(crate) async fn try_new(
         name: String,
         model: &str,
-        ollama_host: &str,
+        client_config: Option<ClientConfig>,
         system_prompt: &str,
         local_tools: Option<Vec<Tool>>,
         response_format: Option<Value>,
@@ -110,7 +110,9 @@ impl Agent {
             name,
             model: model.into(),
             history,
-            ollama_client: OllamaClient::new(ollama_host.to_string()),
+            model_client: ModelClient::try_new(
+                client_config.unwrap_or(ClientConfig::default())
+            )?,
             response_format,
             system_prompt: system_prompt.into(),
             stop_prompt,
@@ -379,8 +381,8 @@ impl Agent {
     }
 
 
-    pub fn export_ollama_config(&self) -> OllamaConfig {
-        OllamaConfig { ollama_url: Some(self.ollama_client.base_url.clone()) }
+    pub fn export_client_config(&self) -> ClientConfig {
+        self.model_client.get_config()
     }
 
     pub fn export_model_config(&self) -> ModelConfig {
@@ -436,7 +438,7 @@ impl Agent {
 
 impl From<&Agent> for ChatRequest {
     fn from(val: &Agent) -> Self {
-        let options = OllamaOptions {
+        let options = InferenceOptions {
             num_ctx:            val.num_ctx,
             repeat_last_n:      val.repeat_last_n,
             repeat_penalty:     val.repeat_penalty,
@@ -449,6 +451,7 @@ impl From<&Agent> for ChatRequest {
             min_p:              val.min_p,
             presence_penalty:   val.presence_penalty,
             frequency_penalty:  val.frequency_penalty,
+            max_tokens:         None,
         };
         ChatRequest {
             base: BaseRequest {
@@ -472,7 +475,7 @@ impl fmt::Debug for Agent {
             .field("history", &self.history)
             .field("local_tools", &self.local_tools)
             .field("response_format", &self.response_format)
-            .field("ollama_client", &self.ollama_client)
+            .field("model_client", &self.model_client)
             .field("system_prompt", &self.system_prompt)
             .field("stop_prompt", &self.stop_prompt)
             .field("stopword", &self.stopword)

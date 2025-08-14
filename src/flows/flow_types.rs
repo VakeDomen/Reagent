@@ -1,6 +1,6 @@
 use std::{fmt, future::Future, pin::Pin, sync::Arc};
 
-use crate::{services::ollama::models::chat::ChatResponse, Agent, AgentError, Message};
+use crate::{services::llm::models::chat::ChatResponse, Agent, AgentError, Message};
 
 
 

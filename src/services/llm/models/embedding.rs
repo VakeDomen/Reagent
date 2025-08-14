@@ -1,8 +1,5 @@
 use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
-
-
 
 #[derive(Serialize, Debug, Clone)]
 pub struct EmbeddingsRequest {
@@ -14,7 +11,6 @@ pub struct EmbeddingsRequest {
     pub keep_alive: Option<String>,
 }
 
-/// Response from the `/api/embeddings` endpoint.
 #[derive(Deserialize, Debug, Clone)]
 pub struct EmbeddingsResponse {
     pub embedding: Vec<f64>,

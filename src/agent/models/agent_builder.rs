@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, Mutex};
 use crate::{
-    agent::models::{configs::{ModelConfig, OllamaConfig, PromptConfig}, error::AgentBuildError}, services::mcp::mcp_tool_builder::McpServerType, templates::Template, notifications::Notification, Agent, Flow, Tool
+    agent::models::{configs::{ModelConfig, PromptConfig}, error::AgentBuildError}, notifications::Notification, services::{llm::ClientConfig, mcp::mcp_tool_builder::McpServerType}, templates::Template, Agent, Flow, Tool
 };
 
 /// A builder for [`Agent`].
@@ -29,7 +29,7 @@ pub struct AgentBuilder {
     name: Option<String>,
     model: Option<String>,
 
-    ollama_url: Option<String>,
+    client_config: Option<ClientConfig>,
     
     template: Option<Arc<Mutex<Template>>>,
     system_prompt: Option<String>,
@@ -64,10 +64,8 @@ pub struct AgentBuilder {
 
 impl AgentBuilder {
 
-    pub fn import_ollama_config(mut self, conf: OllamaConfig) -> Self {
-        if let Some(endpoint) = conf.ollama_url {
-            self = self.set_ollama_endpoint(endpoint);
-        }
+    pub fn import_client_config(mut self, conf: ClientConfig) -> Self {
+        self.client_config = Some(conf);
         self
     }
 
@@ -249,7 +247,7 @@ impl AgentBuilder {
 
     /// URL of the Ollama service. Note port is set separately in `set_ollama_port`
     pub fn set_ollama_endpoint<T: Into<String>>(mut self, url: T) -> Self {
-        self.ollama_url = Some(url.into());
+        // self.client_config = Some(url.into());
         self
     }
 
@@ -345,7 +343,7 @@ impl AgentBuilder {
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
         let model = self.model.ok_or(AgentBuildError::ModelNotSet)?;
-        let ollama_url = self.ollama_url.unwrap_or_else(|| "http://localhost:11434".into());
+        // let ollama_url = self.ollama_url.unwrap_or_else(|| "http://localhost:11434".into());
         let system_prompt = self.system_prompt.unwrap_or_else(|| "You are a helpful agent.".into());
         let strip_thinking = self.strip_thinking.unwrap_or(true);
         let clear_histroy_on_invoke = self.clear_histroy_on_invoke.unwrap_or(false);
@@ -373,10 +371,10 @@ impl AgentBuilder {
 
         let stream = self.stream.unwrap_or(false);
 
-        Ok(Agent::try_new(
+        Agent::try_new(
             name,
             &model,
-            &ollama_url,
+            self.client_config,
             &system_prompt,
             self.tools.clone(),
             response_format,
@@ -402,7 +400,7 @@ impl AgentBuilder {
             self.template,
             self.max_iterations,
             clear_histroy_on_invoke,
-        ).await)?
+        ).await
     }
 }
 
