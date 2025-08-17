@@ -14,7 +14,7 @@ pub struct AnthropicClient {
 }
 
 impl AnthropicClient {
-    pub fn new(cfg: ClientConfig) -> Result<Self, ModelClientError> {
+    pub fn new(_cfg: ClientConfig) -> Result<Self, ModelClientError> {
         Err(ModelClientError::Unsupported("Anthropic chat not implemented yet".into()))
     }
 

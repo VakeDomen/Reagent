@@ -267,9 +267,7 @@ impl Agent {
     where 
         T: Into<String> 
     {
-        let Some(tools) = self.tools.as_ref() else {
-            return None;
-        };
+        let tools = self.tools.as_ref()?;
 
         let name = name.into();
         for tool in tools {
@@ -277,7 +275,7 @@ impl Agent {
                 return Some(tool)
             }
         }
-        return None;
+        None
     }
 
     #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]

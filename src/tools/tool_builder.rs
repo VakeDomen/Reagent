@@ -1,4 +1,4 @@
-use std::{clone, collections::HashMap};
+use std::collections::HashMap;
 
 use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
 

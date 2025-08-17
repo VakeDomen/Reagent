@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "location": "Koper",
     })).await?;
 
-    println!("Direct tool call response: {:#?}", tool_response);
+    println!("Direct tool call response: {tool_response:#?}");
 
 
 
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "location": "Koper",
     })).await?;
 
-    println!("Extracted tool call response: {:#?}", tool_response);
+    println!("Extracted tool call response: {tool_response:#?}");
 
     Ok(())
 }

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{mpsc, Mutex};
 use crate::{
-    agent::models::{configs::{ModelConfig, PromptConfig}, error::AgentBuildError}, notifications::Notification, services::{llm::{client, ClientConfig, Provider}, mcp::mcp_tool_builder::McpServerType}, templates::Template, Agent, Flow, Tool
+    agent::models::{configs::{ModelConfig, PromptConfig}, error::AgentBuildError}, notifications::Notification, services::{llm::{ClientConfig, Provider}, mcp::mcp_tool_builder::McpServerType}, templates::Template, Agent, Flow, Tool
 };
 
 /// A builder for [`Agent`].

@@ -17,7 +17,7 @@ struct MyWeatherOuput {
 async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
     
-    let agent = AgentBuilder::default()
+    let _agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         // ollama is set as default you don't 
         // actually have to set it
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let agent = AgentBuilder::default()
+    let _agent = AgentBuilder::default()
         .set_model("mistralai/mistral-small-3.2-24b-instruct:free")
         // Currently open router is the only one
         // supported outside of ollama

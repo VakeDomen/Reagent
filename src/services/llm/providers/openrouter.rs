@@ -2,7 +2,7 @@ use std::pin::Pin;
 use futures::{Stream, StreamExt};
 use reqwest::{header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE}, Client};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, instrument};
+use tracing::{debug, instrument};
 
 use crate::services::llm::client::{ClientConfig};
 use crate::services::llm::models::base::{InferenceOptions, Message, Role};
@@ -28,7 +28,7 @@ impl OpenRouterClient {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", api_key))
+            HeaderValue::from_str(&format!("Bearer {api_key}"))
                 .map_err(|e| ModelClientError::Config(format!("Invalid api_key header: {e}")))?,
         );
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -36,9 +36,9 @@ impl OpenRouterClient {
         if let Some(extra) = cfg.extra_headers {
             for (k, v) in extra.into_iter() {
                 let name = HeaderName::from_bytes(k.as_bytes())
-                    .map_err(|_| ModelClientError::Config(format!("Invalid header name: {}", k)))?;
+                    .map_err(|_| ModelClientError::Config(format!("Invalid header name: {k}")))?;
                 let value = HeaderValue::from_str(&v)
-                    .map_err(|_| ModelClientError::Config(format!("Invalid header value for {}", k)))?;
+                    .map_err(|_| ModelClientError::Config(format!("Invalid header value for {k}")))?;
                 headers.insert(name, value);
             }
         }
@@ -114,7 +114,7 @@ impl OpenRouterClient {
         let or: OrChatResponse = serde_json::from_str(&text)
             .map_err(|e| ModelClientError::Serialization(format!("decode error: {e}; raw: {text}")))?;
 
-        let message = or.choices.get(0)
+        let message = or.choices.first()
             .map(|c| Message {
                 role: Role::Assistant,
                 content: Some(c.message.content.clone()),
@@ -129,7 +129,7 @@ impl OpenRouterClient {
             created_at: or.created.to_string(),
             message,
             done: true,
-            done_reason: or.choices.get(0).and_then(|c| c.finish_reason.clone()),
+            done_reason: or.choices.first().and_then(|c| c.finish_reason.clone()),
             total_duration: None,
             load_duration: None,
             prompt_eval_count: None,
@@ -159,7 +159,6 @@ impl OpenRouterClient {
         let byte_stream = resp.bytes_stream();
         let s = try_stream! {
             let mut buf = Vec::<u8>::new();
-            let mut saw_done = false;
             futures::pin_mut!(byte_stream);
 
             while let Some(chunk) = byte_stream.next().await {
@@ -176,7 +175,6 @@ impl OpenRouterClient {
                     let data = line[5..].trim();
 
                     if data.contains("[DONE]") {
-                        saw_done = true;
                         yield ChatStreamChunk {
                             model: String::new(),
                             created_at: String::new(),
@@ -204,7 +202,7 @@ impl OpenRouterClient {
                     };
 
                     let mut out_msg: Option<Message> = None;
-                    if let Some(choice) = parsed.choices.get(0) {
+                    if let Some(choice) = parsed.choices.first() {
                         if let Some(content) = choice.delta.content.clone() {
                             out_msg = Some(Message::assistant(content));
                         }
@@ -226,21 +224,19 @@ impl OpenRouterClient {
                 }
             }
 
-            if !saw_done {
-                yield ChatStreamChunk {
-                    model: String::new(),
-                    created_at: String::new(),
-                    message: None,
-                    done: true,
-                    done_reason: Some("eof".into()),
-                    total_duration: None,
-                    load_duration: None,
-                    prompt_eval_count: None,
-                    prompt_eval_duration: None,
-                    eval_count: None,
-                    eval_duration: None,
-                };
-            }
+            yield ChatStreamChunk {
+                model: String::new(),
+                created_at: String::new(),
+                message: None,
+                done: true,
+                done_reason: Some("eof".into()),
+                total_duration: None,
+                load_duration: None,
+                prompt_eval_count: None,
+                prompt_eval_duration: None,
+                eval_count: None,
+                eval_duration: None,
+            };
         };
 
         Ok(Box::pin(s))
@@ -385,24 +381,24 @@ struct OrChoice {
 
 #[derive(Deserialize)]
 struct OrChatResponse {
-    id: String,
+    _id: String,
     created: u64,
     model: String,
     choices: Vec<OrChoice>,
 }
 
 #[derive(Deserialize)]
-struct OrDelta { role: Option<String>, content: Option<String> }
+struct OrDelta { _role: Option<String>, content: Option<String> }
 
 #[derive(Deserialize)]
 struct OrDeltaChoice { 
     delta: OrDelta, 
-    finish_reason: Option<String> 
+    _finish_reason: Option<String> 
 }
 
 #[derive(Deserialize)]
 struct OrStreamChunk { 
-    id: String, 
+    _id: String, 
     created: u64, 
     model: String, 
     choices: Vec<OrDeltaChoice> 
