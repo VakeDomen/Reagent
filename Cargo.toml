@@ -1,16 +1,17 @@
 [package]
 name = "reagent"
-version = "0.1.8"
+version = "0.2.0"
 edition = "2021"
-description = "A minimal-abstraction Rust library for building Ollama-powered AI agents with MCP & custom tools"
-license = "MIT OR Apache-2.0"
+rust-version = "1.74"
+description = "A Rust library for building AI agents with MCP & custom tools"
+license = "MIT"
 repository = "https://github.com/VakeDomen/reagent"
 documentation = "https://docs.rs/reagent"
-homepage = "https://github.com/VakeDomen/reagent#readme"
+homepage = "https://github.com/VakeDomen/reagent"
 readme = "README.md"
-keywords = ["llm", "ollama", "agent", "rust", "mcp", "tool-calling"]
-categories = ["machine-learning", "asynchronous", "network-programming"]
 include = ["src/**", "Cargo.toml", "README.md", "LICENSE*"]
+keywords = ["llm", "ollama", "agent", "mcp", "tool-calling"]
+categories = ["asynchronous", "network-programming", "machine-learning"]
 
 [dependencies]
 reqwest = { version = "0.12.18", features = ["json"] }

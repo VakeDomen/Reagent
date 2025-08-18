@@ -2,7 +2,13 @@
 
 Reagent is a Rust library for building and running AI agents that interact with LLMs. It abstracts away provider-specific details (currently supports [Ollama](https://ollama.com) and [OpenRouter](https://openrouter.ai)), provides a consistent API for prompting, structured outputs, and tool use, and allows you to define fully custom invocation flows.
 
-At the moment, Reagent is not published on crates.io. You can use it by pulling directly from GitHub:
+You can add the library to your project by pulling from crates:
+
+```bash
+cargo add reagent
+```
+
+or directly from github:
 
 ```toml
 [dependencies]
