@@ -11,7 +11,7 @@ homepage = "https://github.com/VakeDomen/reagent"
 readme = "README.md"
 include = ["src/**", "Cargo.toml", "README.md", "LICENSE*"]
 keywords = ["llm", "ollama", "agent", "mcp", "tool-calling"]
-categories = ["asynchronous", "network-programming", "machine-learning"]
+categories = ["asynchronous", "network-programming", "api-bindings"]
 
 [dependencies]
 reqwest = { version = "0.12.18", features = ["json"] }
