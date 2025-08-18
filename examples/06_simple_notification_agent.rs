@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         while let Some(msg) = notification_reciever.recv().await {
             // map notification type
             let type_name = match msg.content {
-                NotificationContent::Done(_,_)=>"Done",
+                NotificationContent::Done(_,_)=>{print!("{:#?}", msg); "Done"},
                 NotificationContent::PromptRequest(_)=>"PromptRequest",
                 NotificationContent::PromptSuccessResult(_)=>"PromptSuccessResult",
                 NotificationContent::PromptErrorResult(_)=>"PromptErrorResult",

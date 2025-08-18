@@ -575,11 +575,10 @@ mod tests {
             .notification_channel
             .as_ref()
             .unwrap()
-            .send(Notification{
-                agent: "test".to_string()    ,
-                content: NotificationContent::Done(false, None),
-                mcp_envelope: None,
-            })
+            .send(Notification::new(
+                "test".to_string()    ,
+                NotificationContent::Done(false, None),
+            ))
             .await
             .unwrap();
         let notified = rx.recv().await.unwrap();

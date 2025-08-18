@@ -168,7 +168,10 @@ impl Agent {
             return false;
         }
         let notification_channel = self.notification_channel.as_ref().unwrap();
-        match notification_channel.send(Notification { agent: self.name.clone(), content, mcp_envelope: None }).await {
+        match notification_channel.send(Notification::new( 
+            self.name.clone(), 
+            content, 
+        )).await {
             Ok(_) => true,
             Err(e) => {
                 tracing::error!(error = %e, "Failed sending notification");
@@ -428,8 +431,6 @@ impl Agent {
             stream: self.stream
         })
     }
-
-
 }
 
 

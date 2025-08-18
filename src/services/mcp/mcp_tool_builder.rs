@@ -49,11 +49,10 @@ impl ClientHandler for AgentMcpHandler {
         let notification_string = serde_json::to_string(&params)
             .unwrap_or_else(|e| format!("Failed to serialize MCP notification: {e}"));
 
-        let agent_notification = Notification { 
-            agent: "MCP".to_string(), 
-            content: NotificationContent::McpToolNotification(notification_string),
-            mcp_envelope: None,
-        }.unwrap();
+        let agent_notification = Notification::new(
+            "MCP".to_string(), 
+            NotificationContent::McpToolNotification(notification_string),
+        ).unwrap();
 
         if tx.send(agent_notification).await.is_err() {
             tracing::warn!("Agent notification channel closed. Cannot forward MCP notification.");
