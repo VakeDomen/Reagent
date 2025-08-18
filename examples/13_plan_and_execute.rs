@@ -590,10 +590,8 @@ pub async fn create_executor_agent(ref_agent: &Agent) -> Result<(Agent, Receiver
 async fn extract_configurations(agent: &Agent) -> (ClientConfig, ModelConfig, PromptConfig) {
     let client_config = agent.export_client_config();
     let model_config = agent.export_model_config();
-    let prompt_config = if let Ok(c) = agent.export_prompt_config().await {
-        c
-    } else {
-        PromptConfig::default()
-    };
+    let prompt_config = agent.export_prompt_config()
+        .await
+        .unwrap_or_default();
     (client_config, model_config, prompt_config)
 }
