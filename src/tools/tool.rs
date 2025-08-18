@@ -12,6 +12,10 @@ pub enum ToolType {
     Function,
 }
 
+/// Signature for an asynchronous tool executor function.
+///
+/// Accepts a JSON [`Value`] of arguments and produces a `String` result
+/// or a [`ToolExecutionError`] if execution fails.
 pub type AsyncToolFn = Arc<
     dyn Fn(Value) -> Pin<Box<dyn Future<Output = Result<String, ToolExecutionError>> + Send>>
         + Send
@@ -89,16 +93,25 @@ pub struct Property {
     pub description: String,
 }
 
+
 /// Represents a tool call requested by the model.
+///
+/// Tool calls reference a function name and include JSON arguments.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
+    /// Optional identifier for the tool call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// The type of the tool (defaults to [`ToolType::Function`]).
+    ///
+    /// Some providers omit this field, so a default is supplied.
     #[serde(default = "default_tool_call_type", skip_serializing_if = "is_default_tool_call_type")]
     #[serde(rename = "type")]
     pub tool_type: ToolType,
+    /// Function being called.
     pub function: ToolCallFunction,
 }
+
 
 // Helper function to provide a default ToolType if it's missing in the JSON
 // This is used if your Ollama version consistently omits the "type" field in the tool_call object.

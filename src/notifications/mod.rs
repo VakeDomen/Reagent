@@ -2,6 +2,6 @@ mod notification;
 mod notiifcation_content;
 
 pub use self::{
-    notification::Notification,
+    notification::*,
     notiifcation_content::*
 };

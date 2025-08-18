@@ -8,18 +8,26 @@ use crate::{
 /// A builder for [`Agent`].
 ///
 /// Allows configuration of model, endpoint, tools, penalties, flow, etc.
-/// All methods take `self` and return `Self`, so you can chain calls.
-///
-/// # Examples
-///
-/// ```rust
-/// let agent = AgentBuilder::default()
-///     .set_model("qwen3:0.6b")
-///     .set_system_prompt("Be concise")
-///     .strip_thinking(false)
-///     .build()
-///     .await?;
+/// Uses the builder pattern so you can chain calls.
+/// 
+/// Example:
+/// 
 /// ```
+/// async {
+///     let mut agent = AgentBuilder::default()
+///         // model must be set, everything else has 
+///         // defualts and is optional
+///         .set_model("qwen3:0.6b")
+///         .set_system_prompt("You are a helpful assistant.")
+///         .set_temperature(0.6)
+///         .set_num_ctx(2048)
+///         // call build to return the agent
+///         .build()
+///         .await?;
+/// };
+/// 
+/// ```
+/// 
 #[derive(Debug, Default)]
 pub struct AgentBuilder {
     /// Name used for logging and defaults

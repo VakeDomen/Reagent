@@ -3,10 +3,14 @@ use std::collections::HashMap;
 use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
 
 
+/// Errors that can occur while building a [`Tool`] with [`ToolBuilder`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolBuilderError {
+    /// Missing function name (`function_name` is required).
     MissingFunctionName,
+    /// Missing function description (`function_description` is required).
     MissingFunctionDescription,
+    /// Missing executor function (`executor` is required).
     MissingExecutor,
 }
 
@@ -23,6 +27,28 @@ impl std::fmt::Display for ToolBuilderError {
 impl std::error::Error for ToolBuilderError {}
 
 
+/// Builder pattern for constructing a [`Tool`].
+///
+/// Example:
+/// ```rust
+/// use reagent::tools::{ToolBuilder, Tool};
+/// use std::sync::Arc;
+/// use serde_json::Value;
+///
+/// let tool = ToolBuilder::new()
+///     .function_name("echo")
+///     .function_description("Echoes back the input string")
+///     .add_required_property("text", "string", "The text to echo")
+///     .executor(Arc::new(|args: Value| {
+///         Box::pin(async move {
+///             Ok(format!("Echo: {}", args["text"]))
+///         })
+///     }))
+///     .build()
+///     .unwrap();
+///
+/// assert_eq!(tool.function.name, "echo");
+/// ```
 #[derive(Default)]
 pub struct ToolBuilder {
     tool_type: Option<ToolType>,

@@ -10,23 +10,39 @@ use super::error::McpIntegrationError;
 use rmcp::{model::{CallToolRequestParam, CallToolResult, JsonObject}, service::RunningService, transport::{ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess}, ClientHandler, ServiceExt};
 use crate::AsyncToolFn;
 
-
+/// Defines the type of MCP server the agent can connect to.
+/// 
+/// This allows the agent to communicate with external tools
+/// over different transports:
+/// - `Sse` for Server-Sent Events
+/// - `Stdio` for a child process over standard I/O
+/// - `StreamableHttp` for HTTP transport with streaming
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum McpServerType {
+    /// Connect via Server-Sent Events at the provided URL.
     Sse(String),
+    /// Spawn and connect to a process over stdin/stdout pipes.
     Stdio(String),
-    StreamableHttp(String)
+    /// Connect via a streaming HTTP endpoint.
+    StreamableHttp(String),
 }
 
 impl McpServerType {
+    /// Creates an SSE-based MCP server type with the given URL.
     pub fn sse<S: Into<String>>(url: S) -> Self { McpServerType::Sse(url.into()) }
+    
+    /// Creates an stdio-based MCP server type with the given command.
     pub fn stdio<S: Into<String>>(cmd: S) -> Self { McpServerType::Stdio(cmd.into()) }
+    
+    /// Creates a streamable HTTP-based MCP server type with the given URL.
     pub fn streamable_http<S: Into<String>>(url: S) -> Self { McpServerType::StreamableHttp(url.into()) }
 }
 
 
-pub type ArcMcpClient = RunningService<rmcp::RoleClient, AgentMcpHandler>;
-pub type McpClient = Arc<Mutex<ArcMcpClient>>;
+/// A handle to a running MCP client instance, wrapped in an async lock.
+/// 
+/// This client manages communication with a remote MCP server.
+pub type McpClient = Arc<Mutex<RunningService<rmcp::RoleClient, AgentMcpHandler>>>;
 
 
 #[derive(Clone)]
@@ -61,7 +77,18 @@ impl ClientHandler for AgentMcpHandler {
 
 }
 
-
+/// Discover and register MCP tools from a given server type.
+/// 
+/// This function connects to the specified MCP server, fetches
+/// the available tool definitions, and converts them into
+/// agent-compatible [`Tool`] instances.
+/// 
+/// # Arguments
+/// - `mcp_server_type` - The transport type and connection info for the MCP server.
+/// - `notification_channel` - Optional channel to forward MCP notifications back to the agent.
+/// 
+/// # Errors
+/// Returns [`McpIntegrationError`] if the connection, discovery, or tool conversion fails.
 #[instrument(level = "debug", skip(mcp_server_type, notification_channel))]
 pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel: Option<Sender<Notification>>) -> Result<Vec<Tool>, McpIntegrationError> {
     
@@ -179,7 +206,12 @@ pub async fn get_mcp_tools(mcp_server_type: McpServerType, notification_channel:
 }
 
 
-
+/// Connect to an MCP server over SSE and fetch its tools.
+/// 
+/// Returns both a [`McpClient`] and the raw tool definitions discovered.
+/// 
+/// # Errors
+/// Returns [`McpIntegrationError`] if the SSE connection or tool discovery fails.
 pub async fn get_mcp_sse_tools<T>(url: T, notification_channel: Option<Sender<Notification>>) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let transport = match  SseClientTransport::start(url.into()).await {
         Ok(t) => t,
@@ -202,7 +234,12 @@ pub async fn get_mcp_sse_tools<T>(url: T, notification_channel: Option<Sender<No
     Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }
 
-
+/// Connect to an MCP server over Streamable HTTP and fetch its tools.
+/// 
+/// Returns both a [`McpClient`] and the raw tool definitions discovered.
+/// 
+/// # Errors
+/// Returns [`McpIntegrationError`] if the connection or tool discovery fails.
 pub async fn get_mcp_streamable_http_tools<T>(url: T, notification_channel: Option<Sender<Notification>>) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let transport = StreamableHttpClientTransport::from_uri(url.into());
 
@@ -216,7 +253,15 @@ pub async fn get_mcp_streamable_http_tools<T>(url: T, notification_channel: Opti
     Ok((Arc::new(Mutex::new(client)), tool_list.tools))
 }
 
-
+/// Connect to an MCP server spawned as a child process and fetch its tools.
+/// 
+/// The child process is started with the given command string, and the
+/// connection is established over stdin/stdout pipes.
+/// 
+/// Returns both a [`McpClient`] and the raw tool definitions discovered.
+/// 
+/// # Errors
+/// Returns [`McpIntegrationError`] if the process fails to start or tool discovery fails.
 pub async fn get_mcp_stdio_tools<T>(full_command: T, notification_channel: Option<Sender<Notification>>) -> Result<(McpClient, Vec<rmcp::model::Tool>), McpIntegrationError> where T: Into<String> {
     let full_command_string = full_command.into();
     let mut command_args = full_command_string.split(" ");

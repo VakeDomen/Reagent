@@ -1,7 +1,7 @@
 
 use std::{error::Error, sync::Arc};
-use reagent::{init_default_tracing, json, AgentBuilder, AsyncToolFn, ToolBuilder};
-use serde_json::Value;
+use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder};
+use serde_json::{json, Value};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

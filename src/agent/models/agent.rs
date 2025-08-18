@@ -171,6 +171,138 @@ impl Agent {
         Ok(agent)
     }
 
+
+    /// Invoke the agent with a raw string prompt.
+    ///
+    /// This is the most direct way to ask the agent something:
+    /// the given prompt string it is conveterd to a user message and
+    /// appended to history. It is passed through
+    /// the configured [`Flow`] (either `Default` or `Custom`).
+    ///
+    /// Returns the raw [`Message`] produced by the flow.
+    #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
+    pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
+    where
+        T: Into<String>,
+    {
+        self.execute_invocation(prompt.into()).await
+    }
+
+    /// Invoke the agent expecting structured JSON output.
+    ///
+    /// Works like [`invoke_flow`], but attempts to deserialize the
+    /// model’s response into type `O` which must be deserializable.
+    ///
+    /// Use this when you constrain the response with a JSON schema
+    /// (`response_format`) and want the result to be typed.
+    #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
+    pub async fn invoke_flow_structured_output<T, O>(&mut self, prompt: T) -> Result<O, AgentError>
+    where
+        T: Into<String>,
+        O: DeserializeOwned
+    {
+        let response = self.execute_invocation(prompt.into()).await?;
+        let Some(json) = response.content else {
+            return Err(AgentError::Runtime("Agent did not produce content in response".into()))
+        };
+        println!("{json}");
+        let out: O = serde_json::from_str(&json)
+            .map_err(AgentError::Deserialization)?; 
+        Ok(out)
+    }
+
+    /// Invoke the agent using a prompt compiled from a template.
+    ///
+    /// The provided `template_data` is substituted into the configured
+    /// [`Template`] before invoking the flow. This allows building prompts
+    /// from reusable templates instead of raw strings.
+    ///
+    /// Returns the raw [`Message`] produced by the flow.
+    #[instrument(level = "debug", skip(self, template_data))]
+    pub async fn invoke_flow_with_template<K, V>(&mut self, template_data: HashMap<K, V>) -> Result<Message, AgentError>
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let Some(template) = &self.template else {
+            return Err(AgentError::Runtime("No template defined".into()));
+        };
+
+        let string_map: HashMap<String, String> = template_data
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+
+        let prompt = {
+            template
+                .lock()
+                .await
+                .compile(&string_map)
+                .await
+        };
+        
+
+        self.execute_invocation(prompt).await
+    }
+
+    /// Invoke the agent with a template and parse structured output.
+    ///
+    /// Combines [`invoke_flow_with_template`] with [`invoke_flow_structured_output`]:
+    /// first compiles the prompt from the agent’s [`Template`] and `template_data`,
+    /// then invokes the flow and tries to deserialize the result into type `O`.
+    ///
+    /// Use this when you constrain the response with a JSON schema
+    /// (`response_format`) and want the result to be typed.
+    #[instrument(level = "debug", skip(self, template_data))]
+    pub async fn invoke_flow_with_template_structured_output<K, V, O>(&mut self, template_data: HashMap<K, V>) -> Result<O, AgentError>
+    where
+        K: Into<String>,
+        V: Into<String>,
+        O: DeserializeOwned,
+    {
+        let Some(template) = &self.template else {
+            return Err(AgentError::Runtime("No template defined".into()));
+        };
+
+        let string_map: HashMap<String, String> = template_data
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+
+        let prompt = {
+            template
+                .lock()
+                .await
+                .compile(&string_map)
+                .await
+        };
+        
+
+        let response = self.execute_invocation(prompt).await?;
+        let Some(json) = response.content else {
+            return Err(AgentError::Runtime("Agent did not content in response".into()))
+        };
+        let out: O = serde_json::from_str(&json)
+            .map_err(AgentError::Deserialization)?; 
+        Ok(out)
+    }
+
+    #[instrument(level = "debug", skip(self, prompt))]
+    async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError>  {
+        let flow_to_run = self.flow.clone();
+
+        if self.clear_history_on_invoke {
+            self.clear_history();
+        }
+
+        match flow_to_run {
+            InternalFlow::Default => default_flow(self, prompt).await,
+            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
+        }
+    }
+
+
+
     /// Reset conversation history to contain only the system prompt.
     pub fn clear_history(&mut self) {
         self.history = vec![Message::system(self.system_prompt.clone())];
@@ -317,136 +449,6 @@ impl Agent {
         }
         None
     }
-
-    /// Invoke the agent with a raw string prompt.
-    ///
-    /// This is the most direct way to ask the agent something:
-    /// the given prompt string it is conveterd to a user message and
-    /// appended to history. It is passed through
-    /// the configured [`Flow`] (either `Default` or `Custom`).
-    ///
-    /// Returns the raw [`Message`] produced by the flow.
-    #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
-    pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
-    where
-        T: Into<String>,
-    {
-        self.execute_invocation(prompt.into()).await
-    }
-
-    /// Invoke the agent expecting structured JSON output.
-    ///
-    /// Works like [`invoke_flow`], but attempts to deserialize the
-    /// model’s response into type `O` which must be deserializable.
-    ///
-    /// Use this when you constrain the response with a JSON schema
-    /// (`response_format`) and want the result to be typed.
-    #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
-    pub async fn invoke_flow_structured_output<T, O>(&mut self, prompt: T) -> Result<O, AgentError>
-    where
-        T: Into<String>,
-        O: DeserializeOwned
-    {
-        let response = self.execute_invocation(prompt.into()).await?;
-        let Some(json) = response.content else {
-            return Err(AgentError::Runtime("Agent did not produce content in response".into()))
-        };
-        println!("{json}");
-        let out: O = serde_json::from_str(&json)
-            .map_err(AgentError::Deserialization)?; 
-        Ok(out)
-    }
-
-    /// Invoke the agent using a prompt compiled from a template.
-    ///
-    /// The provided `template_data` is substituted into the configured
-    /// [`Template`] before invoking the flow. This allows building prompts
-    /// from reusable templates instead of raw strings.
-    ///
-    /// Returns the raw [`Message`] produced by the flow.
-    #[instrument(level = "debug", skip(self, template_data))]
-    pub async fn invoke_flow_with_template<K, V>(&mut self, template_data: HashMap<K, V>) -> Result<Message, AgentError>
-    where
-        K: Into<String>,
-        V: Into<String>,
-    {
-        let Some(template) = &self.template else {
-            return Err(AgentError::Runtime("No template defined".into()));
-        };
-
-        let string_map: HashMap<String, String> = template_data
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect();
-
-        let prompt = {
-            template
-                .lock()
-                .await
-                .compile(&string_map)
-                .await
-        };
-        
-
-        self.execute_invocation(prompt).await
-    }
-
-    /// Invoke the agent with a template and parse structured output.
-    ///
-    /// Combines [`invoke_flow_with_template`] with [`invoke_flow_structured_output`]:
-    /// first compiles the prompt from the agent’s [`Template`] and `template_data`,
-    /// then invokes the flow and tries to deserialize the result into type `O`.
-    ///
-    /// Use this when you constrain the response with a JSON schema
-    /// (`response_format`) and want the result to be typed.
-    #[instrument(level = "debug", skip(self, template_data))]
-    pub async fn invoke_flow_with_template_structured_output<K, V, O>(&mut self, template_data: HashMap<K, V>) -> Result<O, AgentError>
-    where
-        K: Into<String>,
-        V: Into<String>,
-        O: DeserializeOwned,
-    {
-        let Some(template) = &self.template else {
-            return Err(AgentError::Runtime("No template defined".into()));
-        };
-
-        let string_map: HashMap<String, String> = template_data
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect();
-
-        let prompt = {
-            template
-                .lock()
-                .await
-                .compile(&string_map)
-                .await
-        };
-        
-
-        let response = self.execute_invocation(prompt).await?;
-        let Some(json) = response.content else {
-            return Err(AgentError::Runtime("Agent did not content in response".into()))
-        };
-        let out: O = serde_json::from_str(&json)
-            .map_err(AgentError::Deserialization)?; 
-        Ok(out)
-    }
-
-    #[instrument(level = "debug", skip(self, prompt))]
-    async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError>  {
-        let flow_to_run = self.flow.clone();
-
-        if self.clear_history_on_invoke {
-            self.clear_history();
-        }
-
-        match flow_to_run {
-            InternalFlow::Default => default_flow(self, prompt).await,
-            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
-        }
-    }
-
 
     /// Export current client configuration (provider, base URL, keys, etc.).
     pub fn export_client_config(&self) -> ClientConfig {
