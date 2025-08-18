@@ -13,55 +13,82 @@ use crate::{
 /// # Examples
 ///
 /// ```rust
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// use reagent::AgentBuilder;
 /// let agent = AgentBuilder::default()
 ///     .set_model("qwen3:0.6b")
 ///     .set_system_prompt("Be concise")
 ///     .strip_thinking(false)
 ///     .build()
 ///     .await?;
-/// # Ok(())
-/// # }
 /// ```
 #[derive(Debug, Default)]
 pub struct AgentBuilder {
+    /// Name used for logging and defaults
     name: Option<String>,
+    /// Model identifier passed to the LLM provider
     model: Option<String>,
 
-    // client_config: Option<ClientConfig>,
+    /// Provider selection for the LLM client
     provider: Option<Provider>,
+    /// Optional base URL for custom or self-hosted endpoints
     base_url: Option<String>,
+    /// API key used by the selected provider
     api_key: Option<String>,
+    /// Optional organization or tenant identifier
     organization: Option<String>,
+    /// Extra HTTP headers appended to every request
     extra_headers: Option<HashMap<String, String>>,
     
+    /// Optional first-message template used to build the system prompt
     template: Option<Arc<Mutex<Template>>>,
+    /// Raw system prompt string seeded into history
     system_prompt: Option<String>,
+    /// Local tools the agent can call during a flow
     tools: Option<Vec<Tool>>,
+    /// JSON schema string to constrain model responses
     response_format: Option<String>,
+    /// MCP tool servers the agent can reach
     mcp_servers: Option<Vec<McpServerType>>,
+    /// Prompt inserted when a tool-call branch begins
     stop_prompt: Option<String>,
+    /// Stopword that indicates end of generation
     stopword: Option<String>,
+    /// Whether to strip think tags from model output
     strip_thinking: Option<bool>,
+    /// Safety cap on the number of conversation iterations
     max_iterations: Option<usize>,
+    /// Clear conversation history before each invocation
     clear_histroy_on_invoke: Option<bool>,
     
+    /// Sampling temperature
     temperature: Option<f32>,
+    /// Nucleus sampling probability
     top_p: Option<f32>,
+    /// Presence penalty
     presence_penalty: Option<f32>,
+    /// Frequency penalty
     frequency_penalty: Option<f32>,
+    /// Maximum context window
     num_ctx: Option<u32>,
+    /// N tokens considered for repetition penalty
     repeat_last_n: Option<i32>,
+    /// Repetition penalty value
     repeat_penalty: Option<f32>,
+    /// RNG seed
     seed: Option<i32>,
+    /// Hard stop sequence
     stop: Option<String>,
+    /// Max tokens to predict
     num_predict: Option<i32>,
+    /// Top-K sampling parameter
     top_k: Option<u32>,
+    /// Minimum probability threshold
     min_p: Option<f32>,
+    /// Enable server streaming for token events
     stream: Option<bool>,
     
+    /// Optional mpsc sender for notifications
     notification_channel: Option<mpsc::Sender<Notification>>,
+    /// High-level control flow policy
     flow: Option<Flow>,
     
     
@@ -69,6 +96,9 @@ pub struct AgentBuilder {
 
 impl AgentBuilder {
 
+    /// Import generic client settings from a `ClientConfig`.
+    /// Existing values already set on the builder are preserved unless overwritten by `conf`.
+    /// Only fields present in `conf` are applied.
     pub fn import_client_config(mut self, conf: ClientConfig) -> Self {
         self = self.set_provider(conf.provider);
         if let Some(base_url) = conf.base_url {
@@ -87,6 +117,9 @@ impl AgentBuilder {
     }
 
 
+    /// Import prompt-related settings from a `PromptConfig`.
+    /// Existing values already set on the builder are preserved unless overwritten by `conf`.
+    /// Only fields present in `conf` are applied.
     pub fn import_prompt_config(mut self, conf: PromptConfig) -> Self {
         if let Some(template) = conf.template {
             self = self.set_template(template);
@@ -127,6 +160,9 @@ impl AgentBuilder {
         self
     }
 
+    /// Import model sampling and decoding parameters from a `ModelConfig`.
+    /// Existing values already set on the builder are preserved unless overwritten by `conf`.
+    /// Only fields present in `conf` are applied.
     pub fn import_model_config(mut self, conf: ModelConfig) -> Self {
         if let Some(model) = conf.model {
             self = self.set_model(model)
@@ -177,26 +213,31 @@ impl AgentBuilder {
         self
     }
 
+    /// Select the LLM provider implementation.
     pub fn set_provider(mut self, provider: Provider) -> Self {
         self.provider = Some(provider);
         self
     }
 
+    /// Override the base URL for the provider client.
     pub fn set_base_url<T>(mut self, base_url: T) -> Self where T: Into<String> {
         self.base_url = Some(base_url.into());
         self
     }
 
+    /// Set the API key used by the provider client.
     pub fn set_api_key<T>(mut self, api_key:  T) -> Self where T: Into<String> {
         self.api_key = Some(api_key.into());
         self
     }
 
+    /// Set the organization or tenant identifier for requests.
     pub fn set_organization<T>(mut self, organization:  T) -> Self where T: Into<String> {
         self.organization = Some(organization.into());
         self
     }
 
+    /// Provide additional HTTP headers to include on each request.
     pub fn set_extra_headers(mut self, extra_headers:HashMap<String, String>) -> Self {
         self.extra_headers = Some(extra_headers);
         self
@@ -380,7 +421,7 @@ impl AgentBuilder {
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
         let model = self.model.ok_or(AgentBuildError::ModelNotSet)?;
-        // let ollama_url = self.ollama_url.unwrap_or_else(|| "http://localhost:11434".into());
+        
         let system_prompt = self.system_prompt.unwrap_or_else(|| "You are a helpful agent.".into());
         let strip_thinking = self.strip_thinking.unwrap_or(true);
         let clear_histroy_on_invoke = self.clear_histroy_on_invoke.unwrap_or(false);

@@ -35,44 +35,71 @@ use crate::{
 
 #[derive(Clone)]
 pub struct Agent {
+    /// Human-readable name of the agent.
     pub name: String,
+    /// Underlying model identifier.
     pub model: String,
+    /// Conversation history with the model.
     pub history: Vec<Message>,
-
+    /// Locally registered tools (before MCP merge).
     pub local_tools: Option<Vec<Tool>>,
+    /// Configured MCP server endpoints.
     pub mcp_servers: Option<Vec<McpServerType>>,
-
+    /// Fully compiled tool set (local + MCP).
     pub tools: Option<Vec<Tool>>,
-
+    /// JSON schema format for responses, if any.
     pub response_format: Option<Value>,
+    /// Backend model client.
     pub(crate) model_client: ModelClient,
-
+    /// System prompt injected at the start of the conversation.
     pub system_prompt: String,
+    /// Optional stop prompt inserted on tool branches.
     pub stop_prompt: Option<String>,
+    /// Stopword to detect end of generation.
     pub stopword: Option<String>,
+    /// Whether `<think>` blocks should be stripped from outputs.
     pub strip_thinking: bool,
+    /// Sampling temperature.
     pub temperature: Option<f32>,
+    /// Nucleus sampling top-p parameter.
     pub top_p: Option<f32>,
+    /// Presence penalty parameter.
     pub presence_penalty: Option<f32>,
+    /// Frequency penalty parameter.
     pub frequency_penalty: Option<f32>,
+    /// Maximum context window size.
     pub num_ctx: Option<u32>,
+    /// Last-N window for repetition penalty.
     pub repeat_last_n: Option<i32>,
+    /// Repetition penalty multiplier.
     pub repeat_penalty: Option<f32>,
+    /// RNG seed for reproducibility.
     pub seed: Option<i32>,
+    /// Hard stop sequence.
     pub stop: Option<String>,
+    /// Maximum tokens to predict.
     pub num_predict: Option<i32>,
+    /// Top-K sampling cutoff.
     pub top_k: Option<u32>,
+    /// Minimum probability threshold.
     pub min_p: Option<f32>,
+    /// Whether to stream token notifications.
     pub stream: bool,
+    /// Notification channel for emitting agent events.
     pub notification_channel: Option<Sender<Notification>>,
+    /// Optional reusable template for prompt building.
     pub template: Option<Arc<Mutex<Template>>>,
-    flow: InternalFlow,
+    /// Maximum allowed iterations during a conversation.
     pub max_iterations: Option<usize>,
+    /// If true, clears history on every invocation.
     pub clear_history_on_invoke: bool,
+    
+    flow: InternalFlow,
 
 }
 
 impl Agent {
+    
     pub(crate) async fn try_new(
         name: String,
         model: &str,
@@ -144,25 +171,31 @@ impl Agent {
         Ok(agent)
     }
 
+    /// Reset conversation history to contain only the system prompt.
     pub fn clear_history(&mut self) {
         self.history = vec![Message::system(self.system_prompt.clone())];
     }
 
+    /// Persist the conversation history to disk in pretty-printed JSON.
     pub fn save_history<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
         let json_string = serde_json::to_string_pretty(&self.history)?;
         fs::write(path, json_string)?;
         Ok(())
     }
 
+    /// Create a new notification channel for this agent.
+    ///
+    /// This re-initializes MCP tool connections so they bind to the new channel.
     pub async fn new_notification_channel(&mut self) -> Result<mpsc::Receiver<Notification>, AgentError> {
         let (s, r) = mpsc::channel::<Notification>(100);
         self.notification_channel = Some(s);
-        // have to reset mcp tools for notifications as the channel is 
-        // passed on creation of closures
         self.tools = self.get_compiled_tools().await?;
         Ok(r)
     }
 
+    /// Send a notification with the given content.
+    ///
+    /// Returns `true` if successfully delivered, `false` otherwise.
     pub async fn notify(&self, content: NotificationContent) -> bool {
         if self.notification_channel.is_none() {
             return false;
@@ -179,7 +212,9 @@ impl Agent {
             },
         }
     }
-
+    
+    /// Forward notifications from an external receiver into this agent’s notification 
+    /// output channel.
     pub fn forward_notifications(
         &self,
         mut from_channel: Receiver<Notification>
@@ -198,8 +233,7 @@ impl Agent {
     }
 
     /// Merge any number of `Receiver<Notification>` streams into one,
-    /// and forward *all* messages (in the order they arrive) into
-    /// this agent’s `notification_channel`.
+    /// and forward all messages into this agent’s notification output channel.
     pub fn forward_multiple_notifications<I>(&self, channels: I)
     where
         I: IntoIterator<Item = Receiver<Notification>>,
@@ -225,6 +259,7 @@ impl Agent {
         });
     }
 
+    /// Build and return the tool set (local tools + MCP tools).
     pub async fn get_compiled_tools(&self) -> Result<Option<Vec<Tool>>, AgentBuildError> {
         let mut running_tools = self.local_tools.clone();
 
@@ -242,6 +277,7 @@ impl Agent {
         Ok(running_tools)
     }
 
+    /// Build tool definitions from configured MCP servers.
     pub async fn get_compiled_mcp_tools(&self) -> Result<Option<Vec<Tool>>, AgentBuildError> {
         let mut running_tools: Option<Vec<Tool>> = None;
         if let Some(mcp_servers) = &self.mcp_servers {
@@ -263,6 +299,7 @@ impl Agent {
     } 
 
 
+    /// Find a tool reference by name, if it exists.
     pub fn get_tool_ref_by_name<T>(
         &self, 
         name: T
@@ -281,6 +318,14 @@ impl Agent {
         None
     }
 
+    /// Invoke the agent with a raw string prompt.
+    ///
+    /// This is the most direct way to ask the agent something:
+    /// the given prompt string it is conveterd to a user message and
+    /// appended to history. It is passed through
+    /// the configured [`Flow`] (either `Default` or `Custom`).
+    ///
+    /// Returns the raw [`Message`] produced by the flow.
     #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
     pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
     where
@@ -289,6 +334,13 @@ impl Agent {
         self.execute_invocation(prompt.into()).await
     }
 
+    /// Invoke the agent expecting structured JSON output.
+    ///
+    /// Works like [`invoke_flow`], but attempts to deserialize the
+    /// model’s response into type `O` which must be deserializable.
+    ///
+    /// Use this when you constrain the response with a JSON schema
+    /// (`response_format`) and want the result to be typed.
     #[instrument(level = "debug", skip(self, prompt), fields(agent_name = %self.name))]
     pub async fn invoke_flow_structured_output<T, O>(&mut self, prompt: T) -> Result<O, AgentError>
     where
@@ -305,6 +357,13 @@ impl Agent {
         Ok(out)
     }
 
+    /// Invoke the agent using a prompt compiled from a template.
+    ///
+    /// The provided `template_data` is substituted into the configured
+    /// [`Template`] before invoking the flow. This allows building prompts
+    /// from reusable templates instead of raw strings.
+    ///
+    /// Returns the raw [`Message`] produced by the flow.
     #[instrument(level = "debug", skip(self, template_data))]
     pub async fn invoke_flow_with_template<K, V>(&mut self, template_data: HashMap<K, V>) -> Result<Message, AgentError>
     where
@@ -332,6 +391,14 @@ impl Agent {
         self.execute_invocation(prompt).await
     }
 
+    /// Invoke the agent with a template and parse structured output.
+    ///
+    /// Combines [`invoke_flow_with_template`] with [`invoke_flow_structured_output`]:
+    /// first compiles the prompt from the agent’s [`Template`] and `template_data`,
+    /// then invokes the flow and tries to deserialize the result into type `O`.
+    ///
+    /// Use this when you constrain the response with a JSON schema
+    /// (`response_format`) and want the result to be typed.
     #[instrument(level = "debug", skip(self, template_data))]
     pub async fn invoke_flow_with_template_structured_output<K, V, O>(&mut self, template_data: HashMap<K, V>) -> Result<O, AgentError>
     where
@@ -381,10 +448,12 @@ impl Agent {
     }
 
 
+    /// Export current client configuration (provider, base URL, keys, etc.).
     pub fn export_client_config(&self) -> ClientConfig {
         self.model_client.get_config()
     }
 
+    /// Export current model configuration (temperature, top_p, penalties, etc.).
     pub fn export_model_config(&self) -> ModelConfig {
         ModelConfig { 
             model: Some(self.model.clone()), 
@@ -403,6 +472,7 @@ impl Agent {
         }
     }
 
+    /// Export prompt-level configuration (system prompt, tools, template, etc.).
     pub async fn export_prompt_config(&self) -> Result<PromptConfig, Error> {
         let template = if let Some(t) = self.template.clone() {
             Some(t.lock().await.clone())
