@@ -1,12 +1,22 @@
 use std::fmt;
 
 
+/// Errors that can occur while integrating with an MCP server.
+///
+/// These errors typically arise when discovering available tools,
+/// connecting to the server, or converting MCP actions into the
+/// agent’s internal tool representation.
 #[derive(Debug)]
 pub enum McpIntegrationError {
+    /// A lower-level error bubbled up from the `rmcp` SDK.
     Sdk(rmcp::Error),
+    /// Failure establishing a connection to an MCP server.
     Connection(String),
+    /// Failure discovering MCP actions or capabilities.
     Discovery(String),
+    /// Failure converting an MCP action into an [`Tool`](crate::Tool).
     ToolConversion(String),
+    /// Provided MCP schema was missing or invalid (e.g. not a JSON object).
     InvalidSchema(String),
 }
 

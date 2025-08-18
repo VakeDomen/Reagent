@@ -1,9 +1,17 @@
+/// Errors that can occur during execution of a tool.
+///
+/// These errors indicate failures in parsing arguments, actually
+/// running the tool, or locating the requested tool.
 #[derive(Debug)]
 pub enum ToolExecutionError {
+    /// The provided arguments could not be parsed or were invalid.
     ArgumentParsingError(String),
+    /// The tool failed during execution (runtime failure inside the tool).
     ExecutionFailed(String),
+    /// The requested tool was not found in the agent’s registry.
     ToolNotFound(String),
 }
+
 
 impl std::fmt::Display for ToolExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

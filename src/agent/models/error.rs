@@ -1,16 +1,22 @@
 use crate::{services::{mcp::error::McpIntegrationError, llm::models::errors::ModelClientError}, ToolExecutionError};
 
+/// Errors that can occur while running an [`Agent`].
 #[derive(Debug)]
 pub enum AgentError {
+    /// Failure inside the underlying LLM client.
     ModelClient(ModelClientError),
+    /// Errors that occur during agent construction.
     AgentBuild(AgentBuildError),
+    /// Integration errors when connecting to MCP servers.
     Mcp(McpIntegrationError),
+    /// A runtime failure (e.g. missing data, unexpected state).
     Runtime(String),
+    /// A tool execution error (local or remote).
     Tool(ToolExecutionError),
-    Deserialization(serde_json::Error)
+    /// Failure when deserializing structured model output.
+    Deserialization(serde_json::Error),
 }
 
-// Implement Display and Error for AgentError
 impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -62,12 +68,17 @@ impl From<ToolExecutionError> for AgentError {
 }
 
 
+/// Errors that can occur while building an [`Agent`].
 #[derive(Debug)]
 pub enum AgentBuildError {
+    /// Provided JSON schema for response format could not be parsed.
     InvalidJsonSchema(String),
+    /// Failure while compiling tools from MCP integration.
     McpError(McpIntegrationError),
+    /// Failure initializing the underlying model client.
     ModelClient(ModelClientError),
-    ModelNotSet
+    /// Required model was not set on the builder.
+    ModelNotSet,
 }
 
 impl std::fmt::Display for AgentBuildError {

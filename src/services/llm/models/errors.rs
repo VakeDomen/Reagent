@@ -1,9 +1,18 @@
+/// Errors that can occur when interacting with the underlying model client.
+///
+/// These errors typically arise when building requests, communicating with the
+/// API, serializing/deserializing payloads, or due to misconfiguration.
 #[derive(Debug)]
 pub enum ModelClientError {
+    /// Failure constructing or sending a request (e.g. network issue).
     Request(String),
+    /// Error returned directly from the model provider’s API.
     Api(String),
+    /// Failure serializing a request or deserializing a response.
     Serialization(String),
+    /// Invalid or missing client configuration.
     Config(String),
+    /// Attempted to use a feature not supported by the provider or client.
     Unsupported(String),
 }
 
