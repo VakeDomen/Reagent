@@ -4,6 +4,16 @@ use crate::{
     notifications::Token, services::llm::{models::chat::{ChatRequest, ChatResponse, ChatStreamChunk}, ModelClientError}, Agent, AgentError, InvokeFuture, Message, NotificationContent, ToolCall
 };
 
+
+/// Invoke the agent with its current configuration.
+///
+/// Builds a [`ChatRequest`] from the agent state, sends it to the model,
+/// and appends the model’s response to the agent’s history.
+///
+/// Depending on whether streaming is enabled (`agent.stream`),
+/// this will call the model in streaming or non-streaming mode.
+///
+/// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
 pub fn invoke<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
@@ -18,7 +28,13 @@ pub fn invoke<'a>(
     })
 }
 
-
+/// Invoke the agent and also execute any tool calls returned by the model.
+///
+/// Like [`invoke`], but if the model response includes `tool_calls`,
+/// each one is executed via [`call_tools`], and the resulting tool
+/// messages are appended to the agent’s history.
+///
+/// Returns the final [`ChatResponse`] (not including tool outputs).
 pub fn invoke_with_tool_calls<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
@@ -41,8 +57,13 @@ pub fn invoke_with_tool_calls<'a>(
     })
 }
 
-
-
+/// Invoke the agent while disabling tool use.
+///
+/// Builds a [`ChatRequest`] with tools cleared (`request.tools = None`)
+/// so the model cannot propose tool calls. The response is then appended
+/// to the agent’s history.
+///
+/// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
 pub fn invoke_without_tools<'a>(
     agent: &'a mut Agent,
 ) -> InvokeFuture<'a> {
@@ -206,6 +227,16 @@ async fn call_model_streaming(
 }
 
 
+/// Execute a batch of tool calls and return their messages.
+///
+/// For each [`ToolCall`] in the input slice:
+/// - Looks up the corresponding tool in the agent’s registry.
+/// - Executes it asynchronously with the provided arguments.
+/// - Emits notifications for request, success, or error.
+/// - Produces a [`Message`] representing the tool output.
+///
+/// Returns a `Vec<Message>` containing all tool responses (including
+/// error placeholders when a tool cannot be found or fails).
 pub async fn call_tools(
     agent: &Agent,
     tool_calls: &[ToolCall]
