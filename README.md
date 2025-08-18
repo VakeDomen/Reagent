@@ -5,7 +5,7 @@ Reagent is a Rust library for building and running AI agents that interact with 
 You can add the library to your project by pulling from crates:
 
 ```bash
-cargo add reagent
+cargo add reagent-rs
 ```
 
 or directly from github:
