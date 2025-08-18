@@ -13,6 +13,8 @@ use crate::{
 /// Example:
 /// 
 /// ```
+/// use reagent::AgentBuilder;
+/// 
 /// async {
 ///     let mut agent = AgentBuilder::default()
 ///         // model must be set, everything else has 
@@ -23,7 +25,7 @@ use crate::{
 ///         .set_num_ctx(2048)
 ///         // call build to return the agent
 ///         .build()
-///         .await?;
+///         .await;
 /// };
 /// 
 /// ```

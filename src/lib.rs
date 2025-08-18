@@ -8,49 +8,61 @@
 //! ```rust
 //! use reagent::prelude::*;
 //! ```
-//! 
-//! Create [`Agent`] using [`AgentBuilder`] :
-//! 
+//!
+//! Create an [`Agent`] using [`AgentBuilder`] :
+//!
 //! ```
 //! use std::error::Error;
 //! use reagent::{init_default_tracing, AgentBuilder};
-//! 
+//! use schemars::{schema_for, JsonSchema};
+//! use serde::Deserialize;
+//!
+//! #[derive(Debug, Deserialize, JsonSchema)]
+//! struct MyWeatherOuput {
+//!   _windy: bool,
+//!   _temperature: i32,
+//!   _description: String
+//! }
+//!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn Error>> {
 //!     init_default_tracing();
-//!     
-//!     // creating agents follows the builder pattern
+//!
 //!     let mut agent = AgentBuilder::default()
-//!         // model must be set, everything else has 
-//!         // defualts and is optional
 //!         .set_model("qwen3:0.6b")
-//!         .set_system_prompt("You are a helpful assistant.")
+//!         .set_system_prompt("You make up weather info in JSON")
+//!         .set_response_format(serde_json::to_string_pretty(&schema_for!(MyWeatherOuput))?)
 //!         .set_temperature(0.6)
-//!         .set_num_ctx(2048) // lol
-//!         // call build to return the agent
+//!         .set_top_k(20)
+//!         .set_stream(true)
 //!         .build()
-//!         // creation can fail (sever unreachable?)
 //!         .await?;
-//! 
-//!     // call agents by calling the "invoke_flow" method
-//!     let resp = agent.invoke_flow("How do i increase context size in Ollama?").await?;
-//!     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
-//! 
-//!     // internally agent holds the conversation histroy
-//!     let resp = agent.invoke_flow("What did you just say?").await?;
-//!     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
-//! 
-//!     // but it can be reset
-//!     // system message will stay, other messages will
-//!     // be deleted
-//!     agent.clear_history();
-//! 
-//!     let resp = agent.invoke_flow("What did you just say?").await?;
-//!     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
-//! 
-//! 
+//!
+//!     let resp: MyWeatherOuput = agent
+//!         .invoke_flow_structured_output("What is the current weather in Koper?")
+//!         .await?;
+//!     println!("{resp:#?}");
+//!
 //!     Ok(())
 //! }
+//! ```
+//! 
+//! 
+//! Reagent talks to Ollama by default. It also supports OpenRouter.
+//! To use OpenRouter, set the provider to `Provider::OpenRouter` and supply your API key.
+//!
+//! ```rust
+//! 
+//! use reagent::{AgentBuilder, Provider};
+//! 
+//! async {
+//!     let agent = AgentBuilder::default()
+//!         .set_provider(Provider::OpenRouter)
+//!         .set_api_key("your_openrouter_key")
+//!         .set_model("meta-llama/llama-3.1-8b-instruct:free")
+//!         .build()
+//!         .await;
+//! };
 //! ```
 
 
