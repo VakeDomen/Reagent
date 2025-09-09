@@ -13,7 +13,7 @@ use crate::{
 /// Example:
 /// 
 /// ```
-/// use reagent::AgentBuilder;
+/// use reagent_rs::AgentBuilder;
 /// 
 /// async {
 ///     let mut agent = AgentBuilder::default()

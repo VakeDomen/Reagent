@@ -1,6 +1,6 @@
 
 use std::{collections::HashMap, error::Error};
-use reagent::{
+use reagent_rs::{
     init_default_tracing, invocations::invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, templates::Template, Agent, AgentBuildError, AgentBuilder, AgentError, ClientConfig, Flow, FlowFuture, Message, ModelConfig, Notification, NotificationContent, PromptConfig 
 };
 use serde_json::Value;

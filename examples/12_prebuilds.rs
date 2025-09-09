@@ -1,6 +1,6 @@
 
 use std::error::Error;
-use reagent::{init_default_tracing, prebuilds::{StatefullPrebuild, StatelessPrebuild}, AgentBuilder, McpServerType};
+use reagent_rs::{init_default_tracing, prebuilds::{StatefullPrebuild, StatelessPrebuild}, AgentBuilder, McpServerType};
 
 
 const SCRAPER_AGENT_URL: &str = "http://localhost:8000/sse"; 

@@ -25,7 +25,7 @@ impl Template {
     /// # Example
     /// ```
     /// use std::{collections::HashMap, future::Future, pin::Pin};
-    /// use reagent::templates::{Template, TemplateDataSource};
+    /// use reagent_rs::templates::{Template, TemplateDataSource};
     ///
     /// struct StaticDS;
     /// impl TemplateDataSource for StaticDS {

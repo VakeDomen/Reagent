@@ -31,7 +31,7 @@ impl std::error::Error for ToolBuilderError {}
 ///
 /// Example:
 /// ```rust
-/// use reagent::tools::{ToolBuilder, Tool};
+/// use reagent_rs::tools::{ToolBuilder, Tool};
 /// use std::sync::Arc;
 /// use serde_json::Value;
 ///

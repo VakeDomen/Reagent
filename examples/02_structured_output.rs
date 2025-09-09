@@ -1,6 +1,6 @@
 
 use std::error::Error;
-use reagent::{init_default_tracing, AgentBuilder};
+use reagent_rs::{init_default_tracing, AgentBuilder};
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 

@@ -6,6 +6,7 @@ You can add the library to your project by pulling from crates:
 
 ```bash
 cargo add reagent-rs
+
 ```
 
 or directly from github:
@@ -47,7 +48,7 @@ reagent = { git = "https://github.com/VakeDomen/Reagent" }
 
 ```rust
 use std::error::Error;
-use reagent::AgentBuilder;
+use reagent_rs::AgentBuilder;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

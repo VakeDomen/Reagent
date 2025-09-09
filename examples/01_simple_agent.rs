@@ -1,6 +1,6 @@
 
 use std::error::Error;
-use reagent::{init_default_tracing, AgentBuilder};
+use reagent_rs::{init_default_tracing, AgentBuilder};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

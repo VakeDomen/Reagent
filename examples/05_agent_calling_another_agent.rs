@@ -1,7 +1,7 @@
 
 use std::{error::Error, sync::Arc};
 use tokio::sync::Mutex;
-use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
+use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
 use serde_json::Value;
 
 #[tokio::main]

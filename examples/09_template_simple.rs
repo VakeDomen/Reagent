@@ -1,6 +1,6 @@
 
 use std::{collections::HashMap, error::Error};
-use reagent::{
+use reagent_rs::{
     init_default_tracing, templates::Template, AgentBuilder 
 };
 struct MyCustomDataHolder {

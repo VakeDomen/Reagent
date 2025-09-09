@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{services::llm::models::chat::{ChatRequest, ChatResponse}, ToolCall};
 
@@ -14,6 +15,7 @@ pub enum NotificationContent {
     ToolCallErrorResult(String),
     Token(Token),
     McpToolNotification(String),
+    Custom(Value)
 }
 
 

@@ -1,5 +1,5 @@
 use std::error::Error;
-use reagent::{
+use reagent_rs::{
     init_default_tracing, 
     Flow, FlowFuture, 
     Agent, 

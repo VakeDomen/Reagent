@@ -1,6 +1,6 @@
 
 use std::error::Error;
-use reagent::{init_default_tracing, AgentBuilder, Provider};
+use reagent_rs::{init_default_tracing, AgentBuilder, Provider};
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::json;
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
         // you can also use the schemars with serde to construct schema from struct
         .set_model("mistralai/mistral-small-3.2-24b-instruct:free")
-        .set_provider(reagent::Provider::OpenRouter)
+        .set_provider(reagent_rs::Provider::OpenRouter)
         .set_api_key("MY_API_KEY")
         .set_response_format(open_router_response_format)
         .set_stream(true)

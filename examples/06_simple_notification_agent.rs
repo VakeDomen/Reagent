@@ -1,6 +1,13 @@
 
 use std::{collections::HashMap, error::Error};
-use reagent::{AgentBuilder, NotificationContent};
+use reagent_rs::{AgentBuilder, NotificationContent};
+use serde_json::to_value;
+
+
+#[derive(serde::Serialize)]
+struct MyCustomNotification {
+    message: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -29,7 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         while let Some(msg) = notification_reciever.recv().await {
             // map notification type
             let type_name = match msg.content {
-                NotificationContent::Done(_,_)=>{print!("{:#?}", msg); "Done"},
+                NotificationContent::Done(_,_)=>{print!("{:#?}",msg);"Done"},
                 NotificationContent::PromptRequest(_)=>"PromptRequest",
                 NotificationContent::PromptSuccessResult(_)=>"PromptSuccessResult",
                 NotificationContent::PromptErrorResult(_)=>"PromptErrorResult",
@@ -37,7 +44,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 NotificationContent::ToolCallSuccessResult(_)=>"ToolCallSuccessResult",
                 NotificationContent::ToolCallErrorResult(_)=>"ToolCallErrorResult",
                 NotificationContent::McpToolNotification(_)=>"McpToolNotification",
-                NotificationContent::Token(t) => {print!("{}", t.value); "Token"},
+                NotificationContent::Token(t)=>{print!("{}",t.value);"Token"},
+                NotificationContent::Custom(value) =>{ print!("{}",value);"Custom"},
             };
 
             // Increment the count for that type
@@ -60,6 +68,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let _resp = agent.invoke_flow("Say hello").await?;
     let _resp = agent.invoke_flow("What is the current weather in Koper?").await?;
     let _resp = agent.invoke_flow("What do you remember?").await?;
+
+
+
+    let my_notification = MyCustomNotification {
+        message: "This is a custom notification".to_string(),
+    };
+
+
+    agent.notify(NotificationContent::Custom(
+        to_value(&my_notification).unwrap()
+    )).await;
 
     // dropping agent so the comm channel closes and the tokio thread desplays 
     // the counts of notifications

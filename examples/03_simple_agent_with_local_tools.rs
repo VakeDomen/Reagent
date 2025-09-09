@@ -1,6 +1,6 @@
 
 use std::{error::Error, sync::Arc};
-use reagent::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder};
+use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder};
 use serde_json::Value;
 
 #[tokio::main]

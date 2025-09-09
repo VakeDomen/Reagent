@@ -8,7 +8,7 @@ use std::{collections::HashMap, future::Future, pin::Pin};
 ///
 /// ```
 /// use std::{collections::HashMap, future::Future, pin::Pin};
-/// use reagent::templates::TemplateDataSource;
+/// use reagent_rs::templates::TemplateDataSource;
 ///
 /// struct StaticDataSource;
 ///

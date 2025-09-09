@@ -2,18 +2,18 @@
 //!
 //! You can import everything directly from the crate:
 //! ```rust
-//! use reagent::{Agent, AgentBuilder, Flow, Tool, Message};
+//! use reagent_rs::{Agent, AgentBuilder, Flow, Tool, Message};
 //! ```
 //! Or pull in the essentials:
 //! ```rust
-//! use reagent::prelude::*;
+//! use reagent_rs::prelude::*;
 //! ```
 //!
 //! Create an [`Agent`] using [`AgentBuilder`] :
 //!
 //! ```
 //! use std::error::Error;
-//! use reagent::{init_default_tracing, AgentBuilder};
+//! use reagent_rs::{init_default_tracing, AgentBuilder};
 //! use schemars::{schema_for, JsonSchema};
 //! use serde::Deserialize;
 //!
@@ -53,7 +53,7 @@
 //!
 //! ```rust
 //! 
-//! use reagent::{AgentBuilder, Provider};
+//! use reagent_rs::{AgentBuilder, Provider};
 //! 
 //! async {
 //!     let agent = AgentBuilder::default()
