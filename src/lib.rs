@@ -1,5 +1,3 @@
-//! Reagent crate root
-//!
 //! You can import everything directly from the crate:
 //! ```rust
 //! use reagent_rs::{Agent, AgentBuilder, Flow, Tool, Message};

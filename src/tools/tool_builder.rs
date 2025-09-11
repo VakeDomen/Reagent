@@ -1,4 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
+
+use serde_json::Value;
+
+use crate::ToolExecutionError;
 
 use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
 
@@ -26,7 +30,11 @@ impl std::fmt::Display for ToolBuilderError {
 
 impl std::error::Error for ToolBuilderError {}
 
-
+pub type ExecutorFn = Arc<
+    dyn Fn(Value) -> Pin<Box<dyn Future<Output = Result<String, ToolExecutionError>> + Send>>
+        + Send
+        + Sync,
+>;
 /// Builder pattern for constructing a [`Tool`].
 ///
 /// Example:
@@ -152,6 +160,15 @@ impl ToolBuilder {
         self
     }
 
+    pub fn executor_fn<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Value) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<String, crate::ToolExecutionError>> + Send + 'static,
+    {
+        let exec: AsyncToolFn = Arc::new(move |v: Value| Box::pin(f(v)));
+        self.executor = Some(exec);
+        self
+    }
     /// Consumes the builder and attempts to create a `Tool`.
     ///
     /// # Errors

@@ -1,6 +1,6 @@
 
 use std::{error::Error, sync::Arc};
-use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder};
+use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
 use serde_json::Value;
 
 #[tokio::main]
@@ -34,11 +34,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .executor(weather_exec)
         .build()?;
 
+
+    let echo_tool = ToolBuilder::new()
+        .function_name("Echo")
+        .function_description("Echos bach the input")
+        .add_required_property("text", "string", "Text to echo")
+        .executor_fn(echo)
+        .build()?;
+
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         .set_system_prompt("You are a helpful assistant.")
         // add the tool to agent
         .add_tool(weather_tool)
+        .add_tool(echo_tool)
         .build()
         .await?;
 
@@ -49,4 +58,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("\n-> Agent: {}", resp.content.unwrap_or_default());
 
     Ok(())
+}
+
+
+async fn echo(input: Value) -> Result<String, ToolExecutionError> {
+    Ok(input.to_string())
 }
