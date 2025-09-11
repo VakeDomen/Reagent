@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 use tracing::instrument;
 use crate::agent::models::configs::{ModelConfig, PromptConfig};
 use crate::agent::models::error::{AgentBuildError, AgentError};
-use crate::default_flow;
+use crate::{default_flow, Flow};
 use crate::services::llm::models::base::{BaseRequest};
 use crate::services::llm::models::chat::ChatRequest;
 use crate::services::llm::{ClientConfig, InferenceOptions, ModelClient};
@@ -18,7 +18,6 @@ use crate::templates::Template;
 use crate::notifications::NotificationContent;
 
 use crate::{
-    InternalFlow, 
     notifications::Notification, 
     services::{
         mcp::mcp_tool_builder::get_mcp_tools, 
@@ -94,7 +93,7 @@ pub struct Agent {
     /// If true, clears history on every invocation.
     pub clear_history_on_invoke: bool,
     
-    flow: InternalFlow,
+    flow: Flow,
 
 }
 
@@ -125,7 +124,7 @@ impl Agent {
         min_p: Option<f32>,
         notification_channel: Option<Sender<Notification>>,
         mcp_servers: Option<Vec<McpServerType>>,
-        flow: InternalFlow,
+        flow: Flow,
         template: Option<Arc<Mutex<Template>>>,
         max_iterations: Option<usize>,
         clear_history_on_invoke: bool,
@@ -296,8 +295,8 @@ impl Agent {
         }
 
         match flow_to_run {
-            InternalFlow::Default => default_flow(self, prompt).await,
-            InternalFlow::Custom(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
+            Flow::Default => default_flow(self, prompt).await,
+            Flow::Func(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
         }
     }
 

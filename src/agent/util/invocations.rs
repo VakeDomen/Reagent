@@ -1,7 +1,7 @@
 use futures::{pin_mut, StreamExt};
 
 use crate::{
-    notifications::Token, services::llm::{models::chat::{ChatRequest, ChatResponse, ChatStreamChunk}, ModelClientError}, Agent, AgentError, InvokeFuture, Message, NotificationContent, ToolCall
+    notifications::Token, services::llm::{models::chat::{ChatRequest, ChatResponse, ChatStreamChunk}, ModelClientError}, Agent, AgentError, Message, NotificationContent, ToolCall
 };
 
 
@@ -14,18 +14,14 @@ use crate::{
 /// this will call the model in streaming or non-streaming mode.
 ///
 /// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
-pub fn invoke<'a>(
-    agent: &'a mut Agent,
-) -> InvokeFuture<'a> {
-    Box::pin(async move {
-        let request: ChatRequest = (&*agent).into();
-        let response = match &request.base.stream {
-            Some(true) => call_model_streaming(agent, request).await?,
-            _ => call_model_nonstreaming(agent, request).await?,
-        };
-        agent.history.push(response.message.clone());
-        Ok(response)
-    })
+pub async fn invoke(agent: &mut Agent) -> Result<ChatResponse, AgentError> {
+    let request: ChatRequest = (&*agent).into();
+    let response = match &request.base.stream {
+        Some(true) => call_model_streaming(agent, request).await?,
+        _ => call_model_nonstreaming(agent, request).await?,
+    };
+    agent.history.push(response.message.clone());
+    Ok(response)
 }
 
 /// Invoke the agent and also execute any tool calls returned by the model.
@@ -35,26 +31,22 @@ pub fn invoke<'a>(
 /// messages are appended to the agent’s history.
 ///
 /// Returns the final [`ChatResponse`] (not including tool outputs).
-pub fn invoke_with_tool_calls<'a>(
-    agent: &'a mut Agent,
-) -> InvokeFuture<'a> {
-    Box::pin(async move {
-        let request: ChatRequest = (&*agent).into();
-        let response = match &request.base.stream {
-            Some(true) => call_model_streaming(agent, request).await?,
-            _ => call_model_nonstreaming(agent, request).await?,
-        };
+pub async fn invoke_with_tool_calls(agent: &mut Agent) -> Result<ChatResponse, AgentError> {
+    let request: ChatRequest = (&*agent).into();
+    let response = match &request.base.stream {
+        Some(true) => call_model_streaming(agent, request).await?,
+        _ => call_model_nonstreaming(agent, request).await?,
+    };
 
-        agent.history.push(response.message.clone());
+    agent.history.push(response.message.clone());
 
-        if let Some(tc) = response.message.tool_calls.clone() {
-            for tool_msg in call_tools(agent, &tc).await {
-                agent.history.push(tool_msg);
-            }
-        } 
-        
-        Ok(response)
-    })
+    if let Some(tc) = response.message.tool_calls.clone() {
+        for tool_msg in call_tools(agent, &tc).await {
+            agent.history.push(tool_msg);
+        }
+    } 
+    
+    Ok(response)
 }
 
 /// Invoke the agent while disabling tool use.
@@ -64,19 +56,15 @@ pub fn invoke_with_tool_calls<'a>(
 /// to the agent’s history.
 ///
 /// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
-pub fn invoke_without_tools<'a>(
-    agent: &'a mut Agent,
-) -> InvokeFuture<'a> {
-    Box::pin(async move {
-        let mut request: ChatRequest = (&*agent).into();
-        request.tools = None;
-        let response = match &request.base.stream {
-            Some(true) => call_model_streaming(agent, request).await?,
-            _ => call_model_nonstreaming(agent, request).await?,
-        };
-        agent.history.push(response.message.clone());
-        Ok(response)
-    })
+pub async fn invoke_without_tools(agent: &mut Agent) -> Result<ChatResponse, AgentError> {    
+    let mut request: ChatRequest = (&*agent).into();
+    request.tools = None;
+    let response = match &request.base.stream {
+        Some(true) => call_model_streaming(agent, request).await?,
+        _ => call_model_nonstreaming(agent, request).await?,
+    };
+    agent.history.push(response.message.clone());
+    Ok(response)
 }
 
 

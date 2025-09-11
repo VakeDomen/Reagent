@@ -11,3 +11,12 @@ pub use self::{
     reply::reply_flow,
     flow_types::*
 };
+
+#[macro_export]
+macro_rules! flow {
+    ($f:expr) => {
+        |agent: &mut $crate::Agent, prompt: ::std::string::String| -> $crate::FlowFuture<'_> {
+            ::std::boxed::Box::pin($f(agent, prompt))
+        }
+    };
+}

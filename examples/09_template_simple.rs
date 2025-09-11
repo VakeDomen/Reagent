@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // invoke_flow_with_template instead invoke_flow
     // you pass it the HashMap of values
     let resp = agent.invoke_flow_with_template(prompt_data).await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    println!("Agent: {}", resp.content.unwrap());
 
 
 
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     ]);
 
     let resp = agent.invoke_flow_with_template(prompt_data).await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    println!("Agent: {}", resp.content.unwrap());
 
     Ok(())
 }

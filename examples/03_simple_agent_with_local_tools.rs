@@ -52,10 +52,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     let resp = agent.invoke_flow("Say hello").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    println!("Agent: {}", resp.content.unwrap_or_default());
 
     let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    println!("Agent: {}", resp.content.unwrap_or_default());
 
     Ok(())
 }

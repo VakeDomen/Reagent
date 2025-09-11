@@ -128,5 +128,7 @@ pub mod prelude {
         init_default_tracing,
         // Invocation helpers
         invoke, invoke_with_tool_calls, invoke_without_tools,
+        // macro
+        flow
     };
 }

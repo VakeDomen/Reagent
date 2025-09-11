@@ -1,17 +1,14 @@
 use std::{fmt, future::Future, pin::Pin, sync::Arc};
 
-use crate::{services::llm::models::chat::ChatResponse, Agent, AgentError, Message};
+use crate::{Agent, AgentError, Message};
 
 
 
-pub type InvokeFn = for<'a> fn(&'a mut Agent, String) -> InvokeFuture<'a>;
-pub type InvokeFuture<'a> = Pin<Box<dyn Future<Output = Result<ChatResponse, AgentError>> + Send + 'a>>;
+pub type FlowFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<Message, AgentError>> + Send + 'a>>;
 
-pub type CustomFlowFn = for<'a> fn(&'a mut Agent, String) -> FlowFuture<'a>;
-pub type ClosureFlowFn = Arc<dyn for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync>;
-pub type FlowFn = Arc<dyn for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync>;
-pub type FlowFuture<'a> = Pin<Box<dyn Future<Output = Result<Message, AgentError>> + Send + 'a>>;
-
+pub type FlowFn =
+    Arc<dyn for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync>;
 
 /// A user-facing enum defining how an [`Agent`] executes a flow
 /// after receiving a prompt.
@@ -31,80 +28,47 @@ pub enum Flow {
     /// Use a custom function pointer.
     ///
     /// Function must match `for<'a> fn(&'a mut Agent, String) -> FlowFuture<'a>`.
-    Custom(CustomFlowFn),
-    /// Use a custom closure.
-    ///
-    /// Closure must be `Send + Sync + 'static` and match
-    /// `for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a>`.
-    CustomClosure(ClosureFlowFn),
+    Func(FlowFn)
 }
-
 
 
 
 
 impl Flow {
-    /// Create a new [`Flow::CustomClosure`] from a closure.
-    ///
-    /// This is the more ergonomic way to supply a custom flow closure,
-    /// since it accepts any closure or function that matches the
-    /// required signature and wraps it in an `Arc`.
-    pub fn new_closure<F>(f: F) -> Self
+    pub fn from_fn<F>(f: F) -> Self
     where
         F: for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync + 'static,
     {
-        let flow_fn = Arc::new(f);
-        Flow::CustomClosure(flow_fn)
+        Flow::Func(Arc::new(f))
     }
 }
-
-
-/// InternalFlow is a translated version
-/// of the Flow enum, intended for internal
-/// use of the library. It wrapps/translates
-/// the user defined flows to versions 
-/// understandable to the library.
-#[derive(Clone)]
-pub(crate) enum InternalFlow {
-    Default,
-    Custom(FlowFn),
-}
-
-impl From<Flow> for InternalFlow {
-    fn from(flow: Flow) -> Self {
-        match flow {
-            Flow::Default => InternalFlow::Default,
-            Flow::Custom(custom_fn_ptr) => {
-                InternalFlow::Custom(Arc::new(custom_fn_ptr))
-            }
-            Flow::CustomClosure(flow_fn) => InternalFlow::Custom(flow_fn),
-        }
-    }
-}
-
-
-
 
 
 
 // ------------ custom debugs ------------ 
 
 
-impl fmt::Debug for InternalFlow {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            InternalFlow::Default    => f.write_str("InternalFlow::Default"),
-            InternalFlow::Custom(_) => f.write_str("InternalFlow::Custom(<flow_fn>)"),
-        }
-  }
-}
 
 impl fmt::Debug for Flow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Flow::Default => write!(f, "Simple"),
-            Flow::Custom(func_ptr) => f.debug_tuple("Custom").field(func_ptr).finish(),
-            Flow::CustomClosure(_) => write!(f, "CustomClosure(<closure>)"),
+            Flow::Func(_) => write!(f, "CustomFlow(<fn>)"),
         }
     }
 }
+
+
+pub trait FlowCallable: Send + Sync + 'static {
+    // family of futures tied to the borrow of &mut Agent
+    type Fut<'a>: Future<Output = Result<Message, AgentError>> + Send + 'a
+    where
+        Self: 'a;
+
+    fn call<'a>(&'a self, agent: &'a mut Agent, prompt: String) -> Self::Fut<'a>;
+}
+
+
+
+
+

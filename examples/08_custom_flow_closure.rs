@@ -1,7 +1,7 @@
 use std::error::Error;
 use reagent_rs::{
     init_default_tracing, 
-    Flow, FlowFuture, 
+    FlowFuture, 
     Agent, 
     AgentBuilder, 
     Message 
@@ -14,19 +14,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let api_key = "secret-key-123".to_string();
 
     // you can also define closures as custom invocation
-    // flows for the agent, but the closure must be
-    // defined inline
+    // flows for the agent
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
-        // use Flow::new_closure to define the closture
-        .set_flow(Flow::new_closure(move |_: &mut Agent, _prompt: String| -> FlowFuture<'_> {
+        .set_flow(move |_: &mut Agent, _prompt: String| -> FlowFuture<'_> {
             let api_key_clone = api_key.clone(); 
             Box::pin(async move {
                 // dummy case, we just return the api the response
                 // insert your logic here
                 Ok(Message::assistant(format!("The key is: {api_key_clone}")))
             })
-        }))
+        })
         .build()
         .await?;
 

@@ -21,11 +21,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // call agents by calling the "invoke_flow" method
     let resp = agent.invoke_flow("How do i increase context size in Ollama?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    println!("Agent: {}", resp.content.unwrap());
 
     // internally agent holds the conversation histroy
     let resp = agent.invoke_flow("What did you just say?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    println!("Agent: {}", resp.content.unwrap());
 
     // but it can be reset
     // system message will stay, other messages will
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     agent.clear_history();
 
     let resp = agent.invoke_flow("What did you just say?").await?;
-    println!("\n-> Agent: {}", resp.content.unwrap_or_default());
+    println!("Agent: {}", resp.content.unwrap());
 
 
     Ok(())

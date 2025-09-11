@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
 
-use crate::{invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, services::llm::ClientConfig, templates::Template, Agent, AgentBuildError, AgentBuilder, AgentError, Flow, FlowFuture, Message, ModelConfig, Notification, PromptConfig};
+use crate::{flow, invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, services::llm::ClientConfig, templates::Template, Agent, AgentBuildError, AgentBuilder, AgentError, Message, ModelConfig, Notification, PromptConfig};
 
 
 const PLAN_AND_EXECUTE_SYSTEM_PROMPT: &str = r#"You are a **Chief Analyst and Reporter Agent**. Your job is to turn an execution log into a clear, well‑structured report for the end user.
@@ -239,142 +239,139 @@ impl StatefullPrebuild {
             .set_top_k(20)
             .set_max_iterations(3)
             .set_system_prompt(PLAN_AND_EXECUTE_SYSTEM_PROMPT)
-            .set_flow(Flow::Custom(plan_and_execute_flow))
+            .set_flow(flow!(plan_and_execute_flow))
             .set_name("Statefull_prebuild-plan_and_execute")
     }
 }
 
 #[instrument(level = "debug", skip(agent, prompt))]
-fn plan_and_execute_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
-    Box::pin(async move {
+async fn plan_and_execute_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
+    // ------ setup before agent flow loops ------ 
 
-        // ------ setup before agent flow loops ------ 
+    // history of the steps that were executed by the agent and the step results
+    // note this is not message history, but histrory of the plan that the agent
+    // decides to execute (step, result)
 
-        // history of the steps that were executed by the agent and the step results
-        // note this is not message history, but histrory of the plan that the agent
-        // decides to execute (step, result)
+    // However top-level agent will retain the history that will look like:
+    // system prompt + (steps, results) + summary response to user
+    let mut past_steps: Vec<(String, String)> = Vec::new();
+    
+    // creating subagents
+    // subagents are created on invocation and are therefore "stateless" inside 
+    // the top-level agent. 
+    let (mut blueprint_agent, blueprint_notification_channel) = create_blueprint_agent(agent).await?;
+    let (mut planner_agent, planner_notification_channel) = create_planner_agent(agent).await?;
+    let (mut replanner_agent, replanner_notification_channel) = create_replanner_agent(agent).await?;
+    let (mut executor_agent, executor_notification_channel) = create_executor_agent(agent).await?;
 
-        // However top-level agent will retain the history that will look like:
-        // system prompt + (steps, results) + summary response to user
-        let mut past_steps: Vec<(String, String)> = Vec::new();
+    // you can forward notifications that one agent procuces to the other agent, 
+    // such that multi-agent flows have the same output from the top-level agent
+    agent.forward_notifications(blueprint_notification_channel);
+    agent.forward_notifications(planner_notification_channel);
+    agent.forward_notifications(replanner_notification_channel);
+    agent.forward_notifications(executor_notification_channel);
+
+
+    // ------ here actual agent flow starts ------ 
+
+    // 1. blueprint
+    //
+    // fist we build the draft (blueprint) of how to tackle the user problem
+    // we do this by invoking the blueprint sub-agent
+    let blueprint = blueprint_agent.invoke_flow_with_template(HashMap::from([
+        ("tools", format!("{:#?}", agent.tools)),
+        ("prompt", prompt.clone())
+    ])).await?;
+
+    // if for some reason the blueprint was not created, throw a runtime error
+    let Some(blueprint) = blueprint.content else {
+        return Err(AgentError::Runtime("Blueprint was not created".into()));
+    };
+
+    // 2. plan
+    //
+    // from the blueprint we attempt to create the step-by-step plan of the 
+    // how to solve the user task
+    let plan_content = planner_agent.invoke_flow_with_template(HashMap::from([
+        ("tools", format!("{:#?}", agent.tools)),
+        ("prompt", blueprint)
+    ])).await?;
+
+    // from the response of the planner agent extract the plan
+    // the agent should return a list of strings (steps)
+    let mut plan = get_plan_from_response(&plan_content)?;
+    
+
+    // loop
+    for iteration in 0.. {
         
-        // creating subagents
-        // subagents are created on invocation and are therefore "stateless" inside 
-        // the top-level agent. 
-        let (mut blueprint_agent, blueprint_notification_channel) = create_blueprint_agent(agent).await?;
-        let (mut planner_agent, planner_notification_channel) = create_planner_agent(agent).await?;
-        let (mut replanner_agent, replanner_notification_channel) = create_replanner_agent(agent).await?;
-        let (mut executor_agent, executor_notification_channel) = create_executor_agent(agent).await?;
-
-        // you can forward notifications that one agent procuces to the other agent, 
-        // such that multi-agent flows have the same output from the top-level agent
-        agent.forward_notifications(blueprint_notification_channel);
-        agent.forward_notifications(planner_notification_channel);
-        agent.forward_notifications(replanner_notification_channel);
-        agent.forward_notifications(executor_notification_channel);
-
-
-        // ------ here actual agent flow starts ------ 
-
-        // 1. blueprint
-        //
-        // fist we build the draft (blueprint) of how to tackle the user problem
-        // we do this by invoking the blueprint sub-agent
-        let blueprint = blueprint_agent.invoke_flow_with_template(HashMap::from([
-            ("tools", format!("{:#?}", agent.tools)),
-            ("prompt", prompt.clone())
-        ])).await?;
-
-        // if for some reason the blueprint was not created, throw a runtime error
-        let Some(blueprint) = blueprint.content else {
-            return Err(AgentError::Runtime("Blueprint was not created".into()));
-        };
-
-        // 2. plan
-        //
-        // from the blueprint we attempt to create the step-by-step plan of the 
-        // how to solve the user task
-        let plan_content = planner_agent.invoke_flow_with_template(HashMap::from([
-            ("tools", format!("{:#?}", agent.tools)),
-            ("prompt", blueprint)
-        ])).await?;
-
-        // from the response of the planner agent extract the plan
-        // the agent should return a list of strings (steps)
-        let mut plan = get_plan_from_response(&plan_content)?;
-        
-
-        // loop
-        for iteration in 0.. {
-            
-            // if max-iteration is set at the top-level agent, check for stopping
-            if let Some(max_iterations) = agent.max_iterations {
-                if iteration > max_iterations {
-                    break;
-                }
-            }
-
-            // also stop if plan is empty (we completed all steps)
-            if plan.is_empty() {
+        // if max-iteration is set at the top-level agent, check for stopping
+        if let Some(max_iterations) = agent.max_iterations {
+            if iteration > max_iterations {
                 break;
             }
-
-            // extract what step we need to do
-            let current_step = plan.remove(0);
-
-            // put the step instruction to the overarching agent history (so the top-level agent remembers the step)
-            agent.history.push(Message::user(current_step.clone()));
-
-            // execute the step 
-            // for this we use the executor sub-agent with clean history every iteration
-            let response = executor_agent.invoke_flow(current_step.clone()).await?;
-
-            // top-level agent remembers the response (result of step)
-            agent.history.push(response.clone());
-
-            // also save the (step, result) to the past_steps
-            let observation = response.content.clone().unwrap_or_default();
-            past_steps.push((current_step, observation));
-
-            // parse past steps to a string to pass to the next agent
-            let past_steps_str = past_steps
-               .iter()
-               .map(|(step, result)| format!("Step: {step}\nResult: {result}"))
-               .collect::<Vec<_>>()
-               .join("\n\n");
-
-            // use replaner to adapt the plan to executed steps and their results
-            // the replanner also resets history on each iteration, so we pass the
-            // "past_steps" to show histroical progress
-            let new_plan_content = replanner_agent.invoke_flow_with_template(HashMap::from([
-                ("tools", format!("{:#?}", agent.tools)),
-                ("prompt", prompt.clone()),
-                ("plan", format!("{plan:#?}")),
-                ("past_steps", past_steps_str),
-            ])).await?;
-
-            // parse the plan from response again and replace the current plan 
-            // with the new one
-            plan = get_plan_from_response(&new_plan_content)?;
         }
 
-        if past_steps.last().is_some() {
-            // summarize the history and provide the user a nice answer to 
-            // the prompt
-            // this is the only real invocation of the top-level agent
-            // everything else is sub-agents
-            agent.history.push(Message::user(prompt.to_string()));
-            let response = invoke_without_tools(agent).await?;
-
-            agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
-            Ok(response.message)
-        } else {
-            agent.notify(crate::NotificationContent::Done(false, Some("Plan-and-Execute failed to produce a result.".into()))).await;
-            Err(AgentError::Runtime(
-                "Plan-and-Execute failed to produce a result.".into(),
-            ))
+        // also stop if plan is empty (we completed all steps)
+        if plan.is_empty() {
+            break;
         }
-    })    
+
+        // extract what step we need to do
+        let current_step = plan.remove(0);
+
+        // put the step instruction to the overarching agent history (so the top-level agent remembers the step)
+        agent.history.push(Message::user(current_step.clone()));
+
+        // execute the step 
+        // for this we use the executor sub-agent with clean history every iteration
+        let response = executor_agent.invoke_flow(current_step.clone()).await?;
+
+        // top-level agent remembers the response (result of step)
+        agent.history.push(response.clone());
+
+        // also save the (step, result) to the past_steps
+        let observation = response.content.clone().unwrap_or_default();
+        past_steps.push((current_step, observation));
+
+        // parse past steps to a string to pass to the next agent
+        let past_steps_str = past_steps
+            .iter()
+            .map(|(step, result)| format!("Step: {step}\nResult: {result}"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        // use replaner to adapt the plan to executed steps and their results
+        // the replanner also resets history on each iteration, so we pass the
+        // "past_steps" to show histroical progress
+        let new_plan_content = replanner_agent.invoke_flow_with_template(HashMap::from([
+            ("tools", format!("{:#?}", agent.tools)),
+            ("prompt", prompt.clone()),
+            ("plan", format!("{plan:#?}")),
+            ("past_steps", past_steps_str),
+        ])).await?;
+
+        // parse the plan from response again and replace the current plan 
+        // with the new one
+        plan = get_plan_from_response(&new_plan_content)?;
+    }
+
+    if past_steps.last().is_some() {
+        // summarize the history and provide the user a nice answer to 
+        // the prompt
+        // this is the only real invocation of the top-level agent
+        // everything else is sub-agents
+        agent.history.push(Message::user(prompt.to_string()));
+        let response = invoke_without_tools(agent).await?;
+
+        agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
+        Ok(response.message)
+    } else {
+        agent.notify(crate::NotificationContent::Done(false, Some("Plan-and-Execute failed to produce a result.".into()))).await;
+        Err(AgentError::Runtime(
+            "Plan-and-Execute failed to produce a result.".into(),
+        ))
+    }
 }
 
 fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentError> {

@@ -2,7 +2,20 @@ use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{mpsc, Mutex};
 use crate::{
-    agent::models::{configs::{ModelConfig, PromptConfig}, error::AgentBuildError}, notifications::Notification, services::{llm::{ClientConfig, Provider}, mcp::mcp_tool_builder::McpServerType}, templates::Template, Agent, Flow, Tool
+    agent::models::{
+        configs::{ModelConfig, PromptConfig}, 
+        error::AgentBuildError
+    }, 
+    notifications::Notification, 
+    services::{
+        llm::{ClientConfig, Provider}, 
+        mcp::mcp_tool_builder::McpServerType
+    }, 
+    templates::Template, 
+    Agent, 
+    Flow, 
+    FlowFuture,
+    Tool
 };
 
 /// A builder for [`Agent`].
@@ -369,10 +382,17 @@ impl AgentBuilder {
         self
     }
 
-    /// Choose the high‐level control flow policy.
-    pub fn set_flow(mut self, flow: Flow) -> Self {
+
+    pub fn set_flow_fn(mut self, flow: Flow) -> Self {
         self.flow = Some(flow);
         self
+    }
+
+    pub fn set_flow<F>(self, f: F) -> Self
+    where
+        F: for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync + 'static,
+    {
+        self.set_flow_fn(Flow::from_fn(f))
     }
 
     /// Add a local tool.
@@ -516,7 +536,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::{FlowFuture, notifications::NotificationContent, Agent, AsyncToolFn, Message, ToolBuilder};
+    use crate::{notifications::NotificationContent, Agent, AsyncToolFn, FlowFuture, Message, ToolBuilder};
 
     #[tokio::test]
     async fn defaults_fail_without_model() {
@@ -647,7 +667,7 @@ mod tests {
 
         let agent = AgentBuilder::default()
             .set_model("m")
-            .set_flow(Flow::Custom(echo_flow))
+            .set_flow(echo_flow)
             .build()
             .await
             .unwrap();
