@@ -521,7 +521,7 @@ impl AgentBuilder {
             self.min_p,
             self.notification_channel,
             self.mcp_servers,
-            flow.into(),
+            flow,
             self.template,
             self.max_iterations,
             clear_histroy_on_invoke,
