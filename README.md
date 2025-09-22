@@ -162,15 +162,15 @@ let resp: Weather = agent.invoke_flow_structured_output("What's the weather?").a
 Tools let the model call custom functions. Define an executor closure, wrap it in a `ToolBuilder`, and register it with the agent.
 
 ```rust
-let exec: AsyncToolFn = Arc::new(|args: Value| Box::pin(async move {
+async fn get_weather(args: Value) -> Result<String, ToolExecutionError> {
     // do your thing
     Ok(r#"{"windy":false,"temperature":18}"#.into())
-}));
+};
 
 let tool = ToolBuilder::new()
     .function_name("get_weather")
     .add_required_property("location", "string", "City name")
-    .executor(exec)
+    .executor_fn(get_weather)
     .build()?;
 
 let agent = AgentBuilder::default()
@@ -194,21 +194,17 @@ Flows control how the agent is invoked.
 * **Custom flow functions**:
 
 ```rust
-fn my_flow<'a>(agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
-    Box::pin(async move {
-        // custom logic
-        Ok(Message::assistant("Hello"))
-    })
+async fn my_custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
+    // custom logic
+    Ok(Message::assistant("Hello"))
 }
 
 let agent = AgentBuilder::default()
     .set_model("qwen3:0.6b")
-    .set_flow(Flow::Custom(my_flow))
+    .set_flow(flow!(my_flow))
     .build()
     .await?;
 ```
-
-* **Custom flow closures**: inline with `Flow::new_closure`
 
 ---
 

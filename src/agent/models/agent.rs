@@ -92,6 +92,8 @@ pub struct Agent {
     pub max_iterations: Option<usize>,
     /// If true, clears history on every invocation.
     pub clear_history_on_invoke: bool,
+    /// State for custom data
+    pub state: HashMap<String, Value>,
     
     flow: Flow,
 
@@ -163,6 +165,7 @@ impl Agent {
             max_iterations,
             clear_history_on_invoke,
             stream,
+            state: HashMap::new()
         };
 
         agent.tools = agent.get_compiled_tools().await?;
