@@ -375,9 +375,11 @@ struct OrChoice {
 
 #[derive(Deserialize)]
 struct OrChatResponse {
-    _id: String,
-    created: u64,
+    id: String,
+    provider: String,
     model: String,
+    object: String,
+    created: u64,
     choices: Vec<OrChoice>,
 }
 

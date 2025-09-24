@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use rmcp::schemars::{schema_for, JsonSchema};
 use tokio::sync::{mpsc, Mutex};
 use crate::{
     agent::models::{
@@ -8,7 +9,7 @@ use crate::{
     }, 
     notifications::Notification, 
     services::{
-        llm::{ClientConfig, Provider}, 
+        llm::{to_ollama_format, to_openrouter_format, ClientConfig, Provider, SchemaSpec}, 
         mcp::mcp_tool_builder::McpServerType
     }, 
     templates::Template, 
@@ -67,8 +68,14 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     /// Local tools the agent can call during a flow
     tools: Option<Vec<Tool>>,
-    /// JSON schema string to constrain model responses
-    response_format: Option<String>,
+    // The normalized, typed form used by Agent and provider adapters
+    response_format: Option<SchemaSpec>,
+    // Optional raw JSON string the user gave; parsed and merged at build
+    response_format_raw: Option<String>,
+    // Optional hint when caller set only a raw string
+    pending_name: Option<String>,
+    // Optional hint when caller set only a raw string
+    pending_strict: Option<bool>,
     /// MCP tool servers the agent can reach
     mcp_servers: Option<Vec<McpServerType>>,
     /// Prompt inserted when a tool-call branch begins
@@ -156,7 +163,7 @@ impl AgentBuilder {
             }
         }
         if let Some(response_format) = conf.response_format {
-            self = self.set_response_format(response_format);
+            self = self.set_response_format_spec(response_format);
         }
         if let Some(mcp_servers) = conf.mcp_servers {
             for mcp in mcp_servers {
@@ -358,11 +365,11 @@ impl AgentBuilder {
         self
     }
 
-    /// JSON schema string to constrain response format.
-    pub fn set_response_format<T: Into<String>>(mut self, format: T) -> Self {
-        self.response_format = Some(format.into());
-        self
-    }
+    // /// JSON schema string to constrain response format.
+    // pub fn set_response_format<T: Into<String>>(mut self, format: T) -> Self {
+    //     self.response_format = Some(format.into());
+    //     self
+    // }
 
     /// Optional prompt to insert on each tool‐call branch.
     pub fn set_stop_prompt<T: Into<String>>(mut self, stop_prompt: T) -> Self {
@@ -435,6 +442,49 @@ impl AgentBuilder {
         self.clear_histroy_on_invoke = Some(clear);
         self
     }
+    // A string of JSON Schema
+    pub fn set_response_format_str(mut self, schema_json: &str) -> Self {
+        self.response_format_raw = Some(schema_json.to_owned());
+        self
+    }
+
+    // A ready-made serde_json::Value
+    pub fn set_response_format_value(mut self, schema: serde_json::Value) -> Self {
+        self.response_format = Some(SchemaSpec { schema, name: None, strict: None });
+        self
+    }
+
+    // From a Rust type via schemars
+    pub fn set_response_format_from<T: JsonSchema>(mut self) -> Self {
+        let schema = serde_json::to_value(schema_for!(T)).expect("schema serialize");
+        self.response_format = Some(SchemaSpec { schema, name: None, strict: None });
+        self
+    }
+
+    // From a Rust type via SchemaSpec
+    pub fn set_response_format_spec(mut self, schema: SchemaSpec) -> Self {
+        self.response_format = Some(schema);
+        self
+    }
+
+    // Optional hints that apply whether you used *_str, *_value, or *_from
+    pub fn set_schema_name(mut self, name: impl Into<String>) -> Self {
+        if let Some(spec) = &mut self.response_format {
+            spec.name = Some(name.into());
+        } else {
+            self.pending_name = Some(name.into());
+        }
+        self
+    }
+
+    pub fn set_schema_strict(mut self, strict: bool) -> Self {
+        if let Some(spec) = &mut self.response_format {
+            spec.strict = Some(strict);
+        } else {
+            self.pending_strict = Some(strict);
+        }
+        self
+    }
 
     /// Build an [`Agent`] and return also the notification receiver.
     ///
@@ -456,19 +506,7 @@ impl AgentBuilder {
         let strip_thinking = self.strip_thinking.unwrap_or(true);
         let clear_histroy_on_invoke = self.clear_histroy_on_invoke.unwrap_or(false);
 
-        let response_format = if let Some(schema) = self.response_format {
-            let trimmed = schema.trim();
-            match serde_json::from_str(trimmed) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    return Err(AgentBuildError::InvalidJsonSchema(format!(
-                        "Failed to parse JSON schema `{trimmed}`: {e}"
-                    )))
-                }
-            }
-        } else {
-            None
-        };
+        
 
         let flow = self.flow.unwrap_or(Flow::Default);
 
@@ -495,6 +533,44 @@ impl AgentBuilder {
         if let Some(extra_headers) = self.extra_headers {
             client_config.extra_headers = Some(extra_headers)
         }
+
+        if self.response_format.is_some() && self.response_format_raw.is_some() {
+            return Err(AgentBuildError::InvalidJsonSchema("Both set_structured_output_* and \
+                set_response_format_str were called. Use only one source.".to_string(),
+            ));
+        }
+
+        let response_format: Option<SchemaSpec> = if let Some(spec) = self.response_format {
+            // merge pending hints if any
+            Some(SchemaSpec {
+                name: self.pending_name.or(spec.name),
+                strict: self.pending_strict.or(spec.strict),
+                schema: spec.schema,
+            })
+        } else if let Some(raw) = self.response_format_raw {
+            let v: serde_json::Value = serde_json::from_str(raw.trim()).map_err(|e| {
+                AgentBuildError::InvalidJsonSchema(format!("Failed to parse JSON schema: {e}"))
+            })?;
+            Some(SchemaSpec {
+                schema: v,
+                name: self.pending_name,
+                strict: self.pending_strict,
+            })
+        } else {
+            None
+        };
+
+
+        let response_format = match response_format {
+            Some(f) => match client_config.provider {
+                Provider::Ollama => Some(to_ollama_format(&f)),
+                Provider::OpenRouter => Some(to_openrouter_format(&f)),
+                Provider::OpenAi => return Err(AgentBuildError::Unsupported("Structured outputs not yet supported for this provider".into())),
+                Provider::Mistral => return Err(AgentBuildError::Unsupported("Structured outputs not yet supported for this provider".into())),
+                Provider::Anthropic => return Err(AgentBuildError::Unsupported("Structured outputs not yet supported for this provider".into())),
+            },
+            None => None,
+        };
 
         Agent::try_new(
             name,
@@ -528,6 +604,8 @@ impl AgentBuilder {
         ).await
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
@@ -566,7 +644,7 @@ mod tests {
         let agent = AgentBuilder::default()
             .set_model("m")
             .set_system_prompt("Hello world")
-            .set_response_format(json)
+            .set_response_format_str(json)
             .build()
             .await
             .unwrap();
@@ -590,7 +668,7 @@ mod tests {
         let bad = "not json";
         let err = AgentBuilder::default()
             .set_model("m")
-            .set_response_format(bad)
+            .set_response_format_str(bad)
             .build()
             .await
             .unwrap_err();

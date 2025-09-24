@@ -2,10 +2,8 @@ use core::fmt;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use serde::de::DeserializeOwned;
-use tokio_stream::wrappers::ReceiverStream;
-use futures::{stream::SelectAll, StreamExt};
 use serde_json::{Error, Value};
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
 use crate::agent::models::configs::{ModelConfig, PromptConfig};
@@ -13,7 +11,7 @@ use crate::agent::models::error::{AgentBuildError, AgentError};
 use crate::{default_flow, Flow, NotificationHandler};
 use crate::services::llm::models::base::{BaseRequest};
 use crate::services::llm::models::chat::ChatRequest;
-use crate::services::llm::{ClientConfig, InferenceOptions, ModelClient};
+use crate::services::llm::{ClientConfig, InferenceOptions, ModelClient, SchemaSpec};
 use crate::templates::Template;
 
 use crate::{
@@ -206,7 +204,6 @@ impl Agent {
         let Some(json) = response.content else {
             return Err(AgentError::Runtime("Agent did not produce content in response".into()))
         };
-        println!("{json}");
         let out: O = serde_json::from_str(&json)
             .map_err(AgentError::Deserialization)?; 
         Ok(out)
@@ -419,23 +416,26 @@ impl Agent {
 
         
 
-        let response_format = if let Some(p) = self.response_format.clone() {
-            Some(serde_json::to_string(&p)?)
+        let (response_format_raw, response_format) = if let Some(p) = self.response_format.clone() {
+            (Some(serde_json::to_string(&p)?), Some(SchemaSpec::from_value(p)))
         } else {
-            None
+            (None, None)
         };
         Ok(PromptConfig {
             template,
             system_prompt: Some(self.system_prompt.clone()),
             tools: self.tools.clone(),
-            response_format,
+            response_format: response_format,
+            response_format_raw: response_format_raw,
             mcp_servers: self.mcp_servers.clone(),
             stop_prompt: self.stop_prompt.clone(),
             stopword: self.stopword.clone(),
             strip_thinking: Some(self.strip_thinking),
             max_iterations: self.max_iterations,
             clear_histroy_on_invoke: Some(self.clear_history_on_invoke),
-            stream: self.stream
+            stream: self.stream,
+            pending_name: None,
+            pending_strict: None,
         })
     }
 }

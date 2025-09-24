@@ -15,6 +15,8 @@ pub enum AgentError {
     Tool(ToolExecutionError),
     /// Failure when deserializing structured model output.
     Deserialization(serde_json::Error),
+    /// Attempted to use a feature not yet supported by the provider or client.
+    Unsupported(String)
 }
 
 impl std::fmt::Display for AgentError {
@@ -26,7 +28,8 @@ impl std::fmt::Display for AgentError {
             AgentError::Runtime(s) => write!(f, "Runtime error: {s}"),
             AgentError::Deserialization(error) => write!(f, "Deserialize error: {error}"),
             AgentError::Tool(error) => write!(f, "Tool error: {error}"),
-                    }
+            AgentError::Unsupported(error) => write!(f, "Unsuppored: {:#?}", error),
+        }
     }
 }
 
@@ -39,7 +42,8 @@ impl std::error::Error for AgentError {
             AgentError::Runtime(_) => Some(self),
             AgentError::Deserialization(error) => Some(error),
             AgentError::Tool(tool_execution_error) => Some(tool_execution_error),
-                    }
+            AgentError::Unsupported(_) => Some(self)
+        }
     }
 }
 
@@ -79,6 +83,8 @@ pub enum AgentBuildError {
     ModelClient(ModelClientError),
     /// Required model was not set on the builder.
     ModelNotSet,
+    /// Attempted to use a feature not yet supported by the provider or client.
+    Unsupported(String),
 }
 
 impl std::fmt::Display for AgentBuildError {
@@ -88,6 +94,7 @@ impl std::fmt::Display for AgentBuildError {
             AgentBuildError::ModelNotSet => write!(f, "Model not set."),
             AgentBuildError::McpError(e) => write!(f, "Mcp error: {e}"),
             AgentBuildError::ModelClient(e) => write!(f, "ModelClient error: {e}"),
+            AgentBuildError::Unsupported(error) => write!(f, "Unsuppored: {:#?}", error),
         }
     }
 }

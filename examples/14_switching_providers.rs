@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .set_model("mistralai/mistral-small-3.2-24b-instruct:free")
         .set_provider(reagent_rs::Provider::OpenRouter)
         .set_api_key("MY_API_KEY")
-        .set_response_format(open_router_response_format)
+        .set_response_format_str(&open_router_response_format)
         .set_stream(true)
         .build()
         .await?;

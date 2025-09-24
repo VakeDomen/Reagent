@@ -431,7 +431,7 @@ async fn create_planner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<Noti
         .set_name("Statefull_prebuild-plan_and_execute-planner")
         // set response format to be array of strings
         // [plan_steps]
-        .set_response_format(r#"
+        .set_response_format_str(r#"
         {
             "type": "object",
             "properties": {
@@ -529,7 +529,7 @@ async fn create_replanner_agent(ref_agent: &Agent) -> Result<(Agent, Receiver<No
         .set_template(template)
         // set response format to be array of strings
         // [new_plan_steps]
-        .set_response_format(r#"
+        .set_response_format_str(r#"
         {
             "type": "object",
             "properties": {

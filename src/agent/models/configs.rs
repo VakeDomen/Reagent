@@ -1,4 +1,4 @@
-use crate::{templates::Template, McpServerType, Tool};
+use crate::{services::llm::SchemaSpec, templates::Template, McpServerType, Tool};
 
 #[derive(Debug, Clone, Default)]
 pub struct ModelConfig {
@@ -38,8 +38,14 @@ pub struct PromptConfig {
     pub system_prompt: Option<String>,
     /// Set of local tools the agent can invoke.
     pub tools: Option<Vec<Tool>>,
-    /// Optional JSON schema string to constrain responses.
-    pub response_format: Option<String>,
+    // The normalized, typed form used by Agent and provider adapters
+    pub response_format: Option<SchemaSpec>,
+    // Optional raw JSON string the user gave; parsed and merged at build
+    pub response_format_raw: Option<String>,
+    // Optional hint when caller set only a raw string
+    pub pending_name: Option<String>,
+    // Optional hint when caller set only a raw string
+    pub pending_strict: Option<bool>,
     /// External MCP servers providing additional tools.
     pub mcp_servers: Option<Vec<McpServerType>>,
     /// Prompt injected at the start of tool-call branches.

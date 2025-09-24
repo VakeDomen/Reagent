@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let weather_agent_b = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
-        .set_response_format(
+        .set_response_format_str(
             r#"
             {
               "type":"object",

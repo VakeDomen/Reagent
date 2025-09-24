@@ -29,7 +29,7 @@
 //!     let mut agent = AgentBuilder::default()
 //!         .set_model("qwen3:0.6b")
 //!         .set_system_prompt("You make up weather info in JSON")
-//!         .set_response_format(serde_json::to_string_pretty(&schema_for!(MyWeatherOuput))?)
+//!         .set_response_format_from::<MyWeatherOuput>()
 //!         .set_temperature(0.6)
 //!         .set_top_k(20)
 //!         .set_stream(true)
@@ -39,7 +39,6 @@
 //!     let resp: MyWeatherOuput = agent
 //!         .invoke_flow_structured_output("What is the current weather in Koper?")
 //!         .await?;
-//!     println!("{resp:#?}");
 //!
 //!     Ok(())
 //! }
@@ -132,3 +131,5 @@ pub mod prelude {
         flow
     };
 }
+    pub use rmcp::schemars::JsonSchema;
+

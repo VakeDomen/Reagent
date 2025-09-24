@@ -1,7 +1,6 @@
 
 use std::error::Error;
-use reagent_rs::{init_default_tracing, AgentBuilder};
-use schemars::{schema_for, JsonSchema};
+use reagent_rs::{init_default_tracing, AgentBuilder, JsonSchema};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -20,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
         // If you need structured output you can set 
         // the response format schema of the agent
-        .set_response_format(
+        .set_response_format_str(
             r#"
             {
               "type":"object",
@@ -49,7 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .set_model("qwen3:0.6b")
         .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
         // you can also use the schemars with serde to construct schema from struct
-        .set_response_format(serde_json::to_string_pretty(&schema_for!(MyWeatherOuput))?)
+        .set_response_format_from::<MyWeatherOuput>()
         .build()
         .await?;
 
