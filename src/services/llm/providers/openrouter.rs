@@ -115,13 +115,7 @@ impl OpenRouterClient {
             .map_err(|e| ModelClientError::Serialization(format!("decode error: {e}; raw: {text}")))?;
 
         let message = or.choices.first()
-            .map(|c| Message {
-                role: Role::Assistant,
-                content: Some(c.message.content.clone()),
-                images: None,
-                tool_calls: None,
-                tool_call_id: None,
-            })
+            .map(|c| Message::assistant(c.message.content.clone()))
             .unwrap_or(Message::assistant(String::new()));
 
         Ok(ChatResponse {

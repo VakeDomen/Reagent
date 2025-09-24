@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     agent.clear_history();
 
     let resp = agent.invoke_flow("What did you just say?").await?;
-    println!("Agent: {}", resp.content.unwrap());
+    println!("Agent: {:#?}", resp);
 
 
     Ok(())

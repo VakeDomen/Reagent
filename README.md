@@ -6,7 +6,6 @@ You can add the library to your project by pulling from crates:
 
 ```bash
 cargo add reagent-rs
-
 ```
 
 or directly from github:
