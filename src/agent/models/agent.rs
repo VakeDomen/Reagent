@@ -10,12 +10,11 @@ use tokio::sync::Mutex;
 use tracing::instrument;
 use crate::agent::models::configs::{ModelConfig, PromptConfig};
 use crate::agent::models::error::{AgentBuildError, AgentError};
-use crate::{default_flow, Flow};
+use crate::{default_flow, Flow, NotificationHandler};
 use crate::services::llm::models::base::{BaseRequest};
 use crate::services::llm::models::chat::ChatRequest;
 use crate::services::llm::{ClientConfig, InferenceOptions, ModelClient};
 use crate::templates::Template;
-use crate::notifications::NotificationContent;
 
 use crate::{
     notifications::Notification, 
@@ -327,72 +326,6 @@ impl Agent {
         Ok(r)
     }
 
-    /// Send a notification with the given content.
-    ///
-    /// Returns `true` if successfully delivered, `false` otherwise.
-    pub async fn notify(&self, content: NotificationContent) -> bool {
-        if self.notification_channel.is_none() {
-            return false;
-        }
-        let notification_channel = self.notification_channel.as_ref().unwrap();
-        match notification_channel.send(Notification::new( 
-            self.name.clone(), 
-            content, 
-        )).await {
-            Ok(_) => true,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed sending notification");
-                false
-            },
-        }
-    }
-    
-    /// Forward notifications from an external receiver into this agent’s notification 
-    /// output channel.
-    pub fn forward_notifications(
-        &self,
-        mut from_channel: Receiver<Notification>
-    ) {
-        if let Some(notification_channel) = &self.notification_channel {
-            let to_sender = notification_channel.clone();
-            tokio::spawn(async move {
-                while let Some(msg) = from_channel.recv().await {
-
-                    if to_sender.send(msg.unwrap()).await.is_err() {
-                        break;
-                    }
-                }
-            });    
-        }
-    }
-
-    /// Merge any number of `Receiver<Notification>` streams into one,
-    /// and forward all messages into this agent’s notification output channel.
-    pub fn forward_multiple_notifications<I>(&self, channels: I)
-    where
-        I: IntoIterator<Item = Receiver<Notification>>,
-    {
-        let to_sender = match &self.notification_channel {
-            Some(s) => s.clone(),
-            None    => return,
-        };
-
-        let mut merged = SelectAll::new();
-        for rx in channels {
-            let stream = ReceiverStream::new(rx)
-                .map(|notif| notif);
-            merged.push(stream);
-        }
-
-        tokio::spawn(async move {
-            while let Some(notification) = merged.next().await {
-                if to_sender.send(notification).await.is_err() {
-                    break;
-                }
-            }
-        });
-    }
-
     /// Build and return the tool set (local tools + MCP tools).
     pub async fn get_compiled_tools(&self) -> Result<Option<Vec<Tool>>, AgentBuildError> {
         let mut running_tools = self.local_tools.clone();
@@ -567,5 +500,15 @@ impl fmt::Debug for Agent {
             .field("notification_channel", &self.notification_channel)
             .field("mcp_servers", &self.mcp_servers)
             .finish()
+    }
+}
+
+impl NotificationHandler for Agent {
+    fn get_outgoing_channel(&self) -> &Option<Sender<Notification>> {
+        &self.notification_channel
+    }
+
+    fn get_channel_name(&self) -> &String {
+        &self.name
     }
 }

@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
 
-use crate::{flow, invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, services::llm::ClientConfig, templates::Template, Agent, AgentBuildError, AgentBuilder, AgentError, Message, ModelConfig, Notification, PromptConfig};
+use crate::{flow, invoke_without_tools, prebuilds::{StatefullPrebuild, StatelessPrebuild}, services::llm::ClientConfig, templates::Template, Agent, AgentBuildError, AgentBuilder, AgentError, Message, ModelConfig, Notification, NotificationHandler, PromptConfig};
 
 
 const PLAN_AND_EXECUTE_SYSTEM_PROMPT: &str = r#"You are a **Chief Analyst and Reporter Agent**. Your job is to turn an execution log into a clear, well‑structured report for the end user.
@@ -364,10 +364,20 @@ async fn plan_and_execute_flow(agent: &mut Agent, prompt: String) -> Result<Mess
         agent.history.push(Message::user(prompt.to_string()));
         let response = invoke_without_tools(agent).await?;
 
-        agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
+        agent
+            .notify_done(
+                true, 
+                response.message.content.clone()
+            )
+            .await;
         Ok(response.message)
     } else {
-        agent.notify(crate::NotificationContent::Done(false, Some("Plan-and-Execute failed to produce a result.".into()))).await;
+        agent
+            .notify_done(
+                true, 
+                Some("Plan-and-Execute failed to produce a result.".into())
+            )
+            .await;
         Err(AgentError::Runtime(
             "Plan-and-Execute failed to produce a result.".into(),
         ))

@@ -1,6 +1,6 @@
 
 use std::{collections::HashMap, error::Error};
-use reagent_rs::{AgentBuilder, NotificationContent};
+use reagent_rs::{AgentBuilder, NotificationContent, NotificationHandler};
 use serde_json::to_value;
 
 
@@ -76,9 +76,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
 
-    agent.notify(NotificationContent::Custom(
+    agent.notify_custom(
         to_value(&my_notification).unwrap()
-    )).await;
+    ).await;
 
     // dropping agent so the comm channel closes and the tokio thread desplays 
     // the counts of notifications

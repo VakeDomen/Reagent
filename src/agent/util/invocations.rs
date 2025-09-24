@@ -1,7 +1,10 @@
 use futures::{pin_mut, StreamExt};
 
 use crate::{
-    notifications::Token, services::llm::{models::chat::{ChatRequest, ChatResponse, ChatStreamChunk}, ModelClientError}, Agent, AgentError, Message, NotificationContent, ToolCall
+    notifications::Token, services::llm::{
+        models::chat::{ChatRequest, ChatResponse, ChatStreamChunk}, 
+        ModelClientError
+    }, Agent, AgentError, Message, NotificationHandler, ToolCall
 };
 
 
@@ -73,22 +76,26 @@ async fn call_model_nonstreaming(
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
     agent
-        .notify(NotificationContent::PromptRequest(request.clone()))
+        .notify_prompt_request(request.clone())
         .await;
 
-    let raw = agent.model_client.chat(request).await;
+    let raw = agent
+        .model_client
+        .chat(request)
+        .await;
+
     let mut resp = match raw {
         Ok(resp) => resp,
         Err(e) => {
             agent
-                .notify(NotificationContent::PromptErrorResult(e.to_string()))
+                .notify_poompt_error(e.to_string())
                 .await;
             return Err(e.into())
         }
     };
 
     agent
-        .notify(NotificationContent::PromptSuccessResult(resp.clone()))
+        .notify_poompt_success(resp.clone())
         .await;
 
     if agent.strip_thinking {
@@ -107,14 +114,18 @@ async fn call_model_streaming(
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
     agent
-        .notify(NotificationContent::PromptRequest(request.clone()))
+        .notify_prompt_request(request.clone())
         .await;
 
-    let stream = match agent.model_client.chat_stream(request).await {
+    let stream = match agent
+        .model_client
+        .chat_stream(request)
+        .await 
+    {
         Ok(s)  => s,
         Err(e) => {
             agent
-                .notify(NotificationContent::PromptErrorResult(e.to_string()))
+                .notify_poompt_error(e.to_string())
                 .await;
             return Err(e.into());
         }
@@ -132,7 +143,7 @@ async fn call_model_streaming(
             Ok(c) => c,
             Err(e) => {
                 agent
-                    .notify(NotificationContent::PromptErrorResult(e.to_string()))
+                    .notify_poompt_error(e.to_string())
                     .await;
                 return Err(e.into());
             }
@@ -153,7 +164,7 @@ async fn call_model_streaming(
 
             if let Some(tok) = &msg.content {
                 agent
-                    .notify(NotificationContent::Token(Token { tag: None, value: tok.clone() }))
+                    .notify_token(Token { tag: None, value: tok.clone() })
                     .await;
                 match full_content.as_mut() {
                     None => full_content = Some(tok.to_owned()),
@@ -199,7 +210,7 @@ async fn call_model_streaming(
     };
 
     agent
-        .notify(NotificationContent::PromptSuccessResult(response.clone()))
+        .notify_poompt_success(response.clone())
         .await;
 
     if agent.strip_thinking {
@@ -235,9 +246,7 @@ pub async fn call_tools(
         tracing::error!("No avalible tools specified");
         
         agent
-            .notify(NotificationContent::ToolCallErrorResult(
-                "Agent called tools, but no tools avalible to the model".into()
-            ))
+            .notify_tool_error("Agent called tools, but no tools avalible to the model".into())
             .await;
 
         results.push(Message::tool(
@@ -264,7 +273,7 @@ pub async fn call_tools(
             tracing::error!("No corresponding tool found.");
             let msg = format!("Could not find tool: {}", call.function.name);
             agent
-                .notify(NotificationContent::ToolCallErrorResult(msg.clone()))
+                .notify_tool_error(msg.clone())
                 .await;
             results.push(Message::tool(
                 msg, 
@@ -274,13 +283,13 @@ pub async fn call_tools(
         };
 
         agent
-            .notify(NotificationContent::ToolCallRequest(call.clone()))
+            .notify_tool_request(call.clone())
             .await;
 
         match tool.execute(call.function.arguments.clone()).await {
             Ok(output) => {
                 agent
-                    .notify(NotificationContent::ToolCallSuccessResult(output.clone()))
+                    .notify_tool_success(output.clone())
                     .await;
                 results.push(Message::tool(
                     output, 
@@ -289,7 +298,7 @@ pub async fn call_tools(
             }
             Err(e) => {
                 agent
-                    .notify(NotificationContent::ToolCallErrorResult(e.to_string()))
+                    .notify_tool_error(e.to_string())
                     .await;
                 let msg = format!("Error executing tool {}: {}", call.function.name, e);
                 results.push(Message::tool(
@@ -298,7 +307,6 @@ pub async fn call_tools(
                 ));
             }
         }
-        
     }
 
     results

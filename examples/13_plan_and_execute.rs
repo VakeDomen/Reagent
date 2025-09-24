@@ -1,6 +1,6 @@
 
 use std::{collections::HashMap, error::Error};
-use reagent_rs::{prelude::*, ModelConfig, PromptConfig, StatefullPrebuild, StatelessPrebuild};
+use reagent_rs::{prelude::*, ModelConfig, NotificationHandler, PromptConfig, StatefullPrebuild, StatelessPrebuild};
 use serde_json::Value;
 use tokio::sync::mpsc::Receiver;
 
@@ -387,10 +387,20 @@ pub async fn plan_and_execute_flow(agent: &mut Agent, prompt: String) -> Result<
         agent.history.push(Message::user(prompt.to_string()));
         let response = invoke_without_tools(agent).await?;
 
-        agent.notify(crate::NotificationContent::Done(true, response.message.content.clone())).await;
+        agent
+            .notify_done(
+                true, 
+                response.message.content.clone()
+            )
+            .await;
         Ok(response.message)
     } else {
-        agent.notify(crate::NotificationContent::Done(false, Some("Plan-and-Execute failed to produce a result.".into()))).await;
+        agent
+            .notify_done(
+                true, 
+                Some("Plan-and-Execute failed to produce a result.".into())
+            )
+            .await;
         Err(AgentError::Runtime(
             "Plan-and-Execute failed to produce a result.".into(),
         ))
