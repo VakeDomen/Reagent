@@ -1,12 +1,13 @@
 use futures::{pin_mut, StreamExt};
 
 use crate::{
-    notifications::Token, services::llm::{
-        models::chat::{ChatRequest, ChatResponse, ChatStreamChunk}, 
-        ModelClientError
-    }, Agent, AgentError, Message, NotificationHandler, ToolCall
+    notifications::Token,
+    services::llm::{
+        models::chat::{ChatRequest, ChatResponse, ChatStreamChunk},
+        ModelClientError,
+    },
+    Agent, AgentError, Message, NotificationHandler, ToolCall,
 };
-
 
 /// Invoke the agent with its current configuration.
 ///
@@ -47,8 +48,8 @@ pub async fn invoke_with_tool_calls(agent: &mut Agent) -> Result<ChatResponse, A
         for tool_msg in call_tools(agent, &tc).await {
             agent.history.push(tool_msg);
         }
-    } 
-    
+    }
+
     Ok(response)
 }
 
@@ -59,7 +60,7 @@ pub async fn invoke_with_tool_calls(agent: &mut Agent) -> Result<ChatResponse, A
 /// to the agent’s history.
 ///
 /// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
-pub async fn invoke_without_tools(agent: &mut Agent) -> Result<ChatResponse, AgentError> {    
+pub async fn invoke_without_tools(agent: &mut Agent) -> Result<ChatResponse, AgentError> {
     let mut request: ChatRequest = (&*agent).into();
     request.tools = None;
     let response = match &request.base.stream {
@@ -70,33 +71,23 @@ pub async fn invoke_without_tools(agent: &mut Agent) -> Result<ChatResponse, Age
     Ok(response)
 }
 
-
 async fn call_model_nonstreaming(
     agent: &Agent,
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
-    agent
-        .notify_prompt_request(request.clone())
-        .await;
+    agent.notify_prompt_request(request.clone()).await;
 
-    let raw = agent
-        .model_client
-        .chat(request)
-        .await;
+    let raw = agent.model_client.chat(request).await;
 
     let mut resp = match raw {
         Ok(resp) => resp,
         Err(e) => {
-            agent
-                .notify_poompt_error(e.to_string())
-                .await;
-            return Err(e.into())
+            agent.notify_prompt_error(e.to_string()).await;
+            return Err(e.into());
         }
     };
 
-    agent
-        .notify_poompt_success(resp.clone())
-        .await;
+    agent.notify_poompt_success(resp.clone()).await;
 
     if agent.strip_thinking {
         if let Some(content) = resp.message.content.clone() {
@@ -113,25 +104,17 @@ async fn call_model_streaming(
     agent: &Agent,
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
-    agent
-        .notify_prompt_request(request.clone())
-        .await;
+    agent.notify_prompt_request(request.clone()).await;
 
-    let stream = match agent
-        .model_client
-        .chat_stream(request)
-        .await 
-    {
-        Ok(s)  => s,
+    let stream = match agent.model_client.chat_stream(request).await {
+        Ok(s) => s,
         Err(e) => {
-            agent
-                .notify_poompt_error(e.to_string())
-                .await;
+            agent.notify_prompt_error(e.to_string()).await;
             return Err(e.into());
         }
     };
 
-    pin_mut!(stream);  
+    pin_mut!(stream);
 
     let mut full_content = None;
     let mut latest_message: Option<Message> = None;
@@ -142,9 +125,7 @@ async fn call_model_streaming(
         let chunk = match chunk_res {
             Ok(c) => c,
             Err(e) => {
-                agent
-                    .notify_poompt_error(e.to_string())
-                    .await;
+                agent.notify_prompt_error(e.to_string()).await;
                 return Err(e.into());
             }
         };
@@ -164,7 +145,10 @@ async fn call_model_streaming(
 
             if let Some(tok) = &msg.content {
                 agent
-                    .notify_token(Token { tag: None, value: tok.clone() })
+                    .notify_token(Token {
+                        tag: None,
+                        value: tok.clone(),
+                    })
                     .await;
                 match full_content.as_mut() {
                     None => full_content = Some(tok.to_owned()),
@@ -176,14 +160,13 @@ async fn call_model_streaming(
         }
     }
 
-
     let Some(chunk) = done_chunk else {
-        return Err(ModelClientError::Api("stream ended without a final `done` chunk".into()).into());
+        return Err(
+            ModelClientError::Api("stream ended without a final `done` chunk".into()).into(),
+        );
     };
 
-    let mut final_msg = latest_message.unwrap_or_else(
-        || Message::assistant(String::new())
-    );
+    let mut final_msg = latest_message.unwrap_or_else(|| Message::assistant(String::new()));
     final_msg.content = full_content;
     final_msg.tool_calls = tool_calls;
 
@@ -196,22 +179,20 @@ async fn call_model_streaming(
     }
 
     let mut response = ChatResponse {
-        model:                  chunk.model,
-        created_at:             chunk.created_at,
-        message:                final_msg,
-        done:                   chunk.done,
-        done_reason:            chunk.done_reason,
-        total_duration:         chunk.total_duration,
-        load_duration:          chunk.load_duration,
-        prompt_eval_count:      chunk.prompt_eval_count,
-        prompt_eval_duration:   chunk.prompt_eval_duration,
-        eval_count:             chunk.eval_count,
-        eval_duration:          chunk.eval_duration,
+        model: chunk.model,
+        created_at: chunk.created_at,
+        message: final_msg,
+        done: chunk.done,
+        done_reason: chunk.done_reason,
+        total_duration: chunk.total_duration,
+        load_duration: chunk.load_duration,
+        prompt_eval_count: chunk.prompt_eval_count,
+        prompt_eval_duration: chunk.prompt_eval_duration,
+        eval_count: chunk.eval_count,
+        eval_duration: chunk.eval_duration,
     };
 
-    agent
-        .notify_poompt_success(response.clone())
-        .await;
+    agent.notify_poompt_success(response.clone()).await;
 
     if agent.strip_thinking {
         if let Some(content) = response.message.content.clone() {
@@ -221,10 +202,8 @@ async fn call_model_streaming(
         }
     }
 
-    
     Ok(response)
 }
-
 
 /// Execute a batch of tool calls and return their messages.
 ///
@@ -236,15 +215,12 @@ async fn call_model_streaming(
 ///
 /// Returns a `Vec<Message>` containing all tool responses (including
 /// error placeholders when a tool cannot be found or fails).
-pub async fn call_tools(
-    agent: &Agent,
-    tool_calls: &[ToolCall]
-) -> Vec<Message> {
+pub async fn call_tools(agent: &Agent, tool_calls: &[ToolCall]) -> Vec<Message> {
     let mut results = Vec::new();
 
     let Some(avail) = &agent.tools else {
         tracing::error!("No avalible tools specified");
-        
+
         agent
             .notify_tool_error("Agent called tools, but no tools avalible to the model".into())
             .await;
@@ -256,8 +232,6 @@ pub async fn call_tools(
 
         return results;
     };
-    
-    
 
     for call in tool_calls {
         tracing::info!(
@@ -272,38 +246,27 @@ pub async fn call_tools(
         let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name) else {
             tracing::error!("No corresponding tool found.");
             let msg = format!("Could not find tool: {}", call.function.name);
-            agent
-                .notify_tool_error(msg.clone())
-                .await;
-            results.push(Message::tool(
-                msg, 
-                "0".to_string()
-            ));
+            agent.notify_tool_error(msg.clone()).await;
+            results.push(Message::tool(msg, "0".to_string()));
             continue;
         };
 
-        agent
-            .notify_tool_request(call.clone())
-            .await;
+        agent.notify_tool_request(call.clone()).await;
 
         match tool.execute(call.function.arguments.clone()).await {
             Ok(output) => {
-                agent
-                    .notify_tool_success(output.clone())
-                    .await;
+                agent.notify_tool_success(output.clone()).await;
                 results.push(Message::tool(
-                    output, 
-                    call.id.clone().unwrap_or(call.function.name.clone())
+                    output,
+                    call.id.clone().unwrap_or(call.function.name.clone()),
                 ));
             }
             Err(e) => {
-                agent
-                    .notify_tool_error(e.to_string())
-                    .await;
+                agent.notify_tool_error(e.to_string()).await;
                 let msg = format!("Error executing tool {}: {}", call.function.name, e);
                 results.push(Message::tool(
-                    msg, 
-                    call.id.clone().unwrap_or(call.function.name.clone())
+                    msg,
+                    call.id.clone().unwrap_or(call.function.name.clone()),
                 ));
             }
         }

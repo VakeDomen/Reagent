@@ -1,7 +1,6 @@
-
-use std::{error::Error, sync::Arc};
 use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder};
 use serde_json::{json, Value};
+use std::{error::Error, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -16,7 +15,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     "temperature": 18,
                     "description": "Partly cloudy"
                 }
-                "#.into())
+                "#
+                .into())
             })
         })
     };
@@ -29,17 +29,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .executor(weather_exec)
         .build()?;
 
-
     // execute the tool
-    let tool_response = weather_tool.execute(json!({
-        "location": "Koper",
-    })).await?;
+    let tool_response = weather_tool
+        .execute(json!({
+            "location": "Koper",
+        }))
+        .await?;
 
     println!("Direct tool call response: {tool_response:#?}");
 
-
-
-    // if you only have a ref to agent and the tool is constructed elsewhere 
+    // if you only have a ref to agent and the tool is constructed elsewhere
     // (also maybe mcp tools)
     // you can extract the tools from agent with get_tool_ref_by_name
     let agent = AgentBuilder::default()
@@ -49,14 +48,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    
     let Some(tool) = agent.get_tool_ref_by_name("get_current_weather") else {
         panic!("No tool with that name found!");
     };
 
-    let tool_response = tool.execute(json!({
-        "location": "Koper",
-    })).await?;
+    let tool_response = tool
+        .execute(json!({
+            "location": "Koper",
+        }))
+        .await?;
 
     println!("Extracted tool call response: {tool_response:#?}");
 
