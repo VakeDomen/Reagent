@@ -9,10 +9,7 @@ use crate::services::llm::models::{
 };
 
 use super::providers::{
-    anthropic::AnthropicClient,
-    mistral::MistralClient,
-    ollama::OllamaClient,
-    openai::OpenAiClient,
+    anthropic::AnthropicClient, mistral::MistralClient, ollama::OllamaClient, openai::OpenAiClient,
     openrouter::OpenRouterClient,
 };
 
@@ -68,7 +65,10 @@ impl ModelClient {
     pub async fn chat_stream(
         &self,
         req: ChatRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>, ModelClientError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>,
+        ModelClientError,
+    > {
         match &*self.inner {
             ClientInner::Ollama(c) => c.chat_stream(req).await,
             ClientInner::OpenAi(c) => c.chat_stream(req).await,
@@ -78,7 +78,10 @@ impl ModelClient {
         }
     }
 
-    pub async fn embeddings(&self, req: EmbeddingsRequest) -> Result<EmbeddingsResponse, ModelClientError> {
+    pub async fn embeddings(
+        &self,
+        req: EmbeddingsRequest,
+    ) -> Result<EmbeddingsResponse, ModelClientError> {
         match &*self.inner {
             ClientInner::Ollama(c) => c.embeddings(req).await,
             ClientInner::OpenAi(c) => c.embeddings(req).await,
@@ -101,9 +104,9 @@ impl TryFrom<ClientConfig> for ModelClient {
             Provider::Anthropic => ClientInner::Anthropic(AnthropicClient::new(cfg)?),
             Provider::OpenRouter => ClientInner::OpenRouter(OpenRouterClient::new(cfg)?),
         };
-        Ok(Self { 
+        Ok(Self {
             config,
-            inner: Arc::new(inner) 
+            inner: Arc::new(inner),
         })
     }
 }

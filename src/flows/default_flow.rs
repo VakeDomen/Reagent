@@ -1,20 +1,22 @@
-use crate::{call_tools, invoke, invoke_without_tools, Agent, AgentError, Message, NotificationHandler};
+use crate::{call_tools, Agent, AgentError, InvocationBuilder, Message, NotificationHandler};
 
 pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
     agent.history.push(Message::user(prompt));
-    let mut response = invoke(agent).await?;
+    // let mut response = invoke(agent).await?;
+    let mut response = InvocationBuilder::default().invoke(agent).await?;
     if let Some(tc) = response.message.tool_calls {
         for tool_msg in call_tools(agent, &tc).await {
             agent.history.push(tool_msg);
         }
-        response = invoke_without_tools(agent).await?;
-    } 
+        // response = invoke_without_tools(agent).await?;
+        response = InvocationBuilder::default()
+            .use_tools(false)
+            .invoke(agent)
+            .await?;
+    }
 
     agent
-        .notify_done(
-            true, 
-            response.message.content.clone()
-        )
+        .notify_done(true, response.message.content.clone())
         .await;
     Ok(response.message)
 }
