@@ -5,7 +5,7 @@ use futures::Stream;
 use crate::services::llm::models::{
     chat::{ChatRequest, ChatResponse, ChatStreamChunk},
     embedding::{EmbeddingsRequest, EmbeddingsResponse},
-    errors::ModelClientError,
+    errors::InferenceClientError,
 };
 
 use super::providers::{
@@ -42,17 +42,17 @@ enum ClientInner {
 }
 
 #[derive(Clone, Debug)]
-pub struct ModelClient {
+pub struct InferenceClient {
     config: ClientConfig,
     inner: Arc<ClientInner>,
 }
 
-impl ModelClient {
+impl InferenceClient {
     pub fn get_config(&self) -> ClientConfig {
         self.config.clone()
     }
 
-    pub async fn chat(&self, req: ChatRequest) -> Result<ChatResponse, ModelClientError> {
+    pub async fn chat(&self, req: ChatRequest) -> Result<ChatResponse, InferenceClientError> {
         match &*self.inner {
             ClientInner::Ollama(c) => c.chat(req).await,
             ClientInner::OpenAi(c) => c.chat(req).await,
@@ -66,8 +66,8 @@ impl ModelClient {
         &self,
         req: ChatRequest,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>,
-        ModelClientError,
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, InferenceClientError>> + Send + 'static>>,
+        InferenceClientError,
     > {
         match &*self.inner {
             ClientInner::Ollama(c) => c.chat_stream(req).await,
@@ -81,7 +81,7 @@ impl ModelClient {
     pub async fn embeddings(
         &self,
         req: EmbeddingsRequest,
-    ) -> Result<EmbeddingsResponse, ModelClientError> {
+    ) -> Result<EmbeddingsResponse, InferenceClientError> {
         match &*self.inner {
             ClientInner::Ollama(c) => c.embeddings(req).await,
             ClientInner::OpenAi(c) => c.embeddings(req).await,
@@ -92,8 +92,8 @@ impl ModelClient {
     }
 }
 
-impl TryFrom<ClientConfig> for ModelClient {
-    type Error = ModelClientError;
+impl TryFrom<ClientConfig> for InferenceClient {
+    type Error = InferenceClientError;
 
     fn try_from(cfg: ClientConfig) -> Result<Self, Self::Error> {
         let config = cfg.clone();

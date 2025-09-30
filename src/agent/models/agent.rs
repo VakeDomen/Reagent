@@ -1,33 +1,24 @@
+use crate::agent::models::configs::{ModelConfig, PromptConfig};
+use crate::agent::models::error::{AgentBuildError, AgentError};
+use crate::services::llm::models::base::BaseRequest;
+use crate::services::llm::models::chat::ChatRequest;
+use crate::services::llm::{ClientConfig, InferenceClient, InferenceOptions, SchemaSpec};
+use crate::templates::Template;
+use crate::{default_flow, Flow, NotificationHandler};
 use core::fmt;
-use std::sync::Arc;
-use std::{collections::HashMap, fs, path::Path};
 use serde::de::DeserializeOwned;
 use serde_json::{Error, Value};
+use std::sync::Arc;
+use std::{collections::HashMap, fs, path::Path};
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use tracing::instrument;
-use crate::agent::models::configs::{ModelConfig, PromptConfig};
-use crate::agent::models::error::{AgentBuildError, AgentError};
-use crate::{default_flow, Flow, NotificationHandler};
-use crate::services::llm::models::base::{BaseRequest};
-use crate::services::llm::models::chat::ChatRequest;
-use crate::services::llm::{ClientConfig, InferenceOptions, ModelClient, SchemaSpec};
-use crate::templates::Template;
 
 use crate::{
-    notifications::Notification, 
-    services::{
-        mcp::mcp_tool_builder::get_mcp_tools, 
-        llm::{
-            models::{
-                base::Message, 
-            }
-        }
-    }, 
-    McpServerType,
-    Tool
+    notifications::Notification,
+    services::{llm::models::base::Message, mcp::mcp_tool_builder::get_mcp_tools},
+    McpServerType, Tool,
 };
-
 
 #[derive(Clone)]
 pub struct Agent {
@@ -46,7 +37,7 @@ pub struct Agent {
     /// JSON schema format for responses, if any.
     pub response_format: Option<Value>,
     /// Backend model client.
-    pub(crate) model_client: ModelClient,
+    pub(crate) model_client: InferenceClient,
     /// System prompt injected at the start of the conversation.
     pub system_prompt: String,
     /// Optional stop prompt inserted on tool branches.
@@ -91,13 +82,11 @@ pub struct Agent {
     pub clear_history_on_invoke: bool,
     /// State for custom data
     pub state: HashMap<String, Value>,
-    
-    flow: Flow,
 
+    flow: Flow,
 }
 
 impl Agent {
-    
     pub(crate) async fn try_new(
         name: String,
         model: &str,
@@ -127,7 +116,6 @@ impl Agent {
         template: Option<Arc<Mutex<Template>>>,
         max_iterations: Option<usize>,
         clear_history_on_invoke: bool,
-
     ) -> Result<Self, AgentBuildError> {
         let history = vec![Message::system(system_prompt.to_string())];
 
@@ -135,7 +123,7 @@ impl Agent {
             name,
             model: model.into(),
             history,
-            model_client: ModelClient::try_from(client_config)?,
+            model_client: InferenceClient::try_from(client_config)?,
             response_format,
             system_prompt: system_prompt.into(),
             stop_prompt,
@@ -162,14 +150,13 @@ impl Agent {
             max_iterations,
             clear_history_on_invoke,
             stream,
-            state: HashMap::new()
+            state: HashMap::new(),
         };
 
         agent.tools = agent.get_compiled_tools().await?;
 
         Ok(agent)
     }
-
 
     /// Invoke the agent with a raw string prompt.
     ///
@@ -198,14 +185,15 @@ impl Agent {
     pub async fn invoke_flow_structured_output<T, O>(&mut self, prompt: T) -> Result<O, AgentError>
     where
         T: Into<String>,
-        O: DeserializeOwned
+        O: DeserializeOwned,
     {
         let response = self.execute_invocation(prompt.into()).await?;
         let Some(json) = response.content else {
-            return Err(AgentError::Runtime("Agent did not produce content in response".into()))
+            return Err(AgentError::Runtime(
+                "Agent did not produce content in response".into(),
+            ));
         };
-        let out: O = serde_json::from_str(&json)
-            .map_err(AgentError::Deserialization)?; 
+        let out: O = serde_json::from_str(&json).map_err(AgentError::Deserialization)?;
         Ok(out)
     }
 
@@ -217,7 +205,10 @@ impl Agent {
     ///
     /// Returns the raw [`Message`] produced by the flow.
     #[instrument(level = "debug", skip(self, template_data))]
-    pub async fn invoke_flow_with_template<K, V>(&mut self, template_data: HashMap<K, V>) -> Result<Message, AgentError>
+    pub async fn invoke_flow_with_template<K, V>(
+        &mut self,
+        template_data: HashMap<K, V>,
+    ) -> Result<Message, AgentError>
     where
         K: Into<String>,
         V: Into<String>,
@@ -231,14 +222,7 @@ impl Agent {
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
 
-        let prompt = {
-            template
-                .lock()
-                .await
-                .compile(&string_map)
-                .await
-        };
-        
+        let prompt = { template.lock().await.compile(&string_map).await };
 
         self.execute_invocation(prompt).await
     }
@@ -252,7 +236,10 @@ impl Agent {
     /// Use this when you constrain the response with a JSON schema
     /// (`response_format`) and want the result to be typed.
     #[instrument(level = "debug", skip(self, template_data))]
-    pub async fn invoke_flow_with_template_structured_output<K, V, O>(&mut self, template_data: HashMap<K, V>) -> Result<O, AgentError>
+    pub async fn invoke_flow_with_template_structured_output<K, V, O>(
+        &mut self,
+        template_data: HashMap<K, V>,
+    ) -> Result<O, AgentError>
     where
         K: Into<String>,
         V: Into<String>,
@@ -267,26 +254,20 @@ impl Agent {
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
 
-        let prompt = {
-            template
-                .lock()
-                .await
-                .compile(&string_map)
-                .await
-        };
-        
+        let prompt = { template.lock().await.compile(&string_map).await };
 
         let response = self.execute_invocation(prompt).await?;
         let Some(json) = response.content else {
-            return Err(AgentError::Runtime("Agent did not content in response".into()))
+            return Err(AgentError::Runtime(
+                "Agent did not content in response".into(),
+            ));
         };
-        let out: O = serde_json::from_str(&json)
-            .map_err(AgentError::Deserialization)?; 
+        let out: O = serde_json::from_str(&json).map_err(AgentError::Deserialization)?;
         Ok(out)
     }
 
     #[instrument(level = "debug", skip(self, prompt))]
-    async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError>  {
+    async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError> {
         let flow_to_run = self.flow.clone();
 
         if self.clear_history_on_invoke {
@@ -298,8 +279,6 @@ impl Agent {
             Flow::Func(custom_flow_fn) => (custom_flow_fn)(self, prompt).await,
         }
     }
-
-
 
     /// Reset conversation history to contain only the system prompt.
     pub fn clear_history(&mut self) {
@@ -316,7 +295,9 @@ impl Agent {
     /// Create a new notification channel for this agent.
     ///
     /// This re-initializes MCP tool connections so they bind to the new channel.
-    pub async fn new_notification_channel(&mut self) -> Result<mpsc::Receiver<Notification>, AgentError> {
+    pub async fn new_notification_channel(
+        &mut self,
+    ) -> Result<mpsc::Receiver<Notification>, AgentError> {
         let (s, r) = mpsc::channel::<Notification>(100);
         self.notification_channel = Some(s);
         self.tools = self.get_compiled_tools().await?;
@@ -328,14 +309,22 @@ impl Agent {
         let mut running_tools = self.local_tools.clone();
 
         match self.get_compiled_mcp_tools().await {
-            Ok(tools_option) => if let Some(mcp_tools) = tools_option {
-                match running_tools.as_mut() {
-                    Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
-                    None => if !mcp_tools.is_empty() {
-                        running_tools = Some(mcp_tools)
-                    },
+            Ok(tools_option) => {
+                if let Some(mcp_tools) = tools_option {
+                    match running_tools.as_mut() {
+                        Some(t) => {
+                            for mcpt in mcp_tools {
+                                t.push(mcpt);
+                            }
+                        }
+                        None => {
+                            if !mcp_tools.is_empty() {
+                                running_tools = Some(mcp_tools)
+                            }
+                        }
+                    }
                 }
-            },
+            }
             Err(e) => return Err(e),
         }
         Ok(running_tools)
@@ -346,37 +335,44 @@ impl Agent {
         let mut running_tools: Option<Vec<Tool>> = None;
         if let Some(mcp_servers) = &self.mcp_servers {
             for mcp_server in mcp_servers {
-                let mcp_tools = match get_mcp_tools(mcp_server.clone(), self.notification_channel.clone()).await {
+                let mcp_tools = match get_mcp_tools(
+                    mcp_server.clone(),
+                    self.notification_channel.clone(),
+                )
+                .await
+                {
                     Ok(t) => t,
                     Err(e) => return Err(AgentBuildError::McpError(e)),
                 };
-    
+
                 match running_tools.as_mut() {
-                    Some(t) => for mcpt in mcp_tools { t.push(mcpt); },
-                    None => if !mcp_tools.is_empty() {
-                        running_tools = Some(mcp_tools)
-                    },
+                    Some(t) => {
+                        for mcpt in mcp_tools {
+                            t.push(mcpt);
+                        }
+                    }
+                    None => {
+                        if !mcp_tools.is_empty() {
+                            running_tools = Some(mcp_tools)
+                        }
+                    }
                 }
             }
         }
         Ok(running_tools)
-    } 
-
+    }
 
     /// Find a tool reference by name, if it exists.
-    pub fn get_tool_ref_by_name<T>(
-        &self, 
-        name: T
-    ) -> Option<&Tool> 
-    where 
-        T: Into<String> 
+    pub fn get_tool_ref_by_name<T>(&self, name: T) -> Option<&Tool>
+    where
+        T: Into<String>,
     {
         let tools = self.tools.as_ref()?;
 
         let name = name.into();
         for tool in tools {
             if tool.function.name.eq(&name) {
-                return Some(tool)
+                return Some(tool);
             }
         }
         None
@@ -389,20 +385,20 @@ impl Agent {
 
     /// Export current model configuration (temperature, top_p, penalties, etc.).
     pub fn export_model_config(&self) -> ModelConfig {
-        ModelConfig { 
-            model: Some(self.model.clone()), 
-            temperature: self.temperature, 
-            top_p: self.top_p, 
-            presence_penalty: self.presence_penalty, 
+        ModelConfig {
+            model: Some(self.model.clone()),
+            temperature: self.temperature,
+            top_p: self.top_p,
+            presence_penalty: self.presence_penalty,
             frequency_penalty: self.frequency_penalty,
-            num_ctx: self.num_ctx, 
-            repeat_last_n: self.repeat_last_n, 
-            repeat_penalty: self.repeat_penalty, 
-            seed: self.seed, 
-            stop: self.stop.clone(), 
-            num_predict: self.num_predict, 
-            top_k: self.top_k, 
-            min_p: self.min_p 
+            num_ctx: self.num_ctx,
+            repeat_last_n: self.repeat_last_n,
+            repeat_penalty: self.repeat_penalty,
+            seed: self.seed,
+            stop: self.stop.clone(),
+            num_predict: self.num_predict,
+            top_k: self.top_k,
+            min_p: self.min_p,
         }
     }
 
@@ -414,10 +410,11 @@ impl Agent {
             None
         };
 
-        
-
         let (response_format_raw, response_format) = if let Some(p) = self.response_format.clone() {
-            (Some(serde_json::to_string(&p)?), Some(SchemaSpec::from_value(p)))
+            (
+                Some(serde_json::to_string(&p)?),
+                Some(SchemaSpec::from_value(p)),
+            )
         } else {
             (None, None)
         };
@@ -439,39 +436,6 @@ impl Agent {
         })
     }
 }
-
-
-impl From<&Agent> for ChatRequest {
-    fn from(val: &Agent) -> Self {
-        let options = InferenceOptions {
-            num_ctx:            val.num_ctx,
-            repeat_last_n:      val.repeat_last_n,
-            repeat_penalty:     val.repeat_penalty,
-            temperature:        val.temperature,
-            seed:               val.seed,
-            stop:               val.stop.clone(),
-            num_predict:        val.num_predict,
-            top_k:              val.top_k,
-            top_p:              val.top_p,
-            min_p:              val.min_p,
-            presence_penalty:   val.presence_penalty,
-            frequency_penalty:  val.frequency_penalty,
-            max_tokens:         None,
-        };
-        ChatRequest {
-            base: BaseRequest {
-                model:      val.model.clone(),
-                format:     val.response_format.clone(),
-                options:    Some(options),
-                stream:     Some(val.stream),
-                keep_alive: Some("5m".to_string()),
-            },
-            messages: val.history.clone(),
-            tools:    val.tools.clone(),
-        }
-    }
-}
-
 
 impl fmt::Debug for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

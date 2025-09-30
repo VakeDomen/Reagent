@@ -4,7 +4,7 @@ use crate::{
     notifications::Token,
     services::llm::{
         models::chat::{ChatRequest, ChatResponse, ChatStreamChunk},
-        ModelClientError,
+        InferenceClientError,
     },
     Agent, AgentError, Message, NotificationHandler, ToolCall,
 };
@@ -162,7 +162,7 @@ pub(super) async fn call_model_streaming(
 
     let Some(chunk) = done_chunk else {
         return Err(
-            ModelClientError::Api("stream ended without a final `done` chunk".into()).into(),
+            InferenceClientError::Api("stream ended without a final `done` chunk".into()).into(),
         );
     };
 

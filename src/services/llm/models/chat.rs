@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{services::llm::models::base::BaseRequest, Message, Tool};
+use crate::{
+    services::llm::{models::base::BaseRequest, InferenceOptions},
+    Agent, Message, Tool,
+};
 
 #[derive(Serialize, Debug, Clone, Deserialize)]
 pub struct ChatRequest {
@@ -9,6 +12,37 @@ pub struct ChatRequest {
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Tool>>,
+}
+
+impl From<&Agent> for ChatRequest {
+    fn from(val: &Agent) -> Self {
+        let options = InferenceOptions {
+            num_ctx: val.num_ctx,
+            repeat_last_n: val.repeat_last_n,
+            repeat_penalty: val.repeat_penalty,
+            temperature: val.temperature,
+            seed: val.seed,
+            stop: val.stop.clone(),
+            num_predict: val.num_predict,
+            top_k: val.top_k,
+            top_p: val.top_p,
+            min_p: val.min_p,
+            presence_penalty: val.presence_penalty,
+            frequency_penalty: val.frequency_penalty,
+            max_tokens: None,
+        };
+        ChatRequest {
+            base: BaseRequest {
+                model: val.model.clone(),
+                format: val.response_format.clone(),
+                options: Some(options),
+                stream: Some(val.stream),
+                keep_alive: Some("5m".to_string()),
+            },
+            messages: val.history.clone(),
+            tools: val.tools.clone(),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

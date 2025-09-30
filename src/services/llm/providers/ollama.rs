@@ -3,13 +3,13 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use std::{fmt, pin::Pin};
-use tracing::{debug, error, info_span, trace, instrument, Instrument};
+use tracing::{debug, error, info_span, instrument, trace, Instrument};
 
 use crate::services::llm::models::chat::ChatStreamChunk;
 use crate::services::llm::models::{
     chat::{ChatRequest, ChatResponse},
     embedding::{EmbeddingsRequest, EmbeddingsResponse},
-    errors::ModelClientError,
+    errors::InferenceClientError,
 };
 
 #[derive(Debug, Clone)]
@@ -19,18 +19,18 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
-    pub fn new(cfg: crate::services::llm::client::ClientConfig) -> Result<Self, ModelClientError> {
-        let base_url = cfg
-            .base_url
-            .unwrap_or("http://localhost:11434".into());
-        Ok(Self { 
-            client: Client::new(), 
-            base_url 
+    pub fn new(
+        cfg: crate::services::llm::client::ClientConfig,
+    ) -> Result<Self, InferenceClientError> {
+        let base_url = cfg.base_url.unwrap_or("http://localhost:11434".into());
+        Ok(Self {
+            client: Client::new(),
+            base_url,
         })
     }
 
     #[instrument(name = "ollama.post", skip_all, fields(endpoint))]
-    async fn post<T, R>(&self, endpoint: &str, request_body: &T) -> Result<R, ModelClientError>
+    async fn post<T, R>(&self, endpoint: &str, request_body: &T) -> Result<R, InferenceClientError>
     where
         T: serde::Serialize + fmt::Debug,
         R: DeserializeOwned + fmt::Debug,
@@ -44,7 +44,7 @@ impl OllamaClient {
                 .json(request_body)
                 .send()
                 .await
-                .map_err(|e| ModelClientError::Api(e.to_string()))?;
+                .map_err(|e| InferenceClientError::Api(e.to_string()))?;
 
             let status = response.status();
             debug!(%status, "received response");
@@ -55,15 +55,14 @@ impl OllamaClient {
                     .await
                     .unwrap_or_else(|_| "Failed to read error body".into());
                 error!(%status, body = %error_text, "request failed");
-                return Err(ModelClientError::Api(format!(
+                return Err(InferenceClientError::Api(format!(
                     "Request failed: {status} - {error_text}"
                 )));
             }
 
-            let response_text = response
-                .text()
-                .await
-                .map_err(|e| ModelClientError::Api(format!("Failed to read response text: {e}")))?;
+            let response_text = response.text().await.map_err(|e| {
+                InferenceClientError::Api(format!("Failed to read response text: {e}"))
+            })?;
 
             match serde_json::from_str::<R>(&response_text) {
                 Ok(parsed) => {
@@ -72,7 +71,7 @@ impl OllamaClient {
                 }
                 Err(e) => {
                     error!(%e, raw = %response_text, "deserialization error");
-                    Err(ModelClientError::Serialization(format!(
+                    Err(InferenceClientError::Serialization(format!(
                         "Error decoding response body: {e}. Raw JSON was: '{response_text}'"
                     )))
                 }
@@ -87,7 +86,10 @@ impl OllamaClient {
         &self,
         endpoint: &str,
         body: &T,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<R, ModelClientError>> + Send + 'static>>, ModelClientError>
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<R, InferenceClientError>> + Send + 'static>>,
+        InferenceClientError,
+    >
     where
         T: serde::Serialize + fmt::Debug,
         R: serde::de::DeserializeOwned + fmt::Debug + Send + 'static,
@@ -99,10 +101,12 @@ impl OllamaClient {
             .json(body)
             .send()
             .await
-            .map_err(|e| ModelClientError::Api(e.to_string()))?;
+            .map_err(|e| InferenceClientError::Api(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ModelClientError::Api(format!("Request failed: {resp:#?}")));
+            return Err(InferenceClientError::Api(format!(
+                "Request failed: {resp:#?}"
+            )));
         }
 
         let byte_stream = resp.bytes_stream();
@@ -110,14 +114,14 @@ impl OllamaClient {
             let mut buf = Vec::<u8>::new();
             futures::pin_mut!(byte_stream);
             while let Some(chunk) = byte_stream.next().await {
-                let chunk = chunk.map_err(|e| ModelClientError::Request(e.to_string()))?;
+                let chunk = chunk.map_err(|e| InferenceClientError::Request(e.to_string()))?;
                 buf.extend_from_slice(&chunk);
                 while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
                     let line: Vec<u8> = buf.drain(..=pos).collect();
                     let line = &line[..line.len() - 1];
                     if line.is_empty() { continue; }
                     let parsed: R = serde_json::from_slice(line)
-                        .map_err(|e| ModelClientError::Serialization(e.to_string()))?;
+                        .map_err(|e| InferenceClientError::Serialization(e.to_string()))?;
                     yield parsed;
                 }
             }
@@ -125,18 +129,24 @@ impl OllamaClient {
         Ok(Box::pin(s))
     }
 
-    pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, ModelClientError> {
+    pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, InferenceClientError> {
         self.post("/api/chat", &request).await
     }
 
     pub async fn chat_stream(
         &self,
         req: ChatRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>, ModelClientError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, InferenceClientError>> + Send + 'static>>,
+        InferenceClientError,
+    > {
         self.post_stream("/api/chat", &req).await
     }
 
-    pub async fn embeddings(&self, request: EmbeddingsRequest) -> Result<EmbeddingsResponse, ModelClientError> {
+    pub async fn embeddings(
+        &self,
+        request: EmbeddingsRequest,
+    ) -> Result<EmbeddingsResponse, InferenceClientError> {
         self.post("/api/embeddings", &request).await
     }
 }

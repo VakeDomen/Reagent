@@ -1,14 +1,17 @@
-use std::pin::Pin;
 use futures::{Stream, StreamExt};
-use reqwest::{header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE}, Client};
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
+    Client,
+};
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 use tracing::{debug, instrument};
 
-use crate::services::llm::client::{ClientConfig};
+use crate::services::llm::client::ClientConfig;
 use crate::services::llm::models::base::{InferenceOptions, Message, Role};
 use crate::services::llm::models::chat::{ChatRequest, ChatResponse, ChatStreamChunk};
 use crate::services::llm::models::embedding::{EmbeddingsRequest, EmbeddingsResponse};
-use crate::services::llm::models::errors::ModelClientError;
+use crate::services::llm::models::errors::InferenceClientError;
 
 #[derive(Debug, Clone)]
 pub struct OpenRouterClient {
@@ -17,10 +20,10 @@ pub struct OpenRouterClient {
 }
 
 impl OpenRouterClient {
-    pub fn new(cfg: ClientConfig) -> Result<Self, ModelClientError> {
+    pub fn new(cfg: ClientConfig) -> Result<Self, InferenceClientError> {
         let api_key = cfg
             .api_key
-            .ok_or_else(|| ModelClientError::Config("OpenRouter requires api_key".into()))?;
+            .ok_or_else(|| InferenceClientError::Config("OpenRouter requires api_key".into()))?;
         let base_url = cfg
             .base_url
             .unwrap_or_else(|| "https://openrouter.ai/api/v1".to_string());
@@ -28,24 +31,25 @@ impl OpenRouterClient {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {api_key}"))
-                .map_err(|e| ModelClientError::Config(format!("Invalid api_key header: {e}")))?,
+            HeaderValue::from_str(&format!("Bearer {api_key}")).map_err(|e| {
+                InferenceClientError::Config(format!("Invalid api_key header: {e}"))
+            })?,
         );
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
         if let Some(extra) = cfg.extra_headers {
             for (k, v) in extra.into_iter() {
-                let name = HeaderName::from_bytes(k.as_bytes())
-                    .map_err(|_| ModelClientError::Config(format!("Invalid header name: {k}")))?;
-                let value = HeaderValue::from_str(&v)
-                    .map_err(|_| ModelClientError::Config(format!("Invalid header value for {k}")))?;
+                let name = HeaderName::from_bytes(k.as_bytes()).map_err(|_| {
+                    InferenceClientError::Config(format!("Invalid header name: {k}"))
+                })?;
+                let value = HeaderValue::from_str(&v).map_err(|_| {
+                    InferenceClientError::Config(format!("Invalid header value for {k}"))
+                })?;
                 headers.insert(name, value);
             }
         }
 
-        let client = Client::builder()
-            .default_headers(headers)
-            .build()?;
+        let client = Client::builder().default_headers(headers).build()?;
 
         Ok(Self { client, base_url })
     }
@@ -81,19 +85,19 @@ impl OpenRouterClient {
     }
 
     #[instrument(name = "openrouter.chat", skip_all)]
-    async fn chat_inner(&self, req: ChatRequest, stream: bool) -> Result<reqwest::Response, ModelClientError> {
-        let url = format!(
-            "{}/chat/completions",
-            self.base_url.trim_end_matches('/')
-        );
+    async fn chat_inner(
+        &self,
+        req: ChatRequest,
+        stream: bool,
+    ) -> Result<reqwest::Response, InferenceClientError> {
+        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
         let mut body = OrChatRequest::from(req);
         body.stream = Some(stream);
         let resp = self.client.post(url).json(&body).send().await?;
         Ok(resp)
     }
 
-    
-    pub async fn chat(&self, req: ChatRequest) -> Result<ChatResponse, ModelClientError> {
+    pub async fn chat(&self, req: ChatRequest) -> Result<ChatResponse, InferenceClientError> {
         let resp = self.chat_inner(req, false).await?;
         let status = resp.status();
         let text = resp.text().await?;
@@ -103,7 +107,9 @@ impl OpenRouterClient {
             if let Some(e) = parse_oopen_router_error(&text) {
                 return Err(e);
             }
-            return Err(ModelClientError::Api(format!("Request failed: {status} - {text}")));
+            return Err(InferenceClientError::Api(format!(
+                "Request failed: {status} - {text}"
+            )));
         }
 
         // HTTP 200 but body is an error envelope
@@ -111,10 +117,13 @@ impl OpenRouterClient {
             return Err(e);
         }
 
-        let or: OrChatResponse = serde_json::from_str(&text)
-            .map_err(|e| ModelClientError::Serialization(format!("decode error: {e}; raw: {text}")))?;
+        let or: OrChatResponse = serde_json::from_str(&text).map_err(|e| {
+            InferenceClientError::Serialization(format!("decode error: {e}; raw: {text}"))
+        })?;
 
-        let message = or.choices.first()
+        let message = or
+            .choices
+            .first()
             .map(|c| Message::assistant(c.message.content.clone()))
             .unwrap_or(Message::assistant(String::new()));
 
@@ -133,11 +142,13 @@ impl OpenRouterClient {
         })
     }
 
-
     pub async fn chat_stream(
         &self,
         req: ChatRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>, ModelClientError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, InferenceClientError>> + Send + 'static>>,
+        InferenceClientError,
+    > {
         use async_stream::try_stream;
         let resp = self.chat_inner(req, true).await?;
         let status = resp.status();
@@ -147,7 +158,9 @@ impl OpenRouterClient {
             if let Some(e) = parse_oopen_router_error(&text) {
                 return Err(e);
             }
-            return Err(ModelClientError::Api(format!("Request failed: {status} - {text}")));
+            return Err(InferenceClientError::Api(format!(
+                "Request failed: {status} - {text}"
+            )));
         }
 
         let byte_stream = resp.bytes_stream();
@@ -156,7 +169,7 @@ impl OpenRouterClient {
             futures::pin_mut!(byte_stream);
 
             while let Some(chunk) = byte_stream.next().await {
-                let chunk = chunk.map_err(|e| ModelClientError::Request(e.to_string()))?;
+                let chunk = chunk.map_err(|e| InferenceClientError::Request(e.to_string()))?;
                 buf.extend_from_slice(&chunk);
 
                 while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
@@ -236,85 +249,92 @@ impl OpenRouterClient {
         Ok(Box::pin(s))
     }
 
-
-    pub async fn embeddings(&self, _req: EmbeddingsRequest) -> Result<EmbeddingsResponse, ModelClientError> {
+    pub async fn embeddings(
+        &self,
+        _req: EmbeddingsRequest,
+    ) -> Result<EmbeddingsResponse, InferenceClientError> {
         // As of 2025 OpenRouter does not expose an embeddings endpoint
-        Err(ModelClientError::Unsupported("OpenRouter embeddings are not available".into()))
+        Err(InferenceClientError::Unsupported(
+            "OpenRouter embeddings are not available".into(),
+        ))
     }
 }
-
 
 #[derive(Serialize, Default)]
 struct OrChatRequest {
     model: String,
     messages: Vec<OrMessage>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     top_k: Option<u32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     top_a: Option<f32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     min_p: Option<f32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     repetition_penalty: Option<f32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<i32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<i32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     presence_penalty: Option<f32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     frequency_penalty: Option<f32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     logit_bias: Option<serde_json::Value>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     logprobs: Option<bool>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     top_logprobs: Option<u32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     stream: Option<bool>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<serde_json::Value>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<serde_json::Value>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     parallel_tool_calls: Option<bool>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     response_format: Option<serde_json::Value>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     structured_outputs: Option<bool>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     verbosity: Option<String>,
 }
 impl From<ChatRequest> for OrChatRequest {
     fn from(value: ChatRequest) -> Self {
-        let ChatRequest { base, messages, tools } = value;
+        let ChatRequest {
+            base,
+            messages,
+            tools,
+        } = value;
         let params = OpenRouterClient::map_options(&base.options);
 
         let stop_vec = match base.options.as_ref().and_then(|o| o.stop.clone()) {
@@ -384,20 +404,23 @@ struct OrChatResponse {
 }
 
 #[derive(Deserialize)]
-struct OrDelta { _role: Option<String>, content: Option<String> }
-
-#[derive(Deserialize)]
-struct OrDeltaChoice { 
-    delta: OrDelta, 
-    _finish_reason: Option<String> 
+struct OrDelta {
+    _role: Option<String>,
+    content: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct OrStreamChunk { 
-    _id: String, 
-    created: u64, 
-    model: String, 
-    choices: Vec<OrDeltaChoice> 
+struct OrDeltaChoice {
+    delta: OrDelta,
+    _finish_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OrStreamChunk {
+    _id: String,
+    created: u64,
+    model: String,
+    choices: Vec<OrDeltaChoice>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -413,7 +436,7 @@ struct OrErrorBody {
     code: serde_json::Value,
 }
 
-fn parse_oopen_router_error(text: &str) -> Option<ModelClientError> {
+fn parse_oopen_router_error(text: &str) -> Option<InferenceClientError> {
     let s = text.trim_start();
     if !s.starts_with('{') || !s.contains("\"error\"") {
         return None;
@@ -422,7 +445,9 @@ fn parse_oopen_router_error(text: &str) -> Option<ModelClientError> {
         Ok(env) => {
             let code = env.error.code;
             let msg = env.error.message;
-            Some(ModelClientError::Api(format!("OpenRouter error {code}: {msg}")))
+            Some(InferenceClientError::Api(format!(
+                "OpenRouter error {code}: {msg}"
+            )))
         }
         Err(_) => None,
     }

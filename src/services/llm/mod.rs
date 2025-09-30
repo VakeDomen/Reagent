@@ -2,5 +2,5 @@ pub mod client;
 pub mod models;
 pub mod providers;
 
-pub use client::{ModelClient, ClientConfig, Provider};
+pub use client::{ClientConfig, InferenceClient, Provider};
 pub use models::*;

@@ -1,11 +1,11 @@
-use std::pin::Pin;
 use futures::Stream;
+use std::pin::Pin;
 
 use crate::services::llm::client::ClientConfig;
 use crate::services::llm::models::{
     chat::{ChatRequest, ChatResponse, ChatStreamChunk},
     embedding::{EmbeddingsRequest, EmbeddingsResponse},
-    errors::ModelClientError,
+    errors::InferenceClientError,
 };
 
 #[derive(Debug, Clone)]
@@ -14,22 +14,36 @@ pub struct AnthropicClient {
 }
 
 impl AnthropicClient {
-    pub fn new(_cfg: ClientConfig) -> Result<Self, ModelClientError> {
-        Err(ModelClientError::Unsupported("Anthropic chat not implemented yet".into()))
+    pub fn new(_cfg: ClientConfig) -> Result<Self, InferenceClientError> {
+        Err(InferenceClientError::Unsupported(
+            "Anthropic chat not implemented yet".into(),
+        ))
     }
 
-    pub async fn chat(&self, _req: ChatRequest) -> Result<ChatResponse, ModelClientError> {
-        Err(ModelClientError::Unsupported("Anthropic chat not implemented yet".into()))
+    pub async fn chat(&self, _req: ChatRequest) -> Result<ChatResponse, InferenceClientError> {
+        Err(InferenceClientError::Unsupported(
+            "Anthropic chat not implemented yet".into(),
+        ))
     }
 
     pub async fn chat_stream(
         &self,
         _req: ChatRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>, ModelClientError> {
-        Err(ModelClientError::Unsupported("Anthropic streaming not implemented yet".into()))
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, InferenceClientError>> + Send + 'static>>,
+        InferenceClientError,
+    > {
+        Err(InferenceClientError::Unsupported(
+            "Anthropic streaming not implemented yet".into(),
+        ))
     }
 
-    pub async fn embeddings(&self, _req: EmbeddingsRequest) -> Result<EmbeddingsResponse, ModelClientError> {
-        Err(ModelClientError::Unsupported("Anthropic embeddings not implemented yet".into()))
+    pub async fn embeddings(
+        &self,
+        _req: EmbeddingsRequest,
+    ) -> Result<EmbeddingsResponse, InferenceClientError> {
+        Err(InferenceClientError::Unsupported(
+            "Anthropic embeddings not implemented yet".into(),
+        ))
     }
 }

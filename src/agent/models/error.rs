@@ -1,10 +1,13 @@
-use crate::{services::{mcp::error::McpIntegrationError, llm::models::errors::ModelClientError}, ToolExecutionError};
+use crate::{
+    services::{llm::models::errors::InferenceClientError, mcp::error::McpIntegrationError},
+    ToolExecutionError,
+};
 
 /// Errors that can occur while running an [`Agent`].
 #[derive(Debug)]
 pub enum AgentError {
     /// Failure inside the underlying LLM client.
-    ModelClient(ModelClientError),
+    InferenceClient(InferenceClientError),
     /// Errors that occur during agent construction.
     AgentBuild(AgentBuildError),
     /// Integration errors when connecting to MCP servers.
@@ -16,15 +19,19 @@ pub enum AgentError {
     /// Failure when deserializing structured model output.
     Deserialization(serde_json::Error),
     /// Attempted to use a feature not yet supported by the provider or client.
-    Unsupported(String)
+    Unsupported(String),
 }
 
 impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AgentError::ModelClient(e) => write!(f, "ModelClientError API Error: {e}"),
-            AgentError::AgentBuild(agent_build_error) => write!(f, "Agent Build Error: {agent_build_error}"),
-            AgentError::Mcp(mcp_integration_error) => write!(f, "Mcp Error: {mcp_integration_error}"),
+            AgentError::InferenceClient(e) => write!(f, "InferenceClientError API Error: {e}"),
+            AgentError::AgentBuild(agent_build_error) => {
+                write!(f, "Agent Build Error: {agent_build_error}")
+            }
+            AgentError::Mcp(mcp_integration_error) => {
+                write!(f, "Mcp Error: {mcp_integration_error}")
+            }
             AgentError::Runtime(s) => write!(f, "Runtime error: {s}"),
             AgentError::Deserialization(error) => write!(f, "Deserialize error: {error}"),
             AgentError::Tool(error) => write!(f, "Tool error: {error}"),
@@ -36,20 +43,20 @@ impl std::fmt::Display for AgentError {
 impl std::error::Error for AgentError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            AgentError::ModelClient(e) => Some(e),
+            AgentError::InferenceClient(e) => Some(e),
             AgentError::AgentBuild(agent_build_error) => Some(agent_build_error),
             AgentError::Mcp(mcp_integration_error) => Some(mcp_integration_error),
             AgentError::Runtime(_) => Some(self),
             AgentError::Deserialization(error) => Some(error),
             AgentError::Tool(tool_execution_error) => Some(tool_execution_error),
-            AgentError::Unsupported(_) => Some(self)
+            AgentError::Unsupported(_) => Some(self),
         }
     }
 }
 
-impl From<ModelClientError> for AgentError {
-    fn from(err: ModelClientError) -> Self {
-        AgentError::ModelClient(err)
+impl From<InferenceClientError> for AgentError {
+    fn from(err: InferenceClientError) -> Self {
+        AgentError::InferenceClient(err)
     }
 }
 
@@ -71,7 +78,6 @@ impl From<ToolExecutionError> for AgentError {
     }
 }
 
-
 /// Errors that can occur while building an [`Agent`].
 #[derive(Debug)]
 pub enum AgentBuildError {
@@ -80,7 +86,7 @@ pub enum AgentBuildError {
     /// Failure while compiling tools from MCP integration.
     McpError(McpIntegrationError),
     /// Failure initializing the underlying model client.
-    ModelClient(ModelClientError),
+    InferenceClient(InferenceClientError),
     /// Required model was not set on the builder.
     ModelNotSet,
     /// Attempted to use a feature not yet supported by the provider or client.
@@ -93,17 +99,16 @@ impl std::fmt::Display for AgentBuildError {
             AgentBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {e}"),
             AgentBuildError::ModelNotSet => write!(f, "Model not set."),
             AgentBuildError::McpError(e) => write!(f, "Mcp error: {e}"),
-            AgentBuildError::ModelClient(e) => write!(f, "ModelClient error: {e}"),
+            AgentBuildError::InferenceClient(e) => write!(f, "InferenceClient error: {e}"),
             AgentBuildError::Unsupported(error) => write!(f, "Unsuppored: {:#?}", error),
         }
     }
 }
 
-impl From<ModelClientError> for AgentBuildError {
-    fn from(err: ModelClientError) -> Self {
-        AgentBuildError::ModelClient(err)
+impl From<InferenceClientError> for AgentBuildError {
+    fn from(err: InferenceClientError) -> Self {
+        AgentBuildError::InferenceClient(err)
     }
 }
-
 
 impl std::error::Error for AgentBuildError {}
