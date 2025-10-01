@@ -113,7 +113,7 @@ impl InvocationBuilder {
         self
     }
     pub fn use_tools(mut self, use_tools: bool) -> Self {
-        self.use_tools = Some(false);
+        self.use_tools = Some(use_tools);
         self
     }
 
