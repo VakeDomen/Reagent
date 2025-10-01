@@ -7,7 +7,7 @@ pub async fn reply_without_tools_flow(
     agent.history.push(Message::user(prompt));
     // let response = invoke_without_tools(agent).await?;
     let response = InvocationBuilder::default()
-        .tools_none()
+        .use_tools(false)
         .invoke(agent)
         .await?;
 

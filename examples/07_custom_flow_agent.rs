@@ -34,5 +34,6 @@ async fn custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, Agent
             .await?;
         last = Some(response.message);
     }
+
     Ok(last.unwrap())
 }

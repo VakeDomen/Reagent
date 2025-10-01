@@ -10,7 +10,7 @@ pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, 
         }
         // response = invoke_without_tools(agent).await?;
         response = InvocationBuilder::default()
-            .tools_none()
+            .use_tools(false)
             .invoke(agent)
             .await?;
     }

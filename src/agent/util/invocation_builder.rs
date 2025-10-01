@@ -3,200 +3,130 @@ use serde_json::Value;
 use crate::{
     call_tools,
     services::llm::{BaseRequest, InferenceOptions},
-    Agent, AgentError, ChatRequest, ChatResponse, Message, Tool,
+    Agent, AgentError, ChatRequest, ChatResponse, InvocationError, Message, Tool,
 };
-
-#[derive(Debug, Clone)]
-enum InheritOpt<T> {
-    Inherit,
-    Value(T),
-}
-
-#[derive(Debug, Clone)]
-enum InheritMaybe<T> {
-    Inherit,
-    Some(T),
-    ExplicitNone,
-}
-
-impl<T> Default for InheritOpt<T> {
-    fn default() -> Self {
-        InheritOpt::Inherit
-    }
-}
-impl<T> Default for InheritMaybe<T> {
-    fn default() -> Self {
-        InheritMaybe::Inherit
-    }
-}
 
 #[derive(Debug, Clone, Default)]
 pub struct InvocationBuilder {
-    model: InheritOpt<String>,
-    format: InheritMaybe<Value>,
-    stream: InheritMaybe<bool>,
-    keep_alive: InheritMaybe<String>,
+    model: Option<String>,
+    format: Option<Value>,
+    stream: Option<bool>,
+    keep_alive: Option<String>,
 
     // payload
-    messages: InheritOpt<Vec<Message>>,
-    tools: InheritMaybe<Vec<Tool>>,
+    messages: Option<Vec<Message>>,
+    tools: Option<Vec<Tool>>,
 
     // flattened options: None means inherit, Some(_) means override
     opts: InferenceOptions,
-    // strip_thinking: In,
+    strip_thinking: Option<bool>,
+    use_tools: Option<bool>,
 }
 
 impl InvocationBuilder {
     pub fn model(mut self, v: impl Into<String>) -> Self {
-        self.model = InheritOpt::Value(v.into());
+        self.model = Some(v.into());
         self
     }
     pub fn response_format_some(mut self, v: Value) -> Self {
-        self.format = InheritMaybe::Some(v);
+        self.format = Some(v);
         self
     }
-    pub fn response_format_none(mut self) -> Self {
-        self.format = InheritMaybe::ExplicitNone;
+    pub fn steam(mut self, v: bool) -> Self {
+        self.stream = Some(v);
         self
     }
-    pub fn stream_some(mut self, v: bool) -> Self {
-        self.stream = InheritMaybe::Some(v);
-        self
-    }
-    pub fn stream_none(mut self) -> Self {
-        self.stream = InheritMaybe::ExplicitNone;
-        self
-    }
-    pub fn keep_alive_some(mut self, v: impl Into<String>) -> Self {
-        self.keep_alive = InheritMaybe::Some(v.into());
-        self
-    }
-    pub fn keep_alive_none(mut self) -> Self {
-        self.keep_alive = InheritMaybe::ExplicitNone;
+    pub fn keep_alive(mut self, v: impl Into<String>) -> Self {
+        self.keep_alive = Some(v.into());
         self
     }
     pub fn messages(mut self, msgs: Vec<Message>) -> Self {
-        self.messages = InheritOpt::Value(msgs);
+        self.messages = Some(msgs);
         self
     }
-    pub fn add_message(mut self, msg: Message) -> Self {
-        match &mut self.messages {
-            InheritOpt::Value(v) => v.push(msg),
-            InheritOpt::Inherit => self.messages = InheritOpt::Value(vec![msg]),
-        }
+    pub fn history(mut self, msg: Vec<Message>) -> Self {
+        self.messages = Some(msg);
         self
     }
-    pub fn tools_some(mut self, tools: Vec<Tool>) -> Self {
-        self.tools = InheritMaybe::Some(tools);
+    pub fn tools(mut self, tools: Vec<Tool>) -> Self {
+        self.tools = Some(tools);
         self
     }
-    pub fn tools_none(mut self) -> Self {
-        self.tools = InheritMaybe::ExplicitNone;
+    pub fn add_tool(mut self, tools: Vec<Tool>) -> Self {
+        self.tools = Some(tools);
         self
     }
-    pub fn add_tool(mut self, tool: Tool) -> Self {
-        match &mut self.tools {
-            InheritMaybe::Some(v) => v.push(tool),
-            InheritMaybe::ExplicitNone => { /* explicit none, do nothing */ }
-            InheritMaybe::Inherit => self.tools = InheritMaybe::Some(vec![tool]),
-        }
+    pub fn num_ctx(mut self, v: u32) -> Self {
+        self.opts.num_ctx = Some(v);
         self
     }
-
-    // flattened inference options setters
-    pub fn num_ctx(mut self, v: Option<i32>) -> Self {
-        self.opts.num_ctx = v;
+    pub fn repeat_last_n(mut self, v: i32) -> Self {
+        self.opts.repeat_last_n = Some(v);
         self
     }
-    pub fn repeat_last_n(mut self, v: Option<i32>) -> Self {
-        self.opts.repeat_last_n = v;
+    pub fn repeat_penalty(mut self, v: f32) -> Self {
+        self.opts.repeat_penalty = Some(v);
         self
     }
-    pub fn repeat_penalty(mut self, v: Option<f32>) -> Self {
-        self.opts.repeat_penalty = v;
+    pub fn temperature(mut self, v: f32) -> Self {
+        self.opts.temperature = Some(v);
         self
     }
-    pub fn temperature(mut self, v: Option<f32>) -> Self {
-        self.opts.temperature = v;
+    pub fn seed(mut self, v: i32) -> Self {
+        self.opts.seed = Some(v);
         self
     }
-    pub fn seed(mut self, v: Option<i32>) -> Self {
-        self.opts.seed = v;
+    pub fn stop(mut self, v: String) -> Self {
+        self.opts.stop = Some(v);
         self
     }
-    pub fn stop(mut self, v: Option<Vec<String>>) -> Self {
-        self.opts.stop = v;
+    pub fn num_predict(mut self, v: i32) -> Self {
+        self.opts.num_predict = Some(v);
         self
     }
-    pub fn num_predict(mut self, v: Option<i32>) -> Self {
-        self.opts.num_predict = v;
+    pub fn top_k(mut self, v: u32) -> Self {
+        self.opts.top_k = Some(v);
         self
     }
-    pub fn top_k(mut self, v: Option<i32>) -> Self {
-        self.opts.top_k = v;
+    pub fn top_p(mut self, v: f32) -> Self {
+        self.opts.top_p = Some(v);
         self
     }
-    pub fn top_p(mut self, v: Option<f32>) -> Self {
-        self.opts.top_p = v;
+    pub fn min_p(mut self, v: f32) -> Self {
+        self.opts.min_p = Some(v);
         self
     }
-    pub fn min_p(mut self, v: Option<f32>) -> Self {
-        self.opts.min_p = v;
+    pub fn presence_penalty(mut self, v: f32) -> Self {
+        self.opts.presence_penalty = Some(v);
         self
     }
-    pub fn presence_penalty(mut self, v: Option<f32>) -> Self {
-        self.opts.presence_penalty = v;
+    pub fn frequency_penalty(mut self, v: f32) -> Self {
+        self.opts.frequency_penalty = Some(v);
         self
     }
-    pub fn frequency_penalty(mut self, v: Option<f32>) -> Self {
-        self.opts.frequency_penalty = v;
+    pub fn max_tokens(mut self, v: i32) -> Self {
+        self.opts.max_tokens = Some(v);
         self
     }
-    pub fn max_tokens(mut self, v: Option<i32>) -> Self {
-        self.opts.max_tokens = v;
-        self
-    }
-
     pub fn strip_thinking(mut self, strip_thinking: bool) -> Self {
         self.strip_thinking = Some(strip_thinking);
         self
     }
+    pub fn use_tools(mut self, use_tools: bool) -> Self {
+        self.use_tools = Some(false);
+        self
+    }
 
-    pub async fn invoke(self, agent: &mut Agent) -> Result<ChatResponse, AgentError> {
-        let model = match self.model {
-            InheritOpt::Value(v) => v,
-            InheritOpt::Inherit => agent.model.clone(),
-        };
-
-        let format = match self.format {
-            InheritMaybe::Some(v) => Some(v),
-            InheritMaybe::ExplicitNone => None,
-            InheritMaybe::Inherit => agent.response_format.clone(),
-        };
-
-        let stream = match self.stream {
-            InheritMaybe::Some(v) => Some(v),
-            InheritMaybe::ExplicitNone => None,
-            InheritMaybe::Inherit => Some(agent.stream),
-        };
-
-        let keep_alive = match self.keep_alive {
-            InheritMaybe::Some(v) => Some(v),
-            InheritMaybe::ExplicitNone => None,
-            InheritMaybe::Inherit => None, // no agent value, so omit unless set
-        };
-
-        // merge messages and tools
-        let messages = match self.messages {
-            InheritOpt::Value(v) => v,
-            InheritOpt::Inherit => agent.history.clone(),
-        };
-
-        let tools = match self.tools {
-            InheritMaybe::Some(v) => Some(v),
-            InheritMaybe::ExplicitNone => None,
-            InheritMaybe::Inherit => agent.tools.clone(),
-        };
+    pub async fn invoke(self, agent: &mut Agent) -> Result<ChatResponse, InvocationError> {
+        let model = self.model.or(Some(agent.model.clone()));
+        let format = self.format.or(agent.response_format.clone());
+        let stream = self.stream.or(Some(agent.stream));
+        let keep_alive = self.keep_alive.or(agent.keep_alive.clone());
+        let messages = self
+            .messages
+            .or(Some(agent.history.clone()))
+            .unwrap_or(vec![]);
+        let tools = self.tools.or(agent.tools.clone());
 
         // merge inference options field by field
         let merged_opts = InferenceOptions {
@@ -219,6 +149,10 @@ impl InvocationBuilder {
             None
         } else {
             Some(merged_opts)
+        };
+
+        let Some(model) = model else {
+            return Err(InvocationError::ModelNotDefined);
         };
 
         let request = ChatRequest {

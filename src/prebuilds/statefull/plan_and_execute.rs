@@ -370,7 +370,7 @@ async fn plan_and_execute_flow(agent: &mut Agent, prompt: String) -> Result<Mess
         // everything else is sub-agents
         agent.history.push(Message::user(prompt.to_string()));
         let response = InvocationBuilder::default()
-            .tools_none()
+            .use_tools(false)
             .invoke(agent)
             .await?;
 

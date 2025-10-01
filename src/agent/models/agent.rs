@@ -70,6 +70,8 @@ pub struct Agent {
     pub top_k: Option<u32>,
     /// Minimum probability threshold.
     pub min_p: Option<f32>,
+    /// Keep alive - keep model in memory
+    pub keep_alive: Option<String>,
     /// Whether to stream token notifications.
     pub stream: bool,
     /// Notification channel for emitting agent events.
@@ -110,6 +112,7 @@ impl Agent {
         stream: bool,
         top_k: Option<u32>,
         min_p: Option<f32>,
+        keep_alive: Option<String>,
         notification_channel: Option<Sender<Notification>>,
         mcp_servers: Option<Vec<McpServerType>>,
         flow: Flow,
@@ -141,6 +144,7 @@ impl Agent {
             num_predict,
             top_k,
             min_p,
+            keep_alive,
             notification_channel,
             mcp_servers,
             local_tools,

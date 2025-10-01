@@ -13,8 +13,8 @@ use crate::{
     templates::Template,
     Agent, Flow, FlowFuture, Tool,
 };
-use rmcp::schemars::{schema_for, JsonSchema};
-use schemars::{r#gen::SchemaSettings, schema::RootSchema, SchemaGenerator};
+use rmcp::schemars::JsonSchema;
+use rmcp::schemars::{gen::SchemaSettings, schema::RootSchema, SchemaGenerator};
 use tokio::sync::{mpsc, Mutex};
 
 /// A builder for [`Agent`].
@@ -113,6 +113,8 @@ pub struct AgentBuilder {
     min_p: Option<f32>,
     /// Enable server streaming for token events
     stream: Option<bool>,
+    /// Keep-alive in memory for model after inference
+    keep_alive: Option<String>,
 
     /// Optional mpsc sender for notifications
     notification_channel: Option<mpsc::Sender<Notification>>,
@@ -322,6 +324,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Set keep alive of the model
+    pub fn set_keep_alive(mut self, v: String) -> Self {
+        self.keep_alive = Some(v);
+        self
+    }
+
     /// Set penalty for repeated tokens.
     pub fn set_repeat_penalty(mut self, v: f32) -> Self {
         self.repeat_penalty = Some(v);
@@ -369,12 +377,6 @@ impl AgentBuilder {
         self.system_prompt = Some(prompt.into());
         self
     }
-
-    // /// JSON schema string to constrain response format.
-    // pub fn set_response_format<T: Into<String>>(mut self, format: T) -> Self {
-    //     self.response_format = Some(format.into());
-    //     self
-    // }
 
     /// Optional prompt to insert on each tool‐call branch.
     pub fn set_stop_prompt<T: Into<String>>(mut self, stop_prompt: T) -> Self {
@@ -630,6 +632,7 @@ impl AgentBuilder {
             stream,
             self.top_k,
             self.min_p,
+            self.keep_alive,
             self.notification_channel,
             self.mcp_servers,
             flow,

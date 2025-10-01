@@ -1,6 +1,6 @@
 use crate::{
     services::{llm::models::errors::InferenceClientError, mcp::error::McpIntegrationError},
-    ToolExecutionError,
+    InvocationError, ToolExecutionError,
 };
 
 /// Errors that can occur while running an [`Agent`].
@@ -20,6 +20,8 @@ pub enum AgentError {
     Deserialization(serde_json::Error),
     /// Attempted to use a feature not yet supported by the provider or client.
     Unsupported(String),
+    /// Invocation error (building request shape during invocation)
+    InvocationError(InvocationError),
 }
 
 impl std::fmt::Display for AgentError {
@@ -36,6 +38,7 @@ impl std::fmt::Display for AgentError {
             AgentError::Deserialization(error) => write!(f, "Deserialize error: {error}"),
             AgentError::Tool(error) => write!(f, "Tool error: {error}"),
             AgentError::Unsupported(error) => write!(f, "Unsuppored: {:#?}", error),
+            AgentError::InvocationError(error) => write!(f, "InvocationError: {:#?}", error),
         }
     }
 }
@@ -50,6 +53,7 @@ impl std::error::Error for AgentError {
             AgentError::Deserialization(error) => Some(error),
             AgentError::Tool(tool_execution_error) => Some(tool_execution_error),
             AgentError::Unsupported(_) => Some(self),
+            AgentError::InvocationError(error) => Some(error),
         }
     }
 }
@@ -75,6 +79,12 @@ impl From<McpIntegrationError> for AgentError {
 impl From<ToolExecutionError> for AgentError {
     fn from(err: ToolExecutionError) -> Self {
         AgentError::Tool(err)
+    }
+}
+
+impl From<InvocationError> for AgentError {
+    fn from(err: InvocationError) -> Self {
+        AgentError::InvocationError(err)
     }
 }
 

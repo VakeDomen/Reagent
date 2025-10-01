@@ -6,7 +6,7 @@ use crate::{
         models::chat::{ChatRequest, ChatResponse, ChatStreamChunk},
         InferenceClientError,
     },
-    Agent, AgentError, Message, NotificationHandler, ToolCall,
+    Agent, AgentError, InvocationError, Message, NotificationHandler, ToolCall,
 };
 
 // /// Invoke the agent with its current configuration.
@@ -74,7 +74,7 @@ use crate::{
 pub(super) async fn call_model_nonstreaming(
     agent: &Agent,
     request: ChatRequest,
-) -> Result<ChatResponse, AgentError> {
+) -> Result<ChatResponse, InvocationError> {
     agent.notify_prompt_request(request.clone()).await;
 
     let raw = agent.model_client.chat(request).await;
@@ -103,7 +103,7 @@ pub(super) async fn call_model_nonstreaming(
 pub(super) async fn call_model_streaming(
     agent: &Agent,
     request: ChatRequest,
-) -> Result<ChatResponse, AgentError> {
+) -> Result<ChatResponse, InvocationError> {
     agent.notify_prompt_request(request.clone()).await;
 
     let stream = match agent.model_client.chat_stream(request).await {
