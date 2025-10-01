@@ -20,6 +20,7 @@ use crate::{
 /// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
 pub async fn invoke(agent: &mut Agent) -> Result<ChatResponse, AgentError> {
     let request: ChatRequest = (&*agent).into();
+
     let response = match &request.base.stream {
         Some(true) => call_model_streaming(agent, request).await?,
         _ => call_model_nonstreaming(agent, request).await?,
@@ -76,7 +77,6 @@ async fn call_model_nonstreaming(
     request: ChatRequest,
 ) -> Result<ChatResponse, AgentError> {
     agent.notify_prompt_request(request.clone()).await;
-
     let raw = agent.model_client.chat(request).await;
 
     let mut resp = match raw {

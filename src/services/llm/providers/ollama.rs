@@ -3,7 +3,7 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use std::{fmt, pin::Pin};
-use tracing::{debug, error, info_span, trace, instrument, Instrument};
+use tracing::{debug, error, info_span, instrument, trace, Instrument};
 
 use crate::services::llm::models::chat::ChatStreamChunk;
 use crate::services::llm::models::{
@@ -20,12 +20,10 @@ pub struct OllamaClient {
 
 impl OllamaClient {
     pub fn new(cfg: crate::services::llm::client::ClientConfig) -> Result<Self, ModelClientError> {
-        let base_url = cfg
-            .base_url
-            .unwrap_or("http://localhost:11434".into());
-        Ok(Self { 
-            client: Client::new(), 
-            base_url 
+        let base_url = cfg.base_url.unwrap_or("http://localhost:11434".into());
+        Ok(Self {
+            client: Client::new(),
+            base_url,
         })
     }
 
@@ -38,6 +36,11 @@ impl OllamaClient {
         let url = format!("{}{}", self.base_url, endpoint);
         let span = info_span!("http.request", %url);
         async {
+            println!(
+                "{:#?}",
+                serde_json::to_string_pretty(&request_body).unwrap()
+            );
+
             let response = self
                 .client
                 .post(&url)
@@ -87,7 +90,10 @@ impl OllamaClient {
         &self,
         endpoint: &str,
         body: &T,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<R, ModelClientError>> + Send + 'static>>, ModelClientError>
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<R, ModelClientError>> + Send + 'static>>,
+        ModelClientError,
+    >
     where
         T: serde::Serialize + fmt::Debug,
         R: serde::de::DeserializeOwned + fmt::Debug + Send + 'static,
@@ -132,11 +138,17 @@ impl OllamaClient {
     pub async fn chat_stream(
         &self,
         req: ChatRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>, ModelClientError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, ModelClientError>> + Send + 'static>>,
+        ModelClientError,
+    > {
         self.post_stream("/api/chat", &req).await
     }
 
-    pub async fn embeddings(&self, request: EmbeddingsRequest) -> Result<EmbeddingsResponse, ModelClientError> {
+    pub async fn embeddings(
+        &self,
+        request: EmbeddingsRequest,
+    ) -> Result<EmbeddingsResponse, ModelClientError> {
         self.post("/api/embeddings", &request).await
     }
 }

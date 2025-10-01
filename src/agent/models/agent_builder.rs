@@ -1,37 +1,35 @@
 use std::{collections::HashMap, sync::Arc};
 
-use rmcp::schemars::{schema_for, JsonSchema};
-use tokio::sync::{mpsc, Mutex};
 use crate::{
     agent::models::{
-        configs::{ModelConfig, PromptConfig}, 
-        error::AgentBuildError
-    }, 
-    notifications::Notification, 
+        configs::{ModelConfig, PromptConfig},
+        error::AgentBuildError,
+    },
+    notifications::Notification,
     services::{
-        llm::{to_ollama_format, to_openrouter_format, ClientConfig, Provider, SchemaSpec}, 
-        mcp::mcp_tool_builder::McpServerType
-    }, 
-    templates::Template, 
-    Agent, 
-    Flow, 
-    FlowFuture,
-    Tool
+        llm::{to_ollama_format, to_openrouter_format, ClientConfig, Provider, SchemaSpec},
+        mcp::mcp_tool_builder::McpServerType,
+    },
+    templates::Template,
+    Agent, Flow, FlowFuture, Tool,
 };
+use rmcp::schemars::{gen::SchemaSettings, schema::RootSchema, SchemaGenerator};
+use rmcp::schemars::{schema_for, JsonSchema};
+use tokio::sync::{mpsc, Mutex};
 
 /// A builder for [`Agent`].
 ///
 /// Allows configuration of model, endpoint, tools, penalties, flow, etc.
 /// Uses the builder pattern so you can chain calls.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```
 /// use reagent_rs::AgentBuilder;
-/// 
+///
 /// async {
 ///     let mut agent = AgentBuilder::default()
-///         // model must be set, everything else has 
+///         // model must be set, everything else has
 ///         // defualts and is optional
 ///         .set_model("qwen3:0.6b")
 ///         .set_system_prompt("You are a helpful assistant.")
@@ -41,9 +39,9 @@ use crate::{
 ///         .build()
 ///         .await;
 /// };
-/// 
+///
 /// ```
-/// 
+///
 #[derive(Debug, Default)]
 pub struct AgentBuilder {
     /// Name used for logging and defaults
@@ -61,7 +59,7 @@ pub struct AgentBuilder {
     organization: Option<String>,
     /// Extra HTTP headers appended to every request
     extra_headers: Option<HashMap<String, String>>,
-    
+
     /// Optional first-message template used to build the system prompt
     template: Option<Arc<Mutex<Template>>>,
     /// Raw system prompt string seeded into history
@@ -88,7 +86,7 @@ pub struct AgentBuilder {
     max_iterations: Option<usize>,
     /// Clear conversation history before each invocation
     clear_histroy_on_invoke: Option<bool>,
-    
+
     /// Sampling temperature
     temperature: Option<f32>,
     /// Nucleus sampling probability
@@ -115,17 +113,14 @@ pub struct AgentBuilder {
     min_p: Option<f32>,
     /// Enable server streaming for token events
     stream: Option<bool>,
-    
+
     /// Optional mpsc sender for notifications
     notification_channel: Option<mpsc::Sender<Notification>>,
     /// High-level control flow policy
     flow: Option<Flow>,
-    
-    
 }
 
 impl AgentBuilder {
-
     /// Import generic client settings from a `ClientConfig`.
     /// Existing values already set on the builder are preserved unless overwritten by `conf`.
     /// Only fields present in `conf` are applied.
@@ -145,7 +140,6 @@ impl AgentBuilder {
         }
         self
     }
-
 
     /// Import prompt-related settings from a `PromptConfig`.
     /// Existing values already set on the builder are preserved unless overwritten by `conf`.
@@ -238,7 +232,10 @@ impl AgentBuilder {
     }
 
     /// Set the name of the agent (used in logging)
-    pub fn set_name<T>(mut self, name: T) -> Self where T: Into<String> {
+    pub fn set_name<T>(mut self, name: T) -> Self
+    where
+        T: Into<String>,
+    {
         self.name = Some(name.into());
         self
     }
@@ -250,29 +247,37 @@ impl AgentBuilder {
     }
 
     /// Override the base URL for the provider client.
-    pub fn set_base_url<T>(mut self, base_url: T) -> Self where T: Into<String> {
+    pub fn set_base_url<T>(mut self, base_url: T) -> Self
+    where
+        T: Into<String>,
+    {
         self.base_url = Some(base_url.into());
         self
     }
 
     /// Set the API key used by the provider client.
-    pub fn set_api_key<T>(mut self, api_key:  T) -> Self where T: Into<String> {
+    pub fn set_api_key<T>(mut self, api_key: T) -> Self
+    where
+        T: Into<String>,
+    {
         self.api_key = Some(api_key.into());
         self
     }
 
     /// Set the organization or tenant identifier for requests.
-    pub fn set_organization<T>(mut self, organization:  T) -> Self where T: Into<String> {
+    pub fn set_organization<T>(mut self, organization: T) -> Self
+    where
+        T: Into<String>,
+    {
         self.organization = Some(organization.into());
         self
     }
 
     /// Provide additional HTTP headers to include on each request.
-    pub fn set_extra_headers(mut self, extra_headers:HashMap<String, String>) -> Self {
+    pub fn set_extra_headers(mut self, extra_headers: HashMap<String, String>) -> Self {
         self.extra_headers = Some(extra_headers);
         self
     }
-
 
     /// Set the streaming value for Ollam
     /// Will enable Token Notifications
@@ -389,7 +394,6 @@ impl AgentBuilder {
         self
     }
 
-
     pub fn set_flow_fn(mut self, flow: Flow) -> Self {
         self.flow = Some(flow);
         self
@@ -429,7 +433,7 @@ impl AgentBuilder {
     }
 
     /// Set max_iterations. This controlls maximum amount of times the agent
-    /// may perform a "conversation iteration". Also serves as a breakpoint 
+    /// may perform a "conversation iteration". Also serves as a breakpoint
     /// if the agent is stuck in a loop
     pub fn set_max_iterations(mut self, max_iterations: usize) -> Self {
         self.max_iterations = Some(max_iterations);
@@ -450,14 +454,32 @@ impl AgentBuilder {
 
     // A ready-made serde_json::Value
     pub fn set_response_format_value(mut self, schema: serde_json::Value) -> Self {
-        self.response_format = Some(SchemaSpec { schema, name: None, strict: None });
+        self.response_format = Some(SchemaSpec {
+            schema,
+            name: None,
+            strict: None,
+        });
         self
     }
 
     // From a Rust type via schemars
     pub fn set_response_format_from<T: JsonSchema>(mut self) -> Self {
-        let schema = serde_json::to_value(schema_for!(T)).expect("schema serialize");
-        self.response_format = Some(SchemaSpec { schema, name: None, strict: None });
+        let settings = SchemaSettings::draft07().with(|s| {
+            s.inline_subschemas = true;
+            s.meta_schema = None;
+        });
+        let gen = SchemaGenerator::new(settings);
+        let root: RootSchema = gen.into_root_schema_for::<T>();
+        let mut schema = serde_json::to_value(&root.schema).unwrap();
+        if let Some(obj) = schema.as_object_mut() {
+            obj.remove("$schema");
+            obj.remove("definitions");
+        }
+        self.response_format = Some(SchemaSpec {
+            schema,
+            name: None,
+            strict: None,
+        });
         self
     }
 
@@ -490,7 +512,7 @@ impl AgentBuilder {
     ///
     /// Creates an internal mpsc channel of size 100.
     pub async fn build_with_notification(
-        mut self
+        mut self,
     ) -> Result<(Agent, mpsc::Receiver<Notification>), AgentBuildError> {
         let (sender, receiver) = mpsc::channel(100);
         self.notification_channel = Some(sender);
@@ -501,12 +523,12 @@ impl AgentBuilder {
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
         let model = self.model.ok_or(AgentBuildError::ModelNotSet)?;
-        
-        let system_prompt = self.system_prompt.unwrap_or_else(|| "You are a helpful agent.".into());
+
+        let system_prompt = self
+            .system_prompt
+            .unwrap_or_else(|| "You are a helpful agent.".into());
         let strip_thinking = self.strip_thinking.unwrap_or(true);
         let clear_histroy_on_invoke = self.clear_histroy_on_invoke.unwrap_or(false);
-
-        
 
         let flow = self.flow.unwrap_or(Flow::Default);
 
@@ -535,8 +557,10 @@ impl AgentBuilder {
         }
 
         if self.response_format.is_some() && self.response_format_raw.is_some() {
-            return Err(AgentBuildError::InvalidJsonSchema("Both set_structured_output_* and \
-                set_response_format_str were called. Use only one source.".to_string(),
+            return Err(AgentBuildError::InvalidJsonSchema(
+                "Both set_structured_output_* and \
+                set_response_format_str were called. Use only one source."
+                    .to_string(),
             ));
         }
 
@@ -560,14 +584,25 @@ impl AgentBuilder {
             None
         };
 
-
         let response_format = match response_format {
             Some(f) => match client_config.provider {
                 Provider::Ollama => Some(to_ollama_format(&f)),
                 Provider::OpenRouter => Some(to_openrouter_format(&f)),
-                Provider::OpenAi => return Err(AgentBuildError::Unsupported("Structured outputs not yet supported for this provider".into())),
-                Provider::Mistral => return Err(AgentBuildError::Unsupported("Structured outputs not yet supported for this provider".into())),
-                Provider::Anthropic => return Err(AgentBuildError::Unsupported("Structured outputs not yet supported for this provider".into())),
+                Provider::OpenAi => {
+                    return Err(AgentBuildError::Unsupported(
+                        "Structured outputs not yet supported for this provider".into(),
+                    ))
+                }
+                Provider::Mistral => {
+                    return Err(AgentBuildError::Unsupported(
+                        "Structured outputs not yet supported for this provider".into(),
+                    ))
+                }
+                Provider::Anthropic => {
+                    return Err(AgentBuildError::Unsupported(
+                        "Structured outputs not yet supported for this provider".into(),
+                    ))
+                }
             },
             None => None,
         };
@@ -601,11 +636,10 @@ impl AgentBuilder {
             self.template,
             self.max_iterations,
             clear_histroy_on_invoke,
-        ).await
+        )
+        .await
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -614,7 +648,9 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::{notifications::NotificationContent, Agent, AsyncToolFn, FlowFuture, Message, ToolBuilder};
+    use crate::{
+        notifications::NotificationContent, Agent, AsyncToolFn, FlowFuture, Message, ToolBuilder,
+    };
 
     #[tokio::test]
     async fn defaults_fail_without_model() {
@@ -690,7 +726,8 @@ mod tests {
                     },
                     "required":["windy","temperature","description"]
                     }
-                    "#.into())
+                    "#
+                    .into())
                 })
             })
         };
@@ -725,22 +762,22 @@ mod tests {
             .as_ref()
             .unwrap()
             .send(Notification::new(
-                "test".to_string()    ,
+                "test".to_string(),
                 NotificationContent::Done(false, None),
             ))
             .await
             .unwrap();
         let notified = rx.recv().await.unwrap();
-        assert!(matches!(notified.content, NotificationContent::Done(false, None)));
+        assert!(matches!(
+            notified.content,
+            NotificationContent::Done(false, None)
+        ));
     }
 
     #[tokio::test]
     async fn custom_flow_invocation() {
-        
         fn echo_flow<'a>(_agent: &'a mut Agent, prompt: String) -> FlowFuture<'a> {
-            Box::pin(async move {
-                    Ok(Message::system(format!("ECHO: {prompt}")))
-            })    
+            Box::pin(async move { Ok(Message::system(format!("ECHO: {prompt}"))) })
         }
 
         let agent = AgentBuilder::default()
