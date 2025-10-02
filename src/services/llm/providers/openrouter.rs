@@ -7,9 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing::{debug, instrument};
 
-use crate::services::llm::models::chat::{ChatRequest, ChatResponse, ChatStreamChunk};
 use crate::services::llm::models::embedding::{EmbeddingsRequest, EmbeddingsResponse};
 use crate::services::llm::models::errors::InferenceClientError;
+use crate::services::llm::{
+    models::chat::{ChatRequest, ChatResponse, ChatStreamChunk},
+    StructuredOuputFormat,
+};
 use crate::{
     services::llm::models::base::{InferenceOptions, Message, Role},
     ClientConfig,
@@ -452,5 +455,18 @@ fn parse_oopen_router_error(text: &str) -> Option<InferenceClientError> {
             )))
         }
         Err(_) => None,
+    }
+}
+
+impl StructuredOuputFormat for OpenRouterClient {
+    fn format(spec: &crate::services::llm::SchemaSpec) -> serde_json::Value {
+        serde_json::json!({
+            "type": "json_schema",
+            "json_schema": {
+                "name": spec.name.clone().unwrap_or_else(|| "schema".to_string()),
+                "strict": spec.strict.unwrap_or(false),
+                "schema": spec.schema
+            }
+        })
     }
 }

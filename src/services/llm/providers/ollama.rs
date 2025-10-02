@@ -11,6 +11,7 @@ use crate::services::llm::models::{
     embedding::{EmbeddingsRequest, EmbeddingsResponse},
     errors::InferenceClientError,
 };
+use crate::services::llm::StructuredOuputFormat;
 use crate::ClientConfig;
 
 #[derive(Debug, Clone)]
@@ -147,5 +148,11 @@ impl OllamaClient {
         request: EmbeddingsRequest,
     ) -> Result<EmbeddingsResponse, InferenceClientError> {
         self.post("/api/embeddings", &request).await
+    }
+}
+
+impl StructuredOuputFormat for OllamaClient {
+    fn format(spec: &crate::services::llm::SchemaSpec) -> serde_json::Value {
+        spec.schema.clone()
     }
 }

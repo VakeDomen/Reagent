@@ -60,11 +60,9 @@ pub(super) async fn invoke_streaming(
         notification_channel,
     } = invocation_request;
 
-    let r = notification_channel
+    notification_channel
         .notify_prompt_request(request.clone())
         .await;
-
-    println!("R: {:#?}", r);
 
     let stream = match client.chat_stream(request).await {
         Ok(s) => s,

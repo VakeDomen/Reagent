@@ -3,7 +3,7 @@ use serde_json::Value;
 
 #[derive(Clone, Debug)]
 pub struct SchemaSpec {
-    pub schema: Value, // pure JSON Schema root
+    pub schema: Value,        // pure JSON Schema root
     pub name: Option<String>, // used by providers that want a name
     pub strict: Option<bool>, // opt-in, only applied where supported
 }
@@ -19,7 +19,11 @@ impl SchemaSpec {
     }
 
     pub fn from_value(schema: serde_json::Value) -> Self {
-        Self { schema, name: None, strict: None }
+        Self {
+            schema,
+            name: None,
+            strict: None,
+        }
     }
     pub fn from_str(s: &str) -> Result<Self, serde_json::Error> {
         let v: serde_json::Value = serde_json::from_str(s.trim())?;
@@ -31,18 +35,6 @@ impl SchemaSpec {
     }
 }
 
-
-pub fn to_ollama_format(spec: &SchemaSpec) -> serde_json::Value {
-    spec.schema.clone()
-}
-
-pub fn to_openrouter_format(spec: &SchemaSpec) -> serde_json::Value {
-    serde_json::json!({
-        "type": "json_schema",
-        "json_schema": {
-            "name": spec.name.clone().unwrap_or_else(|| "schema".to_string()),
-            "strict": spec.strict.unwrap_or(false),
-            "schema": spec.schema
-        }
-    })
+pub trait StructuredOuputFormat {
+    fn format(spec: &SchemaSpec) -> serde_json::Value;
 }
