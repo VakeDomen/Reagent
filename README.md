@@ -134,16 +134,16 @@ let agent = AgentBuilder::default()
 From struct via `schemars`:
 
 ```rust
-#[derive(JsonSchema)]
-struct Weather { 
-    windy: bool, 
-    temperature: i32, 
-    description: String 
+#[derive(Deserialize, JsonSchema)]
+struct Weather {
+    windy: bool,
+    temperature: i32,
+    description: String
 }
 
 let agent = AgentBuilder::default()
     .set_model("qwen3:0.6b")
-    .set_response_format(serde_json::to_string_pretty(&schema_for!(Weather))?)
+    .set_response_format_from::<Weather>()
     .build()
     .await?;
 ```
