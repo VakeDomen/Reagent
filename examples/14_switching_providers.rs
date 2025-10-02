@@ -1,26 +1,23 @@
-
-use std::error::Error;
 use reagent_rs::{init_default_tracing, AgentBuilder, Provider};
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::json;
-
+use std::error::Error;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct MyWeatherOuput {
-  _windy: bool,
-  _temperature: i32,
-  _description: String
+    windy: bool,
+    temperature: i32,
+    description: String,
 }
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
-    
+
     let _agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
-        // ollama is set as default you don't 
+        // ollama is set as default you don't
         // actually have to set it
         .set_provider(Provider::Ollama)
         .set_base_url("http://myollamapi.example.com:11456")
@@ -32,15 +29,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .set_model("mistralai/mistral-small-3.2-24b-instruct:free")
         // Currently open router is the only one
         // supported outside of ollama
-        // you can specify other but the agent will 
+        // you can specify other but the agent will
         // fail to build, throwing "unsupported" error
         .set_provider(Provider::OpenRouter)
         .set_api_key("MY_API_KEY")
         .build()
         .await?;
 
-
-    // careful, different providers may need diffrent settings  
+    // careful, different providers may need diffrent settings
     // like response format
     let schema = schema_for!(MyWeatherOuput);
     let open_router_response_format = serde_json::to_string_pretty(&json!({
@@ -63,9 +59,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let resp: MyWeatherOuput = agent.invoke_flow_structured_output("What is the current weather in Koper?").await?;
+    let resp: MyWeatherOuput = agent
+        .invoke_flow_structured_output("What is the current weather in Koper?")
+        .await?;
     println!("\n-> Agent: {resp:#?}");
-
 
     Ok(())
 }

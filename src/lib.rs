@@ -17,9 +17,9 @@
 //!
 //! #[derive(Debug, Deserialize, JsonSchema)]
 //! struct MyWeatherOuput {
-//!   _windy: bool,
-//!   _temperature: i32,
-//!   _description: String
+//!   windy: bool,
+//!   temperature: i32,
+//!   description: String
 //! }
 //!
 //! #[tokio::main]
@@ -90,58 +90,12 @@ pub use crate::services::mcp::mcp_tool_builder::McpServerType;
 
 pub use crate::services::logging::init_default_tracing;
 
-// Invocation helpers at top level for convenience
-// pub mod invocations {
-//     pub use crate::agent::{
-//         call_tools as invoke_call_tools,
-//         invoke,
-//         invoke_with_tool_calls,
-//         invoke_without_tools,
-//     };
-// }
-
-// -------------------------------------
-// Small prelude for common imports
-// -------------------------------------
-
-/// Commonly used items for building and running agents.
 pub mod prelude {
     pub use crate::{
-        // macro
-        flow,
-        // Logging
-        init_default_tracing,
-        // Invocation helpers
-        // invoke,
-        // invoke_with_tool_calls,
-        // invoke_without_tools,
-        // Core
-        Agent,
-        AgentBuildError,
-        AgentBuilder,
-        AgentError,
-        ChatRequest,
-        ChatResponse,
-        // LLM
-        ClientConfig,
-        // Flows
-        Flow,
-        McpIntegrationError,
-        // MCP
-        McpServerType,
-        Message,
-        // Notifications
-        Notification,
-        NotificationContent,
-        Provider,
-        Role,
-        // Templates
-        Template,
-        TemplateDataSource,
-        // Tools
-        Tool,
-        ToolBuilder,
-        ToolExecutionError,
+        flow, init_default_tracing, Agent, AgentBuildError, AgentBuilder, AgentError, ChatRequest,
+        ChatResponse, ClientConfig, Flow, McpIntegrationError, McpServerType, Message,
+        Notification, NotificationContent, Provider, Role, Template, TemplateDataSource, Tool,
+        ToolBuilder, ToolExecutionError,
     };
 }
 pub use rmcp::schemars::JsonSchema;
