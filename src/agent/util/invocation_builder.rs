@@ -6,10 +6,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     call_tools,
-    services::llm::{
-        to_ollama_format, to_openrouter_format, BaseRequest, ClientBuilder, InferenceClientError,
-        InferenceOptions, SchemaSpec,
-    },
+    services::llm::{BaseRequest, ClientBuilder, InferenceOptions, SchemaSpec},
     Agent, ChatRequest, ChatResponse, ClientConfig, InvocationError, InvocationRequest, Message,
     Notification, Provider, Tool,
 };
@@ -380,36 +377,7 @@ impl InvocationBuilder {
         };
 
         let format = match response_format {
-            Some(f) => match client.get_config().provider {
-                Some(Provider::Ollama) => Some(to_ollama_format(&f)),
-                Some(Provider::OpenRouter) => Some(to_openrouter_format(&f)),
-                Some(Provider::OpenAi) => {
-                    return Err(InvocationError::InferenceError(
-                        InferenceClientError::Unsupported(
-                            "Structured outputs not yet supported for this provider".into(),
-                        ),
-                    ))
-                }
-                Some(Provider::Mistral) => {
-                    return Err(InvocationError::InferenceError(
-                        InferenceClientError::Unsupported(
-                            "Structured outputs not yet supported for this provider".into(),
-                        ),
-                    ))
-                }
-                Some(Provider::Anthropic) => {
-                    return Err(InvocationError::InferenceError(
-                        InferenceClientError::Unsupported(
-                            "Structured outputs not yet supported for this provider".into(),
-                        ),
-                    ))
-                }
-                _ => {
-                    return Err(InvocationError::InferenceError(
-                        InferenceClientError::Config("Provider not set".into()),
-                    ))
-                }
-            },
+            Some(f) => Some(client.structured_output_format(&f)?),
             None => None,
         };
 

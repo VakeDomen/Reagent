@@ -7,10 +7,7 @@ use crate::{
     },
     notifications::Notification,
     services::{
-        llm::{
-            to_ollama_format, to_openrouter_format, ClientBuilder, ClientConfig, InferenceClient,
-            InferenceClientError, Provider, SchemaSpec,
-        },
+        llm::{ClientBuilder, ClientConfig, Provider, SchemaSpec},
         mcp::mcp_tool_builder::McpServerType,
     },
     templates::Template,
@@ -546,23 +543,6 @@ impl AgentBuilder {
 
         let stream = self.stream.unwrap_or(false);
 
-        // let mut client_config = ClientConfig::default();
-        // if let Some(provider) = self.provider {
-        //     client_config.provider = provider
-        // }
-        // if let Some(base_url) = self.base_url {
-        //     client_config.base_url = Some(base_url)
-        // }
-        // if let Some(api_key) = self.api_key {
-        //     client_config.api_key = Some(api_key)
-        // }
-        // if let Some(organization) = self.organization {
-        //     client_config.organization = Some(organization)
-        // }
-        // if let Some(extra_headers) = self.extra_headers {
-        //     client_config.extra_headers = Some(extra_headers)
-        // }
-        //
         let inference_client = ClientConfig::default()
             .provider(self.provider)
             .base_url(self.base_url)
@@ -600,30 +580,7 @@ impl AgentBuilder {
         };
 
         let response_format = match response_format {
-            Some(f) => match inference_client.get_config().provider {
-                Some(Provider::Ollama) => Some(to_ollama_format(&f)),
-                Some(Provider::OpenRouter) => Some(to_openrouter_format(&f)),
-                Some(Provider::OpenAi) => {
-                    return Err(AgentBuildError::Unsupported(
-                        "Structured outputs not yet supported for this provider".into(),
-                    ))
-                }
-                Some(Provider::Mistral) => {
-                    return Err(AgentBuildError::Unsupported(
-                        "Structured outputs not yet supported for this provider".into(),
-                    ))
-                }
-                Some(Provider::Anthropic) => {
-                    return Err(AgentBuildError::Unsupported(
-                        "Structured outputs not yet supported for this provider".into(),
-                    ))
-                }
-                _ => {
-                    return Err(AgentBuildError::InferenceClient(
-                        InferenceClientError::Config("Provider not set".into()),
-                    ))
-                }
-            },
+            Some(f) => Some(inference_client.structured_output_format(&f)?),
             None => None,
         };
 

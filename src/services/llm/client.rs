@@ -3,10 +3,13 @@ use std::{pin::Pin, sync::Arc};
 use futures::Stream;
 
 use crate::{
-    services::llm::models::{
-        chat::{ChatRequest, ChatResponse, ChatStreamChunk},
-        embedding::{EmbeddingsRequest, EmbeddingsResponse},
-        errors::InferenceClientError,
+    services::llm::{
+        models::{
+            chat::{ChatRequest, ChatResponse, ChatStreamChunk},
+            embedding::{EmbeddingsRequest, EmbeddingsResponse},
+            errors::InferenceClientError,
+        },
+        SchemaSpec, StructuredOuputFormat,
     },
     ClientConfig,
 };
@@ -44,6 +47,21 @@ pub struct InferenceClient {
 impl InferenceClient {
     pub fn get_config(&self) -> &ClientConfig {
         &self.config
+    }
+
+    pub fn structured_output_format(
+        &self,
+        spec: &SchemaSpec,
+    ) -> Result<serde_json::Value, InferenceClientError> {
+        match self.get_config().provider {
+            Some(Provider::Ollama) => Ok(OllamaClient::format(&spec)),
+            Some(Provider::OpenRouter) => Ok(OpenRouterClient::format(&spec)),
+            _ => {
+                return Err(InferenceClientError::Unsupported(
+                    "Structured outputs not yet supported for this provider".into(),
+                ))
+            }
+        }
     }
 
     pub async fn chat(&self, req: ChatRequest) -> Result<ChatResponse, InferenceClientError> {
