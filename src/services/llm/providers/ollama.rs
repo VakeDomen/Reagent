@@ -38,6 +38,11 @@ impl OllamaClient {
         let url = format!("{}{}", self.base_url, endpoint);
         let span = info_span!("http.request", %url);
         async {
+            println!(
+                "{:#?}",
+                serde_json::to_string_pretty(&request_body).unwrap()
+            );
+
             let response = self
                 .client
                 .post(&url)
