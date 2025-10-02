@@ -2,7 +2,6 @@ use crate::{call_tools, Agent, AgentError, InvocationBuilder, Message, Notificat
 
 pub async fn call_tools_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
     agent.history.push(Message::user(prompt));
-    // let response = invoke(agent).await?;
     let response = InvocationBuilder::default().invoke_with(agent).await?;
 
     if let Some(tc) = response.message.tool_calls.clone() {
