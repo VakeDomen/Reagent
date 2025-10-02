@@ -1,6 +1,6 @@
 [package]
 name = "reagent-rs"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 rust-version = "1.74"
 description = "A Rust library for building AI agents with MCP & custom tools"
