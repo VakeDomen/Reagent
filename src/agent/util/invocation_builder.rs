@@ -290,7 +290,7 @@ impl InvocationBuilder {
             self.strip_thinking.unwrap_or(false),
             request,
             agent.inference_client.clone(),
-            self.notification_channel,
+            agent.notification_channel.clone(),
         );
 
         let response = match &invcation_request.request.base.stream {

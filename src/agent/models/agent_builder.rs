@@ -69,13 +69,13 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     /// Local tools the agent can call during a flow
     tools: Option<Vec<Tool>>,
-    // The normalized, typed form used by Agent and provider adapters
+    /// The normalized, typed form used by Agent and provider adapters
     response_format: Option<SchemaSpec>,
-    // Optional raw JSON string the user gave; parsed and merged at build
+    /// Optional raw JSON string the user gave; parsed and merged at build
     response_format_raw: Option<String>,
-    // Optional hint when caller set only a raw string
+    /// Optional hint when caller set only a raw string
     pending_name: Option<String>,
-    // Optional hint when caller set only a raw string
+    /// Optional hint when caller set only a raw string
     pending_strict: Option<bool>,
     /// MCP tool servers the agent can reach
     mcp_servers: Option<Vec<McpServerType>>,
