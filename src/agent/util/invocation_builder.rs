@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 
+use rmcp::schemars::{gen::SchemaSettings, schema::RootSchema, JsonSchema, SchemaGenerator};
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
     call_tools,
-    services::llm::{BaseRequest, ClientBuilder, InferenceOptions},
+    services::llm::{
+        to_ollama_format, to_openrouter_format, BaseRequest, ClientBuilder, InferenceClientError,
+        InferenceOptions, SchemaSpec,
+    },
     Agent, ChatRequest, ChatResponse, ClientConfig, InvocationError, InvocationRequest, Message,
     Notification, Provider, Tool,
 };
@@ -38,6 +42,15 @@ pub struct InvocationBuilder {
     extra_headers: Option<HashMap<String, String>>,
     /// Notification channel to send notifications to
     notification_channel: Option<Sender<Notification>>,
+
+    // The normalized, typed form used by Agent and provider adapters
+    response_format: Option<SchemaSpec>,
+    // Optional raw JSON string the user gave; parsed and merged at build
+    response_format_raw: Option<String>,
+    // Optional hint when caller set only a raw string
+    pending_name: Option<String>,
+    // Optional hint when caller set only a raw string
+    pending_strict: Option<bool>,
 }
 
 impl InvocationBuilder {
@@ -49,7 +62,7 @@ impl InvocationBuilder {
         self.format = Some(v);
         self
     }
-    pub fn steam(mut self, v: bool) -> Self {
+    pub fn stream(mut self, v: bool) -> Self {
         self.stream = Some(v);
         self
     }
@@ -180,6 +193,49 @@ impl InvocationBuilder {
         self
     }
 
+    // A string of JSON Schema
+    pub fn set_response_format_str(mut self, schema_json: &str) -> Self {
+        self.response_format_raw = Some(schema_json.to_owned());
+        self
+    }
+
+    // A ready-made serde_json::Value
+    pub fn set_response_format_value(mut self, schema: serde_json::Value) -> Self {
+        self.response_format = Some(SchemaSpec {
+            schema,
+            name: None,
+            strict: None,
+        });
+        self
+    }
+
+    // From a Rust type via schemars
+    pub fn set_response_format_from<T: JsonSchema>(mut self) -> Self {
+        let settings = SchemaSettings::draft07().with(|s| {
+            s.inline_subschemas = true;
+            s.meta_schema = None;
+        });
+        let gen = SchemaGenerator::new(settings);
+        let root: RootSchema = gen.into_root_schema_for::<T>();
+        let mut schema = serde_json::to_value(&root.schema).unwrap();
+        if let Some(obj) = schema.as_object_mut() {
+            obj.remove("$schema");
+            obj.remove("definitions");
+        }
+        self.response_format = Some(SchemaSpec {
+            schema,
+            name: None,
+            strict: None,
+        });
+        self
+    }
+
+    // From a Rust type via SchemaSpec
+    pub fn set_response_format_spec(mut self, schema: SchemaSpec) -> Self {
+        self.response_format = Some(schema);
+        self
+    }
+
     pub async fn invoke_with(self, agent: &mut Agent) -> Result<ChatResponse, InvocationError> {
         let model = self.model.or(Some(agent.model.clone()));
         let format = self.format.or(agent.response_format.clone());
@@ -287,18 +343,6 @@ impl InvocationBuilder {
             None => self.tools,
         };
 
-        let request = ChatRequest {
-            base: BaseRequest {
-                model,
-                format: self.format,
-                options,
-                stream: self.stream,
-                keep_alive: self.keep_alive,
-            },
-            messages: self.messages.unwrap_or(vec![]),
-            tools: tools,
-        };
-
         let client = ClientConfig::default()
             .provider(self.provider)
             .base_url(self.base_url)
@@ -306,6 +350,80 @@ impl InvocationBuilder {
             .organization(self.organization)
             .extra_headers(self.extra_headers)
             .build()?;
+
+        if self.response_format.is_some() && self.response_format_raw.is_some() {
+            return Err(InvocationError::InvalidJsonSchema(
+                "Both set_structured_output_* and \
+                set_response_format_str were called. Use only one source."
+                    .to_string(),
+            ));
+        }
+
+        let response_format: Option<SchemaSpec> = if let Some(spec) = self.response_format {
+            // merge pending hints if any
+            Some(SchemaSpec {
+                name: self.pending_name.or(spec.name),
+                strict: self.pending_strict.or(spec.strict),
+                schema: spec.schema,
+            })
+        } else if let Some(raw) = self.response_format_raw {
+            let v: serde_json::Value = serde_json::from_str(raw.trim()).map_err(|e| {
+                InvocationError::InvalidJsonSchema(format!("Failed to parse JSON schema: {e}"))
+            })?;
+            Some(SchemaSpec {
+                schema: v,
+                name: self.pending_name,
+                strict: self.pending_strict,
+            })
+        } else {
+            None
+        };
+
+        let format = match response_format {
+            Some(f) => match client.get_config().provider {
+                Some(Provider::Ollama) => Some(to_ollama_format(&f)),
+                Some(Provider::OpenRouter) => Some(to_openrouter_format(&f)),
+                Some(Provider::OpenAi) => {
+                    return Err(InvocationError::InferenceError(
+                        InferenceClientError::Unsupported(
+                            "Structured outputs not yet supported for this provider".into(),
+                        ),
+                    ))
+                }
+                Some(Provider::Mistral) => {
+                    return Err(InvocationError::InferenceError(
+                        InferenceClientError::Unsupported(
+                            "Structured outputs not yet supported for this provider".into(),
+                        ),
+                    ))
+                }
+                Some(Provider::Anthropic) => {
+                    return Err(InvocationError::InferenceError(
+                        InferenceClientError::Unsupported(
+                            "Structured outputs not yet supported for this provider".into(),
+                        ),
+                    ))
+                }
+                _ => {
+                    return Err(InvocationError::InferenceError(
+                        InferenceClientError::Config("Provider not set".into()),
+                    ))
+                }
+            },
+            None => None,
+        };
+
+        let request = ChatRequest {
+            base: BaseRequest {
+                model,
+                format,
+                options,
+                stream: self.stream,
+                keep_alive: self.keep_alive,
+            },
+            messages: self.messages.unwrap_or(vec![]),
+            tools: tools,
+        };
 
         let invcation_request = InvocationRequest::new(
             self.strip_thinking.unwrap_or(false),

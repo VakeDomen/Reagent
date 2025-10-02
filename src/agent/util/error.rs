@@ -4,6 +4,8 @@ use crate::services::llm::InferenceClientError;
 pub enum InvocationError {
     ModelNotDefined,
     InferenceError(InferenceClientError),
+    /// Provided JSON schema for response format could not be parsed.
+    InvalidJsonSchema(String),
 }
 
 impl From<InferenceClientError> for InvocationError {
@@ -21,6 +23,7 @@ impl std::fmt::Display for InvocationError {
             InvocationError::InferenceError(inference_client_error) => {
                 write!(f, "Client error during inference: {inference_client_error}")
             }
+            InvocationError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {e}"),
         }
     }
 }
