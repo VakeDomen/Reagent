@@ -1,8 +1,6 @@
 use crate::agent::models::configs::{ModelConfig, PromptConfig};
 use crate::agent::models::error::{AgentBuildError, AgentError};
-use crate::services::llm::models::base::BaseRequest;
-use crate::services::llm::models::chat::ChatRequest;
-use crate::services::llm::{ClientConfig, InferenceClient, InferenceOptions, SchemaSpec};
+use crate::services::llm::{ClientConfig, InferenceClient, SchemaSpec};
 use crate::templates::Template;
 use crate::{default_flow, Flow, NotificationHandler};
 use core::fmt;
@@ -37,7 +35,7 @@ pub struct Agent {
     /// JSON schema format for responses, if any.
     pub response_format: Option<Value>,
     /// Backend model client.
-    pub(crate) model_client: InferenceClient,
+    pub(crate) inference_client: InferenceClient,
     /// System prompt injected at the start of the conversation.
     pub system_prompt: String,
     /// Optional stop prompt inserted on tool branches.
@@ -92,7 +90,7 @@ impl Agent {
     pub(crate) async fn try_new(
         name: String,
         model: &str,
-        client_config: ClientConfig,
+        inference_client: InferenceClient,
         system_prompt: &str,
         local_tools: Option<Vec<Tool>>,
         response_format: Option<Value>,
@@ -126,7 +124,7 @@ impl Agent {
             name,
             model: model.into(),
             history,
-            model_client: InferenceClient::try_from(client_config)?,
+            inference_client,
             response_format,
             system_prompt: system_prompt.into(),
             stop_prompt,
@@ -384,7 +382,7 @@ impl Agent {
 
     /// Export current client configuration (provider, base URL, keys, etc.).
     pub fn export_client_config(&self) -> ClientConfig {
-        self.model_client.get_config()
+        self.inference_client.get_config().clone()
     }
 
     /// Export current model configuration (temperature, top_p, penalties, etc.).
@@ -448,7 +446,7 @@ impl fmt::Debug for Agent {
             .field("history", &self.history)
             .field("local_tools", &self.local_tools)
             .field("response_format", &self.response_format)
-            .field("model_client", &self.model_client)
+            .field("inference_client", &self.inference_client)
             .field("system_prompt", &self.system_prompt)
             .field("stop_prompt", &self.stop_prompt)
             .field("stopword", &self.stopword)

@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
 use serde_json::Value;
+use tokio::sync::mpsc::Sender;
 
 use crate::{
     call_tools,
-    services::llm::{BaseRequest, InferenceOptions},
-    Agent, AgentError, ChatRequest, ChatResponse, InvocationError, Message, Tool,
+    services::llm::{BaseRequest, ClientBuilder, InferenceOptions},
+    Agent, ChatRequest, ChatResponse, ClientConfig, InvocationError, InvocationRequest, Message,
+    Notification, Provider, Tool,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -21,6 +25,19 @@ pub struct InvocationBuilder {
     opts: InferenceOptions,
     strip_thinking: Option<bool>,
     use_tools: Option<bool>,
+
+    /// Provider selection for the LLM client
+    provider: Option<Provider>,
+    /// Optional base URL for custom or self-hosted endpoints
+    base_url: Option<String>,
+    /// API key used by the selected provider
+    api_key: Option<String>,
+    /// Optional organization or tenant identifier
+    organization: Option<String>,
+    /// Extra HTTP headers appended to every request
+    extra_headers: Option<HashMap<String, String>>,
+    /// Notification channel to send notifications to
+    notification_channel: Option<Sender<Notification>>,
 }
 
 impl InvocationBuilder {
@@ -116,8 +133,54 @@ impl InvocationBuilder {
         self.use_tools = Some(use_tools);
         self
     }
+    /// Select the LLM provider implementation.
+    pub fn set_provider(mut self, provider: Provider) -> Self {
+        self.provider = Some(provider);
+        self
+    }
 
-    pub async fn invoke(self, agent: &mut Agent) -> Result<ChatResponse, InvocationError> {
+    /// Override the base URL for the provider client.
+    pub fn set_base_url<T>(mut self, base_url: T) -> Self
+    where
+        T: Into<String>,
+    {
+        self.base_url = Some(base_url.into());
+        self
+    }
+
+    /// Set the API key used by the provider client.
+    pub fn set_api_key<T>(mut self, api_key: T) -> Self
+    where
+        T: Into<String>,
+    {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    /// Set the organization or tenant identifier for requests.
+    pub fn set_organization<T>(mut self, organization: T) -> Self
+    where
+        T: Into<String>,
+    {
+        self.organization = Some(organization.into());
+        self
+    }
+
+    /// Provide additional HTTP headers to include on each request.
+    pub fn set_extra_headers(mut self, extra_headers: HashMap<String, String>) -> Self {
+        self.extra_headers = Some(extra_headers);
+        self
+    }
+
+    pub fn notification_channel(
+        mut self,
+        notification_channel: Option<Sender<Notification>>,
+    ) -> Self {
+        self.notification_channel = notification_channel;
+        self
+    }
+
+    pub async fn invoke_with(self, agent: &mut Agent) -> Result<ChatResponse, InvocationError> {
         let model = self.model.or(Some(agent.model.clone()));
         let format = self.format.or(agent.response_format.clone());
         let stream = self.stream.or(Some(agent.stream));
@@ -167,22 +230,16 @@ impl InvocationBuilder {
             tools,
         };
 
-        // let mut request: ChatRequest = (&*agent).into();
+        let invcation_request = InvocationRequest::new(
+            self.strip_thinking.unwrap_or(false),
+            request,
+            agent.inference_client.clone(),
+            self.notification_channel,
+        );
 
-        // if self.stream.is_some() {
-        //     request.base.stream = self.stream;
-        // }
-
-        // if let Some(use_tools) = self.use_tools {
-        //     match use_tools {
-        //         true => request.tools = agent.tools.clone(),
-        //         false => request.tools = None,
-        //     }
-        // }
-
-        let response = match &request.base.stream {
-            Some(true) => super::invocations::call_model_streaming(agent, request).await?,
-            _ => super::invocations::call_model_nonstreaming(agent, request).await?,
+        let response = match &invcation_request.request.base.stream {
+            Some(true) => super::invocations::invoke_streaming(invcation_request).await?,
+            _ => super::invocations::invoke_nonstreaming(invcation_request).await?,
         };
 
         agent.history.push(response.message.clone());
@@ -192,6 +249,75 @@ impl InvocationBuilder {
                 agent.history.push(tool_msg);
             }
         }
+
+        Ok(response)
+    }
+
+    pub async fn invoke(self) -> Result<ChatResponse, InvocationError> {
+        // merge inference options field by field
+        let merged_opts = InferenceOptions {
+            num_ctx: self.opts.num_ctx,
+            repeat_last_n: self.opts.repeat_last_n,
+            repeat_penalty: self.opts.repeat_penalty,
+            temperature: self.opts.temperature,
+            seed: self.opts.seed,
+            stop: self.opts.stop,
+            num_predict: self.opts.num_predict,
+            top_k: self.opts.top_k,
+            top_p: self.opts.top_p,
+            min_p: self.opts.min_p,
+            presence_penalty: self.opts.presence_penalty,
+            frequency_penalty: self.opts.frequency_penalty,
+            max_tokens: self.opts.max_tokens.or(None),
+        };
+
+        let options = if all_none(&merged_opts) {
+            None
+        } else {
+            Some(merged_opts)
+        };
+
+        let Some(model) = self.model else {
+            return Err(InvocationError::ModelNotDefined);
+        };
+
+        let tools = match self.use_tools {
+            Some(false) => None,
+            Some(true) => self.tools,
+            None => self.tools,
+        };
+
+        let request = ChatRequest {
+            base: BaseRequest {
+                model,
+                format: self.format,
+                options,
+                stream: self.stream,
+                keep_alive: self.keep_alive,
+            },
+            messages: self.messages.unwrap_or(vec![]),
+            tools: tools,
+        };
+
+        let client = ClientConfig::default()
+            .provider(self.provider)
+            .base_url(self.base_url)
+            .api_key(self.api_key)
+            .organization(self.organization)
+            .extra_headers(self.extra_headers)
+            .build()?;
+
+        let invcation_request = InvocationRequest::new(
+            self.strip_thinking.unwrap_or(false),
+            request,
+            client,
+            self.notification_channel,
+        );
+
+        let response = match &invcation_request.request.base.stream {
+            Some(true) => super::invocations::invoke_streaming(invcation_request).await?,
+            _ => super::invocations::invoke_nonstreaming(invcation_request).await?,
+        };
 
         Ok(response)
     }

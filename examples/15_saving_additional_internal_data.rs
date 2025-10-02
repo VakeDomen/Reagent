@@ -28,7 +28,7 @@ async fn custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, Agent
     // let response = invoke_without_tools(agent).await?;
     let response = InvocationBuilder::default()
         .use_tools(false)
-        .invoke(agent)
+        .invoke_with(agent)
         .await?;
 
     // insert into agent state

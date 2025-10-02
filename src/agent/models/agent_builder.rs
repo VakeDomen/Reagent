@@ -7,7 +7,10 @@ use crate::{
     },
     notifications::Notification,
     services::{
-        llm::{to_ollama_format, to_openrouter_format, ClientConfig, Provider, SchemaSpec},
+        llm::{
+            to_ollama_format, to_openrouter_format, ClientBuilder, ClientConfig, InferenceClient,
+            InferenceClientError, Provider, SchemaSpec,
+        },
         mcp::mcp_tool_builder::McpServerType,
     },
     templates::Template,
@@ -127,7 +130,9 @@ impl AgentBuilder {
     /// Existing values already set on the builder are preserved unless overwritten by `conf`.
     /// Only fields present in `conf` are applied.
     pub fn import_client_config(mut self, conf: ClientConfig) -> Self {
-        self = self.set_provider(conf.provider);
+        if let Some(provider) = conf.provider {
+            self = self.set_provider(provider);
+        }
         if let Some(base_url) = conf.base_url {
             self = self.set_base_url(base_url);
         }
@@ -541,22 +546,30 @@ impl AgentBuilder {
 
         let stream = self.stream.unwrap_or(false);
 
-        let mut client_config = ClientConfig::default();
-        if let Some(provider) = self.provider {
-            client_config.provider = provider
-        }
-        if let Some(base_url) = self.base_url {
-            client_config.base_url = Some(base_url)
-        }
-        if let Some(api_key) = self.api_key {
-            client_config.api_key = Some(api_key)
-        }
-        if let Some(organization) = self.organization {
-            client_config.organization = Some(organization)
-        }
-        if let Some(extra_headers) = self.extra_headers {
-            client_config.extra_headers = Some(extra_headers)
-        }
+        // let mut client_config = ClientConfig::default();
+        // if let Some(provider) = self.provider {
+        //     client_config.provider = provider
+        // }
+        // if let Some(base_url) = self.base_url {
+        //     client_config.base_url = Some(base_url)
+        // }
+        // if let Some(api_key) = self.api_key {
+        //     client_config.api_key = Some(api_key)
+        // }
+        // if let Some(organization) = self.organization {
+        //     client_config.organization = Some(organization)
+        // }
+        // if let Some(extra_headers) = self.extra_headers {
+        //     client_config.extra_headers = Some(extra_headers)
+        // }
+        //
+        let inference_client = ClientConfig::default()
+            .provider(self.provider)
+            .base_url(self.base_url)
+            .api_key(self.api_key)
+            .organization(self.organization)
+            .extra_headers(self.extra_headers)
+            .build()?;
 
         if self.response_format.is_some() && self.response_format_raw.is_some() {
             return Err(AgentBuildError::InvalidJsonSchema(
@@ -587,22 +600,27 @@ impl AgentBuilder {
         };
 
         let response_format = match response_format {
-            Some(f) => match client_config.provider {
-                Provider::Ollama => Some(to_ollama_format(&f)),
-                Provider::OpenRouter => Some(to_openrouter_format(&f)),
-                Provider::OpenAi => {
+            Some(f) => match inference_client.get_config().provider {
+                Some(Provider::Ollama) => Some(to_ollama_format(&f)),
+                Some(Provider::OpenRouter) => Some(to_openrouter_format(&f)),
+                Some(Provider::OpenAi) => {
                     return Err(AgentBuildError::Unsupported(
                         "Structured outputs not yet supported for this provider".into(),
                     ))
                 }
-                Provider::Mistral => {
+                Some(Provider::Mistral) => {
                     return Err(AgentBuildError::Unsupported(
                         "Structured outputs not yet supported for this provider".into(),
                     ))
                 }
-                Provider::Anthropic => {
+                Some(Provider::Anthropic) => {
                     return Err(AgentBuildError::Unsupported(
                         "Structured outputs not yet supported for this provider".into(),
+                    ))
+                }
+                _ => {
+                    return Err(AgentBuildError::InferenceClient(
+                        InferenceClientError::Config("Provider not set".into()),
                     ))
                 }
             },
@@ -612,7 +630,7 @@ impl AgentBuilder {
         Agent::try_new(
             name,
             &model,
-            client_config,
+            inference_client,
             &system_prompt,
             self.tools.clone(),
             response_format,

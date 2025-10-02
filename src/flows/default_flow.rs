@@ -3,7 +3,7 @@ use crate::{call_tools, Agent, AgentError, InvocationBuilder, Message, Notificat
 pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
     agent.history.push(Message::user(prompt));
     // let mut response = invoke(agent).await?;
-    let mut response = InvocationBuilder::default().invoke(agent).await?;
+    let mut response = InvocationBuilder::default().invoke_with(agent).await?;
     if let Some(tc) = response.message.tool_calls {
         for tool_msg in call_tools(agent, &tc).await {
             agent.history.push(tool_msg);
@@ -11,7 +11,7 @@ pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, 
         // response = invoke_without_tools(agent).await?;
         response = InvocationBuilder::default()
             .use_tools(false)
-            .invoke(agent)
+            .invoke_with(agent)
             .await?;
     }
 

@@ -1,11 +1,13 @@
 use futures::Stream;
 use std::pin::Pin;
 
-use crate::services::llm::client::ClientConfig;
-use crate::services::llm::models::{
-    chat::{ChatRequest, ChatResponse, ChatStreamChunk},
-    embedding::{EmbeddingsRequest, EmbeddingsResponse},
-    errors::InferenceClientError,
+use crate::{
+    services::llm::models::{
+        chat::{ChatRequest, ChatResponse, ChatStreamChunk},
+        embedding::{EmbeddingsRequest, EmbeddingsResponse},
+        errors::InferenceClientError,
+    },
+    ClientConfig,
 };
 
 #[derive(Debug, Clone)]

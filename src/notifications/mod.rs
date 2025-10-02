@@ -1,9 +1,6 @@
+mod handler;
+mod inference_channel;
 mod notification;
 mod notiifcation_content;
-mod handler;
 
-pub use self::{
-    notification::*,
-    notiifcation_content::*,
-    handler::*,
-};
+pub use self::{handler::*, inference_channel::*, notification::*, notiifcation_content::*};

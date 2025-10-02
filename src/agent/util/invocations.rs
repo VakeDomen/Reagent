@@ -3,93 +3,43 @@ use futures::{pin_mut, StreamExt};
 use crate::{
     notifications::Token,
     services::llm::{
-        models::chat::{ChatRequest, ChatResponse, ChatStreamChunk},
+        models::chat::{ChatResponse, ChatStreamChunk},
         InferenceClientError,
     },
-    Agent, AgentError, InvocationError, Message, NotificationHandler, ToolCall,
+    InvocationError, InvocationRequest, Message, NotificationHandler, ToolCall,
 };
 
-// /// Invoke the agent with its current configuration.
-// ///
-// /// Builds a [`ChatRequest`] from the agent state, sends it to the model,
-// /// and appends the model’s response to the agent’s history.
-// ///
-// /// Depending on whether streaming is enabled (`agent.stream`),
-// /// this will call the model in streaming or non-streaming mode.
-// ///
-// /// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
-// pub(super) async fn invoke(agent: &mut Agent) -> Result<ChatResponse, AgentError> {
-//     let request: ChatRequest = (&*agent).into();
-//     let response = match &request.base.stream {
-//         Some(true) => call_model_streaming(agent, request).await?,
-//         _ => call_model_nonstreaming(agent, request).await?,
-//     };
-//     agent.history.push(response.message.clone());
-//     Ok(response)
-// }
-
-// /// Invoke the agent and also execute any tool calls returned by the model.
-// ///
-// /// Like [`invoke`], but if the model response includes `tool_calls`,
-// /// each one is executed via [`call_tools`], and the resulting tool
-// /// messages are appended to the agent’s history.
-// ///
-// /// Returns the final [`ChatResponse`] (not including tool outputs).
-// pub(super) async fn invoke_with_tool_calls(agent: &mut Agent) -> Result<ChatResponse, AgentError> {
-//     let request: ChatRequest = (&*agent).into();
-//     let response = match &request.base.stream {
-//         Some(true) => call_model_streaming(agent, request).await?,
-//         _ => call_model_nonstreaming(agent, request).await?,
-//     };
-
-//     agent.history.push(response.message.clone());
-
-//     if let Some(tc) = response.message.tool_calls.clone() {
-//         for tool_msg in call_tools(agent, &tc).await {
-//             agent.history.push(tool_msg);
-//         }
-//     }
-
-//     Ok(response)
-// }
-
-// /// Invoke the agent while disabling tool use.
-// ///
-// /// Builds a [`ChatRequest`] with tools cleared (`request.tools = None`)
-// /// so the model cannot propose tool calls. The response is then appended
-// /// to the agent’s history.
-// ///
-// /// Returns a [`ChatResponse`] wrapped in an [`InvokeFuture`].
-// pub(super) async fn invoke_without_tools(agent: &mut Agent) -> Result<ChatResponse, AgentError> {
-//     let mut request: ChatRequest = (&*agent).into();
-//     request.tools = None;
-//     let response = match &request.base.stream {
-//         Some(true) => call_model_streaming(agent, request).await?,
-//         _ => call_model_nonstreaming(agent, request).await?,
-//     };
-//     agent.history.push(response.message.clone());
-//     Ok(response)
-// }
-
-pub(super) async fn call_model_nonstreaming(
-    agent: &Agent,
-    request: ChatRequest,
+pub(super) async fn invoke_nonstreaming(
+    invocation_request: InvocationRequest,
 ) -> Result<ChatResponse, InvocationError> {
-    agent.notify_prompt_request(request.clone()).await;
+    let InvocationRequest {
+        strip_thinking,
+        request,
+        client,
+        notification_channel,
+    } = invocation_request;
 
-    let raw = agent.model_client.chat(request).await;
+    notification_channel
+        .notify_prompt_request(request.clone())
+        .await;
+
+    let raw = client.chat(request).await;
 
     let mut resp = match raw {
         Ok(resp) => resp,
         Err(e) => {
-            agent.notify_prompt_error(e.to_string()).await;
+            notification_channel
+                .notify_prompt_error(e.to_string())
+                .await;
             return Err(e.into());
         }
     };
 
-    agent.notify_poompt_success(resp.clone()).await;
+    notification_channel
+        .notify_poompt_success(resp.clone())
+        .await;
 
-    if agent.strip_thinking {
+    if strip_thinking {
         if let Some(content) = resp.message.content.clone() {
             if let Some(after) = content.split("</think>").nth(1) {
                 resp.message.content = Some(after.to_string());
@@ -100,16 +50,26 @@ pub(super) async fn call_model_nonstreaming(
     Ok(resp)
 }
 
-pub(super) async fn call_model_streaming(
-    agent: &Agent,
-    request: ChatRequest,
+pub(super) async fn invoke_streaming(
+    invocation_request: InvocationRequest,
 ) -> Result<ChatResponse, InvocationError> {
-    agent.notify_prompt_request(request.clone()).await;
+    let InvocationRequest {
+        strip_thinking,
+        request,
+        client,
+        notification_channel,
+    } = invocation_request;
 
-    let stream = match agent.model_client.chat_stream(request).await {
+    notification_channel
+        .notify_prompt_request(request.clone())
+        .await;
+
+    let stream = match client.chat_stream(request).await {
         Ok(s) => s,
         Err(e) => {
-            agent.notify_prompt_error(e.to_string()).await;
+            notification_channel
+                .notify_prompt_error(e.to_string())
+                .await;
             return Err(e.into());
         }
     };
@@ -125,7 +85,9 @@ pub(super) async fn call_model_streaming(
         let chunk = match chunk_res {
             Ok(c) => c,
             Err(e) => {
-                agent.notify_prompt_error(e.to_string()).await;
+                notification_channel
+                    .notify_prompt_error(e.to_string())
+                    .await;
                 return Err(e.into());
             }
         };
@@ -144,7 +106,7 @@ pub(super) async fn call_model_streaming(
             }
 
             if let Some(tok) = &msg.content {
-                agent
+                notification_channel
                     .notify_token(Token {
                         tag: None,
                         value: tok.clone(),
@@ -170,7 +132,7 @@ pub(super) async fn call_model_streaming(
     final_msg.content = full_content;
     final_msg.tool_calls = tool_calls;
 
-    if agent.strip_thinking {
+    if strip_thinking {
         if let Some(c) = &final_msg.content {
             if let Some(after) = c.split("</think>").nth(1) {
                 final_msg.content = Some(after.to_string());
@@ -192,9 +154,11 @@ pub(super) async fn call_model_streaming(
         eval_duration: chunk.eval_duration,
     };
 
-    agent.notify_poompt_success(response.clone()).await;
+    notification_channel
+        .notify_poompt_success(response.clone())
+        .await;
 
-    if agent.strip_thinking {
+    if strip_thinking {
         if let Some(content) = response.message.content.clone() {
             if let Some(after) = content.split("</think>").nth(1) {
                 response.message.content = Some(after.to_string());

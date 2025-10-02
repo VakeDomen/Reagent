@@ -393,7 +393,7 @@ pub async fn plan_and_execute_flow(
         // let response = invoke_without_tools(agent).await?;
         let response = InvocationBuilder::default()
             .use_tools(false)
-            .invoke(agent)
+            .invoke_with(agent)
             .await?;
 
         agent

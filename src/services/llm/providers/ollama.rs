@@ -11,6 +11,7 @@ use crate::services::llm::models::{
     embedding::{EmbeddingsRequest, EmbeddingsResponse},
     errors::InferenceClientError,
 };
+use crate::ClientConfig;
 
 #[derive(Debug, Clone)]
 pub struct OllamaClient {
@@ -19,9 +20,7 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
-    pub fn new(
-        cfg: crate::services::llm::client::ClientConfig,
-    ) -> Result<Self, InferenceClientError> {
+    pub fn new(cfg: ClientConfig) -> Result<Self, InferenceClientError> {
         let base_url = cfg.base_url.unwrap_or("http://localhost:11434".into());
         Ok(Self {
             client: Client::new(),

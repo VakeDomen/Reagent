@@ -2,10 +2,13 @@ use std::{pin::Pin, sync::Arc};
 
 use futures::Stream;
 
-use crate::services::llm::models::{
-    chat::{ChatRequest, ChatResponse, ChatStreamChunk},
-    embedding::{EmbeddingsRequest, EmbeddingsResponse},
-    errors::InferenceClientError,
+use crate::{
+    services::llm::models::{
+        chat::{ChatRequest, ChatResponse, ChatStreamChunk},
+        embedding::{EmbeddingsRequest, EmbeddingsResponse},
+        errors::InferenceClientError,
+    },
+    ClientConfig,
 };
 
 use super::providers::{
@@ -21,15 +24,6 @@ pub enum Provider {
     Mistral,
     Anthropic,
     OpenRouter,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ClientConfig {
-    pub provider: Provider,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    pub organization: Option<String>,
-    pub extra_headers: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,8 +42,8 @@ pub struct InferenceClient {
 }
 
 impl InferenceClient {
-    pub fn get_config(&self) -> ClientConfig {
-        self.config.clone()
+    pub fn get_config(&self) -> &ClientConfig {
+        &self.config
     }
 
     pub async fn chat(&self, req: ChatRequest) -> Result<ChatResponse, InferenceClientError> {
@@ -97,7 +91,10 @@ impl TryFrom<ClientConfig> for InferenceClient {
 
     fn try_from(cfg: ClientConfig) -> Result<Self, Self::Error> {
         let config = cfg.clone();
-        let inner = match cfg.provider {
+        let Some(provider) = cfg.provider.clone() else {
+            return Err(InferenceClientError::Config("Provider not defined".into()));
+        };
+        let inner = match provider {
             Provider::Ollama => ClientInner::Ollama(OllamaClient::new(cfg)?),
             Provider::OpenAi => ClientInner::OpenAi(OpenAiClient::new(cfg)?),
             Provider::Mistral => ClientInner::Mistral(MistralClient::new(cfg)?),

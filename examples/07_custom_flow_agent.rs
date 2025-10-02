@@ -30,7 +30,7 @@ async fn custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, Agent
     for _ in 0..agent.max_iterations.unwrap_or(1) {
         let response = InvocationBuilder::default()
             .use_tools(true)
-            .invoke(agent)
+            .invoke_with(agent)
             .await?;
         last = Some(response.message);
     }
