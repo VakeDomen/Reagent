@@ -372,12 +372,7 @@ impl Agent {
         let tools = self.tools.as_ref()?;
 
         let name = name.into();
-        for tool in tools {
-            if tool.function.name.eq(&name) {
-                return Some(tool);
-            }
-        }
-        None
+        tools.iter().find(|&tool| tool.function.name.eq(&name))
     }
 
     /// Export current client configuration (provider, base URL, keys, etc.).
@@ -424,8 +419,8 @@ impl Agent {
             template,
             system_prompt: Some(self.system_prompt.clone()),
             tools: self.tools.clone(),
-            response_format: response_format,
-            response_format_raw: response_format_raw,
+            response_format,
+            response_format_raw,
             mcp_servers: self.mcp_servers.clone(),
             stop_prompt: self.stop_prompt.clone(),
             stopword: self.stopword.clone(),

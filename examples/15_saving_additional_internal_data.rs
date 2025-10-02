@@ -12,14 +12,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // there is a HashMap<String, serde_json::Value> to store any data
     // for custom states and such
     let tokens = agent.state.get("last_token_count");
-    println!("Number of tokens in last answer: {:#?}", tokens);
+    println!("Number of tokens in last answer: {tokens:#?}");
 
     let _ = agent.invoke_flow("What is the meaning of life?").await?;
 
     // there is a HashMap<String, serde_json::Value> to store any data
     // for custom states and such
     let tokens = agent.state.get("last_token_count");
-    println!("Number of tokens in last answer: {:#?}", tokens);
+    println!("Number of tokens in last answer: {tokens:#?}");
     Ok(())
 }
 

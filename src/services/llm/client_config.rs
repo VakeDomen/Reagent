@@ -30,26 +30,17 @@ impl ClientBuilder for ClientConfig {
     }
 
     fn base_url(mut self, base_url: Option<impl Into<String>>) -> Self {
-        self.base_url = match base_url {
-            Some(s) => Some(s.into()),
-            None => None,
-        };
+        self.base_url = base_url.map(|s| s.into());
         self
     }
 
     fn api_key(mut self, api_key: Option<impl Into<String>>) -> Self {
-        self.api_key = match api_key {
-            Some(s) => Some(s.into()),
-            None => None,
-        };
+        self.api_key = api_key.map(|s| s.into());
         self
     }
 
     fn organization(mut self, organization: Option<impl Into<String>>) -> Self {
-        self.organization = match organization {
-            Some(s) => Some(s.into()),
-            None => None,
-        };
+        self.organization = organization.map(|s| s.into());
         self
     }
 

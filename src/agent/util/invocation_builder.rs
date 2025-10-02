@@ -241,7 +241,7 @@ impl InvocationBuilder {
         let messages = self
             .messages
             .or(Some(agent.history.clone()))
-            .unwrap_or(vec![]);
+            .unwrap_or_default();
         let tools = self.tools.or(agent.tools.clone());
 
         // merge inference options field by field
@@ -389,8 +389,8 @@ impl InvocationBuilder {
                 stream: self.stream,
                 keep_alive: self.keep_alive,
             },
-            messages: self.messages.unwrap_or(vec![]),
-            tools: tools,
+            messages: self.messages.unwrap_or_default(),
+            tools,
         };
 
         let invcation_request = InvocationRequest::new(

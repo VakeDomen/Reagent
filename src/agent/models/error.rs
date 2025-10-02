@@ -37,8 +37,8 @@ impl std::fmt::Display for AgentError {
             AgentError::Runtime(s) => write!(f, "Runtime error: {s}"),
             AgentError::Deserialization(error) => write!(f, "Deserialize error: {error}"),
             AgentError::Tool(error) => write!(f, "Tool error: {error}"),
-            AgentError::Unsupported(error) => write!(f, "Unsuppored: {:#?}", error),
-            AgentError::InvocationError(error) => write!(f, "InvocationError: {:#?}", error),
+            AgentError::Unsupported(error) => write!(f, "Unsuppored: {error:#?}"),
+            AgentError::InvocationError(error) => write!(f, "InvocationError: {error:#?}"),
         }
     }
 }
@@ -110,7 +110,7 @@ impl std::fmt::Display for AgentBuildError {
             AgentBuildError::ModelNotSet => write!(f, "Model not set."),
             AgentBuildError::McpError(e) => write!(f, "Mcp error: {e}"),
             AgentBuildError::InferenceClient(e) => write!(f, "InferenceClient error: {e}"),
-            AgentBuildError::Unsupported(error) => write!(f, "Unsuppored: {:#?}", error),
+            AgentBuildError::Unsupported(error) => write!(f, "Unsuppored: {error:#?}"),
         }
     }
 }
