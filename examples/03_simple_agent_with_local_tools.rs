@@ -1,7 +1,8 @@
-
-use std::{error::Error, sync::Arc};
-use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
+use reagent_rs::{
+    init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError,
+};
 use serde_json::Value;
+use std::{error::Error, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -20,7 +21,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     "temperature": 18,
                     "description": "Partly cloudy"
                 }
-                "#.into()) // return Ok(String) or Err(AgentError)
+                "#
+                .into()) // return Ok(String) or Err(AgentError)
             })
         })
     };
@@ -33,7 +35,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // closure that triggers on tool use
         .executor(weather_exec)
         .build()?;
-
 
     let echo_tool = ToolBuilder::new()
         .function_name("Echo")
@@ -51,15 +52,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let resp = agent.invoke_flow("Say hello").await?;
+    let resp = agent
+        .invoke_flow("call any tool 5 times with different inputs")
+        .await?;
     println!("Agent: {}", resp.content.unwrap_or_default());
 
-    let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
+    let resp = agent
+        .invoke_flow("What is the current weather in Koper?")
+        .await?;
     println!("Agent: {}", resp.content.unwrap_or_default());
 
     Ok(())
 }
-
 
 async fn echo(input: Value) -> Result<String, ToolExecutionError> {
     Ok(input.to_string())

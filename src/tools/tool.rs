@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fmt, future::Future, pin::Pin, sync::Arc};
-
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{collections::HashMap, fmt, future::Future, pin::Pin, sync::Arc};
+use tracing::{span, Level};
 
 use crate::{services::llm::message::Message, Agent, NotificationHandler};
 
@@ -161,44 +162,41 @@ pub async fn call_tools(agent: &Agent, tool_calls: &[ToolCall]) -> Vec<Message> 
         return results;
     };
 
-    for call in tool_calls {
-        tracing::info!(
-            target: "tool",
-            tool = %call.function.name,
-            id   = ?call.id,
-            args = ?call.function.arguments,
-            "executing tool call",
-        );
+    let results = futures::stream::iter(tool_calls.iter().cloned())
+        .map(|call| async move {
+            let tool_span = span!(
+                Level::INFO,
+                "tool_execution",
+                "agent.tool.name" = call.function.name.as_str(),
+                "agent.tool.input" = format!("{}", call.function.arguments),
+                "agent.tool.id" = call.id.as_deref().unwrap_or("[No ID]"),
+            );
+            let _guard = tool_span.enter();
 
-        // try to find the tool
-        let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name) else {
-            tracing::error!("No corresponding tool found.");
-            let msg = format!("Could not find tool: {}", call.function.name);
-            agent.notify_tool_error(msg.clone()).await;
-            results.push(Message::tool(msg, "0".to_string()));
-            continue;
-        };
+            let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name) else {
+                tool_span.record("otel.status_code", "ERROR");
+                return Message::tool("Tool not found", "0".to_string());
+            };
 
-        agent.notify_tool_request(call.clone()).await;
+            agent.notify_tool_request(call.clone()).await;
 
-        match tool.execute(call.function.arguments.clone()).await {
-            Ok(output) => {
-                agent.notify_tool_success(output.clone()).await;
-                results.push(Message::tool(
-                    output,
-                    call.id.clone().unwrap_or(call.function.name.clone()),
-                ));
+            match tool.execute(call.function.arguments.clone()).await {
+                Ok(output) => {
+                    tool_span.record("agent.tool.output", output.as_str());
+                    tool_span.record("otel.status_code", "OK");
+                    agent.notify_tool_success(output.clone()).await;
+                    Message::tool(output, call.id.clone().unwrap_or(call.function.name))
+                }
+                Err(e) => {
+                    tool_span.record("otel.status_code", "ERROR");
+                    agent.notify_tool_error(e.to_string()).await;
+                    Message::tool(e.to_string(), "0".to_string())
+                }
             }
-            Err(e) => {
-                agent.notify_tool_error(e.to_string()).await;
-                let msg = format!("Error executing tool {}: {}", call.function.name, e);
-                results.push(Message::tool(
-                    msg,
-                    call.id.clone().unwrap_or(call.function.name.clone()),
-                ));
-            }
-        }
-    }
+        })
+        .buffer_unordered(tool_calls.len())
+        .collect::<Vec<Message>>()
+        .await;
 
     results
 }
