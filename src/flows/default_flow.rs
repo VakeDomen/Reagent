@@ -1,4 +1,7 @@
-use crate::{call_tools, Agent, AgentError, InvocationBuilder, Message, NotificationHandler};
+use crate::{
+    call_tools, services::llm::message::Message, Agent, AgentError, InvocationBuilder,
+    NotificationHandler,
+};
 
 pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
     agent.history.push(Message::user(prompt));

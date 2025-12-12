@@ -6,10 +6,10 @@ use tracing::instrument;
 use crate::{
     flow,
     prebuilds::{StatefullPrebuild, StatelessPrebuild},
-    services::llm::ClientConfig,
+    services::llm::{message::Message, ClientConfig},
     templates::Template,
-    Agent, AgentBuildError, AgentBuilder, AgentError, InvocationBuilder, Message, ModelConfig,
-    Notification, NotificationHandler, PromptConfig,
+    Agent, AgentBuildError, AgentBuilder, AgentError, InvocationBuilder, ModelConfig, Notification,
+    NotificationHandler, PromptConfig,
 };
 
 const PLAN_AND_EXECUTE_SYSTEM_PROMPT: &str = r#"You are a **Chief Analyst and Reporter Agent**. Your job is to turn an execution log into a clear, well‑structured report for the end user.

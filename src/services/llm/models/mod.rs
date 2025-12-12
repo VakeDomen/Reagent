@@ -2,6 +2,7 @@ pub mod base;
 pub mod chat;
 pub mod embedding;
 pub mod errors;
+pub mod message;
 pub mod sturctured_output;
 
 pub use base::*;

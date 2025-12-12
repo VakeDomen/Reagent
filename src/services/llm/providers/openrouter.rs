@@ -7,14 +7,17 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing::{debug, instrument};
 
-use crate::services::llm::models::embedding::{EmbeddingsRequest, EmbeddingsResponse};
 use crate::services::llm::models::errors::InferenceClientError;
+use crate::services::llm::{
+    message::Message,
+    models::embedding::{EmbeddingsRequest, EmbeddingsResponse},
+};
 use crate::services::llm::{
     models::chat::{ChatRequest, ChatResponse, ChatStreamChunk},
     StructuredOuputFormat,
 };
 use crate::{
-    services::llm::models::base::{InferenceOptions, Message, Role},
+    services::llm::models::base::{InferenceOptions, Role},
     ClientConfig,
 };
 

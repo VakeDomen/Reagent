@@ -1,4 +1,6 @@
-use crate::{Agent, AgentError, InvocationBuilder, Message, NotificationHandler};
+use crate::{
+    services::llm::message::Message, Agent, AgentError, InvocationBuilder, NotificationHandler,
+};
 
 pub async fn reply_without_tools_flow(
     agent: &mut Agent,

@@ -82,8 +82,9 @@ pub use crate::tools::*;
 
 pub use crate::services::llm::{ClientConfig, Provider};
 
-pub use crate::services::llm::models::base::{Message, Role};
+pub use crate::services::llm::models::base::Role;
 pub use crate::services::llm::models::chat::{ChatRequest, ChatResponse};
+pub use crate::services::llm::models::message::Message;
 
 pub use crate::services::mcp::error::McpIntegrationError;
 pub use crate::services::mcp::mcp_tool_builder::McpServerType;

@@ -1,14 +1,10 @@
 use std::{fmt, future::Future, pin::Pin, sync::Arc};
 
-use crate::{Agent, AgentError, Message};
+use crate::{services::llm::message::Message, Agent, AgentError};
 
+pub type FlowFuture<'a> = Pin<Box<dyn Future<Output = Result<Message, AgentError>> + Send + 'a>>;
 
-
-pub type FlowFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<Message, AgentError>> + Send + 'a>>;
-
-pub type FlowFn =
-    Arc<dyn for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync>;
+pub type FlowFn = Arc<dyn for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync>;
 
 /// A user-facing enum defining how an [`Agent`] executes a flow
 /// after receiving a prompt.
@@ -28,11 +24,8 @@ pub enum Flow {
     /// Use a custom function pointer.
     ///
     /// Function must match `for<'a> fn(&'a mut Agent, String) -> FlowFuture<'a>`.
-    Func(FlowFn)
+    Func(FlowFn),
 }
-
-
-
 
 impl Flow {
     pub fn from_fn<F>(f: F) -> Self
@@ -43,11 +36,7 @@ impl Flow {
     }
 }
 
-
-
-// ------------ custom debugs ------------ 
-
-
+// ------------ custom debugs ------------
 
 impl fmt::Debug for Flow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -58,7 +47,6 @@ impl fmt::Debug for Flow {
     }
 }
 
-
 pub trait FlowCallable: Send + Sync + 'static {
     // family of futures tied to the borrow of &mut Agent
     type Fut<'a>: Future<Output = Result<Message, AgentError>> + Send + 'a
@@ -67,8 +55,3 @@ pub trait FlowCallable: Send + Sync + 'static {
 
     fn call<'a>(&'a self, agent: &'a mut Agent, prompt: String) -> Self::Fut<'a>;
 }
-
-
-
-
-

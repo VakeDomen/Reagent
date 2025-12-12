@@ -14,7 +14,7 @@ use tracing::instrument;
 
 use crate::{
     notifications::Notification,
-    services::{llm::models::base::Message, mcp::mcp_tool_builder::get_mcp_tools},
+    services::{llm::models::message::Message, mcp::mcp_tool_builder::get_mcp_tools},
     McpServerType, Tool,
 };
 

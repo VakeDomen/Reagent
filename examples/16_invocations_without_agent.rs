@@ -10,18 +10,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .set_message(Message::system("You are short and concise"))
         .stream(true);
 
-    let resp = req
+    let _ = req
         .clone()
         .add_message(Message::user("What's the meaning of life?"))
         .invoke()
         .await;
-    println!("{:#?}", resp);
 
-    let resp = req
+    let _ = req
         .add_message(Message::user("Who is the owner of Nvidia?"))
         .invoke()
         .await;
-    println!("{:#?}", resp);
 
     Ok(())
 }

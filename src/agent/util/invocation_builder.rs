@@ -6,8 +6,8 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     call_tools,
-    services::llm::{BaseRequest, ClientBuilder, InferenceOptions, SchemaSpec},
-    Agent, ChatRequest, ChatResponse, ClientConfig, InvocationError, InvocationRequest, Message,
+    services::llm::{message::Message, BaseRequest, ClientBuilder, InferenceOptions, SchemaSpec},
+    Agent, ChatRequest, ChatResponse, ClientConfig, InvocationError, InvocationRequest,
     Notification, Provider, Tool,
 };
 

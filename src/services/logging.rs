@@ -8,10 +8,7 @@ pub fn init_default_tracing() {
 
     let fmt_layer = fmt::layer()
         .with_target(false)
-        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE);
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE);
 
-    Registry::default()       
-        .with(filter)       
-        .with(fmt_layer)       
-        .init();         
+    Registry::default().with(filter).with(fmt_layer).init();
 }

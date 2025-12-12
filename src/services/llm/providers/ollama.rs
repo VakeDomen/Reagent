@@ -3,7 +3,7 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use std::{fmt, pin::Pin};
-use tracing::{debug, error, info_span, instrument, trace, Instrument};
+use tracing::{error, info_span, instrument, trace, Instrument};
 
 use crate::services::llm::models::chat::ChatStreamChunk;
 use crate::services::llm::models::{
@@ -29,7 +29,6 @@ impl OllamaClient {
         })
     }
 
-    #[instrument(name = "ollama.post", skip_all, fields(endpoint))]
     async fn post<T, R>(&self, endpoint: &str, request_body: &T) -> Result<R, InferenceClientError>
     where
         T: serde::Serialize + fmt::Debug,
@@ -38,11 +37,6 @@ impl OllamaClient {
         let url = format!("{}{}", self.base_url, endpoint);
         let span = info_span!("http.request", %url);
         async {
-            println!(
-                "{:#?}",
-                serde_json::to_string_pretty(&request_body).unwrap()
-            );
-
             let response = self
                 .client
                 .post(&url)
@@ -52,7 +46,6 @@ impl OllamaClient {
                 .map_err(|e| InferenceClientError::Api(e.to_string()))?;
 
             let status = response.status();
-            debug!(%status, "received response");
 
             if !status.is_success() {
                 let error_text = response
@@ -61,7 +54,7 @@ impl OllamaClient {
                     .unwrap_or_else(|_| "Failed to read error body".into());
                 error!(%status, body = %error_text, "request failed");
                 return Err(InferenceClientError::Api(format!(
-                    "Request failed: {status} - {error_text}"
+                    "Ollama request failed: {status} - {error_text}"
                 )));
             }
 
@@ -86,7 +79,6 @@ impl OllamaClient {
         .await
     }
 
-    #[instrument(name = "ollama.post_stream", skip_all, fields(endpoint))]
     async fn post_stream<T, R>(
         &self,
         endpoint: &str,
@@ -108,9 +100,16 @@ impl OllamaClient {
             .await
             .map_err(|e| InferenceClientError::Api(e.to_string()))?;
 
-        if !resp.status().is_success() {
+        let status = resp.status();
+
+        if !status.is_success() {
+            let error_text = resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read error body".into());
+            error!(%status, body = %error_text, "request failed");
             return Err(InferenceClientError::Api(format!(
-                "Request failed: {resp:#?}"
+                "Ollama request failed: {status} - {error_text}"
             )));
         }
 

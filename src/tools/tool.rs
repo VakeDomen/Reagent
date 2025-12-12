@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt, future::Future, pin::Pin, sync::Arc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{Agent, Message, NotificationHandler};
+use crate::{services::llm::message::Message, Agent, NotificationHandler};
 
 use super::errors::ToolExecutionError;
 

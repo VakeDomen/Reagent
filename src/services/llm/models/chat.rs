@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    services::llm::{models::base::BaseRequest, InferenceOptions},
-    Agent, Message, Tool,
+    services::llm::{message::Message, models::base::BaseRequest, InferenceOptions},
+    Agent, Tool,
 };
 
 #[derive(Serialize, Debug, Clone, Deserialize)]

@@ -1,12 +1,14 @@
 use futures::{pin_mut, StreamExt};
+use tracing::{span, Level};
 
 use crate::{
     notifications::Token,
     services::llm::{
+        message::Message,
         models::chat::{ChatResponse, ChatStreamChunk},
         InferenceClientError,
     },
-    InvocationError, InvocationRequest, Message, NotificationHandler, ToolCall,
+    InvocationError, InvocationRequest, NotificationHandler, ToolCall,
 };
 
 pub(super) async fn invoke_nonstreaming(
@@ -23,6 +25,15 @@ pub(super) async fn invoke_nonstreaming(
         .notify_prompt_request(request.clone())
         .await;
 
+    let gen_span = span!(
+        Level::INFO,
+        "llm_generation",
+        "llm.model_name" = request.base.model.as_str(),
+        "llm.prompts" = format!("{:?}", request.messages),
+        "llm.request.type" = "chat"
+    );
+    let _guard = gen_span.enter();
+
     let raw = client.chat(request).await;
 
     let mut resp = match raw {
@@ -31,9 +42,23 @@ pub(super) async fn invoke_nonstreaming(
             notification_channel
                 .notify_prompt_error(e.to_string())
                 .await;
+            gen_span.record("otel.status_code", "ERROR");
+            gen_span.record("error.message", e.to_string());
             return Err(e.into());
         }
     };
+
+    let token_total = resp.prompt_eval_count.unwrap_or(0) + resp.eval_count.unwrap_or(0);
+    gen_span.record(
+        "llm.completions",
+        resp.message.content.as_deref().unwrap_or("[No Content]"),
+    );
+    gen_span.record("llm.token.prompt", resp.prompt_eval_count.unwrap_or(0));
+    gen_span.record("llm.token.completion", resp.eval_count.unwrap_or(0));
+    gen_span.record("llm.token.total", token_total);
+    gen_span.record("llm.duration.total", resp.total_duration.unwrap_or(0));
+    gen_span.record("llm.duration.load", resp.load_duration.unwrap_or(0));
+    gen_span.record("otel.status_code", "OK");
 
     notification_channel
         .notify_poompt_success(resp.clone())
@@ -64,12 +89,23 @@ pub(super) async fn invoke_streaming(
         .notify_prompt_request(request.clone())
         .await;
 
+    let gen_span = span!(
+        Level::INFO,
+        "llm_generation",
+        "llm.model_name" = request.base.model.as_str(),
+        "llm.prompts" = format!("{:?}", request.messages),
+        "llm.request.type" = "chat_stream"
+    );
+    let _guard = gen_span.enter();
+
     let stream = match client.chat_stream(request).await {
         Ok(s) => s,
         Err(e) => {
             notification_channel
                 .notify_prompt_error(e.to_string())
                 .await;
+            gen_span.record("otel.status_code", "ERROR");
+            gen_span.record("error.message", e.to_string());
             return Err(e.into());
         }
     };
@@ -153,6 +189,22 @@ pub(super) async fn invoke_streaming(
         eval_count: chunk.eval_count,
         eval_duration: chunk.eval_duration,
     };
+
+    let prompt_tokens = response.prompt_eval_count.unwrap_or(0);
+    let completion_tokens = response.eval_count.unwrap_or(0);
+    let total_tokens = prompt_tokens + completion_tokens;
+    gen_span.record(
+        "llm.completions",
+        response
+            .message
+            .content
+            .as_deref()
+            .unwrap_or("[No Content]"),
+    );
+    gen_span.record("llm.token.prompt", prompt_tokens);
+    gen_span.record("llm.token.completion", completion_tokens);
+    gen_span.record("llm.token.total", total_tokens);
+    gen_span.record("otel.status_code", "OK");
 
     notification_channel
         .notify_poompt_success(response.clone())

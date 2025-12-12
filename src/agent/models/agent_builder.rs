@@ -456,7 +456,7 @@ impl AgentBuilder {
         self
     }
 
-    // A ready-made serde_json::Value
+    /// A ready-made serde_json::Value
     pub fn set_response_format_value(mut self, schema: serde_json::Value) -> Self {
         self.response_format = Some(SchemaSpec {
             schema,
@@ -466,7 +466,7 @@ impl AgentBuilder {
         self
     }
 
-    // From a Rust type via schemars
+    /// From a Rust type via schemars
     pub fn set_response_format_from<T: JsonSchema>(mut self) -> Self {
         let settings = SchemaSettings::draft07().with(|s| {
             s.inline_subschemas = true;
@@ -487,13 +487,13 @@ impl AgentBuilder {
         self
     }
 
-    // From a Rust type via SchemaSpec
+    /// From a Rust type via SchemaSpec
     pub fn set_response_format_spec(mut self, schema: SchemaSpec) -> Self {
         self.response_format = Some(schema);
         self
     }
 
-    // Optional hints that apply whether you used *_str, *_value, or *_from
+    /// Optional hints that apply whether you used *_str, *_value, or *_from
     pub fn set_schema_name(mut self, name: impl Into<String>) -> Self {
         if let Some(spec) = &mut self.response_format {
             spec.name = Some(name.into());
