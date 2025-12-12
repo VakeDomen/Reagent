@@ -79,13 +79,7 @@ impl InvocationBuilder {
     }
 
     pub fn add_message(mut self, msg: Message) -> Self {
-        self.messages = match self.messages {
-            Some(mut msgs) => {
-                msgs.push(msg);
-                Some(msgs)
-            }
-            None => Some(vec![msg]),
-        };
+        self.messages.get_or_insert_with(Vec::new).push(msg);
         self
     }
 
@@ -162,11 +156,6 @@ impl InvocationBuilder {
         self.use_tools = Some(use_tools);
         self
     }
-    /// Select the LLM provider implementation.
-    pub fn set_provider(mut self, provider: Provider) -> Self {
-        self.provider = Some(provider);
-        self
-    }
 
     /// Set the name identifier of the invocation
     pub fn set_name<T>(mut self, name: T) -> Self
@@ -177,29 +166,26 @@ impl InvocationBuilder {
         self
     }
 
+    /// Select the LLM provider implementation.
+    pub fn set_provider(mut self, provider: Provider) -> Self {
+        self.provider = Some(provider);
+        self
+    }
+
     /// Override the base URL for the provider client.
-    pub fn set_base_url<T>(mut self, base_url: T) -> Self
-    where
-        T: Into<String>,
-    {
+    pub fn set_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = Some(base_url.into());
         self
     }
 
     /// Set the API key used by the provider client.
-    pub fn set_api_key<T>(mut self, api_key: T) -> Self
-    where
-        T: Into<String>,
-    {
+    pub fn set_api_key(mut self, api_key: impl Into<String>) -> Self {
         self.api_key = Some(api_key.into());
         self
     }
 
     /// Set the organization or tenant identifier for requests.
-    pub fn set_organization<T>(mut self, organization: T) -> Self
-    where
-        T: Into<String>,
-    {
+    pub fn set_organization(mut self, organization: impl Into<String>) -> Self {
         self.organization = Some(organization.into());
         self
     }
@@ -340,7 +326,7 @@ impl InvocationBuilder {
         Ok(response)
     }
 
-    pub async fn invoke(&self) -> Result<ChatResponse, InvocationError> {
+    pub async fn invoke(mut self) -> Result<ChatResponse, InvocationError> {
         // merge inference options field by field
         let merged_opts = InferenceOptions {
             num_ctx: self.opts.num_ctx,
@@ -348,7 +334,7 @@ impl InvocationBuilder {
             repeat_penalty: self.opts.repeat_penalty,
             temperature: self.opts.temperature,
             seed: self.opts.seed,
-            stop: self.clone().opts.stop,
+            stop: self.opts.stop.take(),
             num_predict: self.opts.num_predict,
             top_k: self.opts.top_k,
             top_p: self.opts.top_p,
@@ -358,7 +344,7 @@ impl InvocationBuilder {
             max_tokens: self.opts.max_tokens.or(None),
         };
 
-        let name = self.clone().name.unwrap_or("Invocation".into());
+        let name = self.name.take().unwrap_or("Invocation".into());
 
         let options = if all_none(&merged_opts) {
             None
@@ -366,22 +352,22 @@ impl InvocationBuilder {
             Some(merged_opts)
         };
 
-        let Some(model) = self.clone().model else {
+        let Some(model) = self.model.take() else {
             return Err(InvocationError::ModelNotDefined);
         };
 
         let tools = match self.use_tools {
             Some(false) => None,
-            Some(true) => self.clone().tools,
-            None => self.clone().tools,
+            Some(true) => self.tools.take(),
+            None => self.tools.take(),
         };
 
         let client = ClientConfig::default()
-            .provider(self.clone().provider)
-            .base_url(self.clone().base_url)
-            .api_key(self.clone().api_key)
-            .organization(self.clone().organization)
-            .extra_headers(self.clone().extra_headers)
+            .provider(self.provider.take())
+            .base_url(self.base_url.take())
+            .api_key(self.api_key.take())
+            .organization(self.organization.take())
+            .extra_headers(self.extra_headers.take())
             .build()?;
 
         if self.response_format.is_some() && self.response_format_raw.is_some() {
@@ -392,30 +378,28 @@ impl InvocationBuilder {
             ));
         }
 
-        let response_format: Option<SchemaSpec> = if let Some(spec) = self.clone().response_format {
-            // merge pending hints if any
+        let response_format: Option<SchemaSpec> = if let Some(spec) = self.response_format.take() {
             Some(SchemaSpec {
-                name: self.clone().pending_name.or(spec.name),
-                strict: self.clone().pending_strict.or(spec.strict),
+                name: self.pending_name.take().or(spec.name),
+                strict: self.pending_strict.or(spec.strict),
                 schema: spec.schema,
             })
-        } else if let Some(raw) = self.clone().response_format_raw {
+        } else if let Some(raw) = self.response_format_raw.take() {
             let v: serde_json::Value = serde_json::from_str(raw.trim()).map_err(|e| {
                 InvocationError::InvalidJsonSchema(format!("Failed to parse JSON schema: {e}"))
             })?;
             Some(SchemaSpec {
                 schema: v,
-                name: self.clone().pending_name,
+                name: self.pending_name.take(),
                 strict: self.pending_strict,
             })
         } else {
             None
         };
 
-        let format = match response_format {
-            Some(f) => Some(client.structured_output_format(&f)?),
-            None => None,
-        };
+        let format = response_format
+            .map(|f| client.structured_output_format(&f))
+            .transpose()?;
 
         let request = ChatRequest {
             base: BaseRequest {
@@ -423,9 +407,9 @@ impl InvocationBuilder {
                 format,
                 options,
                 stream: self.stream,
-                keep_alive: self.clone().keep_alive,
+                keep_alive: self.keep_alive.take(),
             },
-            messages: self.clone().messages.unwrap_or_default(),
+            messages: self.messages.unwrap_or_default(),
             tools,
         };
 
@@ -433,7 +417,7 @@ impl InvocationBuilder {
             self.strip_thinking.unwrap_or(false),
             request,
             client,
-            self.clone().notification_channel,
+            self.notification_channel.take(),
             name,
         );
 
