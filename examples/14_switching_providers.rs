@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut agent = AgentBuilder::default()
         // .set_model("qwen3:0.6b")
-        .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
+        .set_system_prompt("You make up weather info in JSON. You always say it's sonwing")
         // you can also use the schemars with serde to construct schema from struct
         .set_model("mistralai/mistral-small-3.2-24b-instruct:free")
         .set_provider(reagent_rs::Provider::OpenRouter)

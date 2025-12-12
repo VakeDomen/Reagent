@@ -15,8 +15,9 @@ impl InvocationRequest {
         request: ChatRequest,
         client: InferenceClient,
         notification_channel: Option<Sender<Notification>>,
+        name: String,
     ) -> Self {
-        let notification_channel = OutChannel::new(notification_channel, "Out Channel".into());
+        let notification_channel = OutChannel::new(notification_channel, name);
         Self {
             strip_thinking,
             request,
