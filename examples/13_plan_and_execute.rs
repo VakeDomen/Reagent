@@ -255,6 +255,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 pub fn plan_and_execute() -> AgentBuilder {
     // this is the builder for the top-level agent
     StatefullPrebuild::reply_without_tools()
+        .set_model("ministral-3:14b")
         .set_temperature(0.7)
         .set_min_p(0.0)
         .set_top_p(0.8)
