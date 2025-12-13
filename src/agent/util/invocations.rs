@@ -1,5 +1,7 @@
 use futures::{pin_mut, StreamExt};
-use tracing::{span, Level};
+use serde::Serialize;
+use tracing::{error, span, Level, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
     notifications::Token,
@@ -8,8 +10,15 @@ use crate::{
         models::chat::{ChatResponse, ChatStreamChunk},
         InferenceClientError,
     },
-    InvocationError, InvocationRequest, NotificationHandler, ToolCall,
+    ChatRequest, InvocationError, InvocationRequest, NotificationHandler, ToolCall,
 };
+
+#[derive(Debug, Serialize)]
+struct UsageDetails {
+    prompt_tokens: i64,
+    completion_tokens: i64,
+    total_tokens: i64,
+}
 
 pub(super) async fn invoke_nonstreaming(
     invocation_request: InvocationRequest,
@@ -25,13 +34,7 @@ pub(super) async fn invoke_nonstreaming(
         .notify_prompt_request(request.clone())
         .await;
 
-    let gen_span = span!(
-        Level::INFO,
-        "llm_generation",
-        "llm.model_name" = request.base.model.as_str(),
-        "llm.prompts" = format!("{:?}", request.messages),
-        "llm.request.type" = "chat"
-    );
+    let gen_span = set_telemetry_request_attributes(&request);
     let _guard = gen_span.enter();
 
     let raw = client.chat(request).await;
@@ -42,26 +45,15 @@ pub(super) async fn invoke_nonstreaming(
             notification_channel
                 .notify_prompt_error(e.to_string())
                 .await;
-            gen_span.record("otel.status_code", "ERROR");
-            gen_span.record("error.message", e.to_string());
+            extract_error_telemetry(&gen_span, e.to_string().as_str());
             return Err(e.into());
         }
     };
 
-    let token_total = resp.prompt_eval_count.unwrap_or(0) + resp.eval_count.unwrap_or(0);
-    gen_span.record(
-        "llm.completions",
-        resp.message.content.as_deref().unwrap_or("[No Content]"),
-    );
-    gen_span.record("llm.token.prompt", resp.prompt_eval_count.unwrap_or(0));
-    gen_span.record("llm.token.completion", resp.eval_count.unwrap_or(0));
-    gen_span.record("llm.token.total", token_total);
-    gen_span.record("llm.duration.total", resp.total_duration.unwrap_or(0));
-    gen_span.record("llm.duration.load", resp.load_duration.unwrap_or(0));
-    gen_span.record("otel.status_code", "OK");
+    extract_response_telemetry(&gen_span, &resp);
 
     notification_channel
-        .notify_poompt_success(resp.clone())
+        .notify_prompt_success(resp.clone())
         .await;
 
     if strip_thinking {
@@ -89,13 +81,7 @@ pub(super) async fn invoke_streaming(
         .notify_prompt_request(request.clone())
         .await;
 
-    let gen_span = span!(
-        Level::INFO,
-        "llm_generation",
-        "llm.model_name" = request.base.model.as_str(),
-        "llm.prompts" = format!("{:?}", request.messages),
-        "llm.request.type" = "chat_stream"
-    );
+    let gen_span = set_telemetry_request_attributes(&request);
     let _guard = gen_span.enter();
 
     let stream = match client.chat_stream(request).await {
@@ -104,8 +90,7 @@ pub(super) async fn invoke_streaming(
             notification_channel
                 .notify_prompt_error(e.to_string())
                 .await;
-            gen_span.record("otel.status_code", "ERROR");
-            gen_span.record("error.message", e.to_string());
+            extract_error_telemetry(&gen_span, e.to_string().as_str());
             return Err(e.into());
         }
     };
@@ -159,9 +144,9 @@ pub(super) async fn invoke_streaming(
     }
 
     let Some(chunk) = done_chunk else {
-        return Err(
-            InferenceClientError::Api("stream ended without a final `done` chunk".into()).into(),
-        );
+        let error_message = "stream ended without a final `done` chunk";
+        extract_error_telemetry(&gen_span, error_message);
+        return Err(InferenceClientError::Api(error_message.into()).into());
     };
 
     let mut final_msg = latest_message.unwrap_or_else(|| Message::assistant(String::new()));
@@ -190,24 +175,10 @@ pub(super) async fn invoke_streaming(
         eval_duration: chunk.eval_duration,
     };
 
-    let prompt_tokens = response.prompt_eval_count.unwrap_or(0);
-    let completion_tokens = response.eval_count.unwrap_or(0);
-    let total_tokens = prompt_tokens + completion_tokens;
-    gen_span.record(
-        "llm.completions",
-        response
-            .message
-            .content
-            .as_deref()
-            .unwrap_or("[No Content]"),
-    );
-    gen_span.record("llm.token.prompt", prompt_tokens);
-    gen_span.record("llm.token.completion", completion_tokens);
-    gen_span.record("llm.token.total", total_tokens);
-    gen_span.record("otel.status_code", "OK");
+    extract_response_telemetry(&gen_span, &response);
 
     notification_channel
-        .notify_poompt_success(response.clone())
+        .notify_prompt_success(response.clone())
         .await;
 
     if strip_thinking {
@@ -219,4 +190,82 @@ pub(super) async fn invoke_streaming(
     }
 
     Ok(response)
+}
+
+fn extract_error_telemetry(gen_span: &Span, error_message: &str) {
+    gen_span.set_attribute("otel.status_code", "ERROR");
+    gen_span.set_attribute("error.message", error_message.to_string());
+    gen_span.set_status(opentelemetry::trace::Status::Error {
+        description: error_message.to_string().into(),
+    });
+    error!("stream ended without a final `done` chunk");
+}
+
+fn extract_response_telemetry(gen_span: &Span, response: &ChatResponse) {
+    let prompt_tokens = response.prompt_eval_count.unwrap_or(0);
+    let completion_tokens = response.eval_count.unwrap_or(0);
+    let total_tokens = prompt_tokens + completion_tokens;
+
+    let usage = UsageDetails {
+        prompt_tokens: prompt_tokens as i64,
+        completion_tokens: completion_tokens as i64,
+        total_tokens: total_tokens as i64,
+    };
+
+    gen_span.set_attribute(
+        "langfuse.observation.output",
+        serde_json::to_string_pretty(&response.message.content)
+            .unwrap_or(format!("{:#?}", response)),
+    );
+    gen_span.set_attribute("gen_ai.completion.0.role", "assistant");
+    gen_span.set_attribute(
+        "gen_ai.completion.0.content",
+        response.message.content.clone().unwrap_or_default(),
+    );
+
+    gen_span.set_attribute(
+        "langfuse.observation.usage_details",
+        serde_json::to_string(&usage).unwrap_or(format!("{:#?}", usage)),
+    );
+
+    if let Some(duration) = response.total_duration {
+        gen_span.set_attribute("llm.duration.total_s", (duration as f64) / 1_000_000_000.0);
+    }
+    if let Some(duration) = response.load_duration {
+        gen_span.set_attribute("llm.duration.load_s", (duration as f64) / 1_000_000_000.0);
+    }
+    if let Some(duration) = response.prompt_eval_duration {
+        gen_span.set_attribute(
+            "llm.duration.prompt_eval_ms",
+            (duration as f64) / 1_000_000.0,
+        );
+    }
+    if let Some(duration) = response.eval_duration {
+        gen_span.set_attribute("llm.duration.eval_ms", (duration as f64) / 1_000_000.0);
+    }
+
+    gen_span.set_attribute("otel.status_code", "OK");
+}
+
+fn set_telemetry_request_attributes(request: &ChatRequest) -> Span {
+    let gen_span = span!(
+        Level::INFO,
+        "llm_generation",
+        "langfuse.observation.model.name" = request.base.model.as_str(),
+    );
+
+    gen_span.set_attribute("langfuse.observation.type", "generation");
+
+    gen_span.set_attribute(
+        "langfuse.observation.input",
+        serde_json::to_string(&request.messages).unwrap_or(format!("{:#?}", request.messages)),
+    );
+
+    gen_span.set_attribute(
+        "langfuse.observation.model.parameters",
+        serde_json::to_string(&request.base.options)
+            .unwrap_or(format!("{:#?}", request.base.options)),
+    );
+
+    gen_span
 }

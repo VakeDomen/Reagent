@@ -67,6 +67,7 @@
 pub mod agent;
 pub mod flows;
 pub mod notifications;
+pub mod observability;
 pub mod prebuilds;
 pub mod templates;
 pub mod tools;

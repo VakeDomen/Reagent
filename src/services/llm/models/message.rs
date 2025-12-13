@@ -5,7 +5,7 @@ use crate::{Role, ToolCall};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
-    #[serde(default = "new_uuid")]
+    #[serde(default = "new_uuid", skip_serializing)]
     pub id: String,
     pub role: Role,
     #[serde(default, skip_serializing_if = "Option::is_none")]

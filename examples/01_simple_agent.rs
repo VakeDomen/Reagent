@@ -1,14 +1,13 @@
-
-use std::error::Error;
 use reagent_rs::{init_default_tracing, AgentBuilder};
+use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     init_default_tracing();
-    
+
     // creating agents follows the builder pattern
     let mut agent = AgentBuilder::default()
-        // model must be set, everything else has 
+        // model must be set, everything else has
         // defualts and is optional
         .set_model("qwen3:0.6b")
         .set_system_prompt("You are a helpful assistant.")
@@ -20,7 +19,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     // call agents by calling the "invoke_flow" method
-    let resp = agent.invoke_flow("How do i increase context size in Ollama?").await?;
+    let resp = agent
+        .invoke_flow("How do i increase context size in Ollama?")
+        .await?;
     println!("Agent: {}", resp.content.unwrap());
 
     // internally agent holds the conversation histroy
@@ -34,7 +35,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let resp = agent.invoke_flow("What did you just say?").await?;
     println!("Agent: {resp:#?}");
-
 
     Ok(())
 }

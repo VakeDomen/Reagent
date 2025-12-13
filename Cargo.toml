@@ -26,13 +26,22 @@ rmcp = { version = "0.2.1", features = [
     "tower",
 ] }
 tokio = {version ="1.45.1", features = ["rt-multi-thread"]}
-tracing = { version = "0.1", features = ["attributes"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 futures = "0.3"
 tokio-stream  = "0.1"
 async-stream  = "0.3"
 uuid = { version = "1.18.1", features = ["v4"] }
 
+
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json", "time"] }
+tracing-opentelemetry = "0.32"
+
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["trace", "experimental_async_runtime", "experimental_trace_batch_span_processor_with_async_runtime", "rt-tokio", "rt-tokio-current-thread"] }
+opentelemetry-http = "0.31"
+opentelemetry-semantic-conventions = "0.31"
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
+opentelemetry-langfuse = "0.6"
 
 [dev-dependencies]
 futures = "0.3.31"

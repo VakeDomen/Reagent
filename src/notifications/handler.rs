@@ -80,7 +80,7 @@ pub trait NotificationHandler {
     async fn notify_prompt_request(&self, req: ChatRequest) -> bool {
         self.notify(NotificationContent::PromptRequest(req)).await
     }
-    async fn notify_poompt_success(&self, resp: ChatResponse) -> bool {
+    async fn notify_prompt_success(&self, resp: ChatResponse) -> bool {
         self.notify(NotificationContent::PromptSuccessResult(resp))
             .await
     }
