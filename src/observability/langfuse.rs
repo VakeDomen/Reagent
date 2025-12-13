@@ -19,6 +19,34 @@ pub struct LangfuseOptions<'a> {
     pub host: Option<&'a str>,
 }
 
+/// Filter to exclude rmcp library internal spans that don't have proper parent context
+#[derive(Debug, Clone)]
+struct RmcpSpanFilter;
+
+impl<S> Filter<S> for RmcpSpanFilter
+where
+    S: Subscriber,
+{
+    fn enabled(
+        &self,
+        meta: &Metadata<'_>,
+        _cx: &tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        // Filter out rmcp internal spans that don't propagate trace context properly
+        let name = meta.name();
+        let target = meta.target();
+
+        // Exclude serve_inner and streamable_http_session spans from rmcp
+        if target.starts_with("rmcp")
+            && (name == "serve_inner" || name == "streamable_http_session")
+        {
+            return false;
+        }
+
+        true
+    }
+}
+
 pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
     // 1. Build the Exporter
     let mut builder = ExporterBuilder::default();
@@ -55,7 +83,9 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,tokio=info"));
 
     // Apply the filter to the OpenTelemetry layer to exclude unwanted rmcp spans
-    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let otel_layer = tracing_opentelemetry::layer()
+        .with_tracer(tracer)
+        .with_filter(RmcpSpanFilter);
 
     let fmt_layer = fmt::layer()
         .with_timer(UtcTime::rfc_3339())
