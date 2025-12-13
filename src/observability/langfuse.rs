@@ -79,8 +79,8 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
 
     // Forward tracing events (including Tokio internal spans when enabled) to OTEL
     // and keep console logging with env-based filtering.
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,tokio=info"));
+    // let env_filter =
+    //     EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,tokio=info"));
 
     // Apply the filter to the OpenTelemetry layer to exclude unwanted rmcp spans
     let otel_layer = tracing_opentelemetry::layer()
@@ -95,7 +95,7 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
         .with_span_events(FmtSpan::ENTER | FmtSpan::EXIT | FmtSpan::CLOSE);
 
     tracing_subscriber::registry()
-        .with(env_filter)
+        // .with(env_filter)
         .with(fmt_layer)
         .with(otel_layer)
         .init();
