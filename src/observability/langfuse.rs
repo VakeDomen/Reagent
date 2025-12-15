@@ -1,17 +1,19 @@
 use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
 use opentelemetry_langfuse::ExporterBuilder;
+use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_sdk::{
-    propagation::TraceContextPropagator, resource::Resource, trace::SdkTracerProvider,
+    propagation::TraceContextPropagator,
+    resource::Resource,
+    runtime, // Use the runtime module
+    trace::SdkTracerProvider,
 };
 use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
-use std::env;
 use tracing::{Metadata, Subscriber};
-use tracing_subscriber::{
-    fmt::{self, format::FmtSpan, time::UtcTime},
-    layer::{Filter, SubscriberExt},
-    util::SubscriberInitExt,
-    EnvFilter, Layer,
-};
+use tracing_subscriber::layer::Filter;
+use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Layer;
 
 pub struct LangfuseOptions<'a> {
     pub public_key: Option<&'a str>,
@@ -69,25 +71,30 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
             KeyValue::new(SERVICE_VERSION, env!("CARGO_PKG_VERSION")),
         ])
         .build();
-    // 2. Build the Provider using the high-level batch exporter method
-    // This automatically creates the BatchSpanProcessor and binds it to the Tokio runtime
-    // Build the tracer provider with batch processing
+
+    // 2. Build the ASYNC Processor
+    // Now that we imported the correct struct, .builder() accepts 2 arguments!
+    // This runs the export on the Tokio runtime, fixing the "no reactor" panic.
+    let processor = BatchSpanProcessor::builder(exporter, runtime::Tokio).build();
+
+    // 3. Provider Setup
+    // Note: We use .with_span_processor(), NOT .with_batch_exporter()
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
-        .with_simple_exporter(exporter)
+        .with_span_processor(processor)
         .build();
 
     let tracer = provider.tracer("reagent-rs");
     global::set_tracer_provider(provider.clone());
 
-    // langfuse layer
+    // 4. Layers (With the strict Allow-List filter we created)
     let otel_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer)
-        .with_filter(RmcpSpanFilter);
+        .with_filter(RmcpSpanFilter); // <--- KEEPS DEADLOCKS AWAY
 
-    let fmt_filter = EnvFilter::new("info"); // Only show INFO and above on console
-    let fmt_layer = fmt::layer()
-        .with_timer(UtcTime::rfc_3339())
+    // 5. Console Filter (Clean output)
+    let fmt_filter = EnvFilter::new("info");
+    let fmt_layer = tracing_subscriber::fmt::layer()
         .with_thread_ids(true)
         .with_target(true)
         .with_filter(fmt_filter);
@@ -96,35 +103,6 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
         .with(fmt_layer)
         .with(otel_layer)
         .init();
-
-    // Forward tracing events (including Tokio internal spans when enabled) to OTEL
-    // and keep console logging with env-based filtering.
-    // let env_filter = EnvFilter::try_from_default_env()
-    //     .unwrap_or_else(|_| EnvFilter::new("info,reagent_rs=debug,rmcp=debug"))
-    //     .add_directive("hyper=info".parse().unwrap())
-    //     .add_directive("hyper_util=info".parse().unwrap())
-    //     .add_directive("h2=info".parse().unwrap())
-    //     .add_directive("reqwest=info".parse().unwrap())
-    //     .add_directive("opentelemetry=info".parse().unwrap())
-    //     .add_directive("tokio=info".parse().unwrap());
-    // // Apply the filter to the OpenTelemetry layer to exclude unwanted rmcp spans
-    // let otel_layer = tracing_opentelemetry::layer()
-    //     .with_tracer(tracer)
-    //     .with_filter(env_filter)
-    //     .with_filter(RmcpSpanFilter);
-
-    // let fmt_layer = fmt::layer()
-    //     .with_timer(UtcTime::rfc_3339())
-    //     .with_thread_ids(true)
-    //     .with_thread_names(true)
-    //     .with_target(true)
-    //     .with_span_events(FmtSpan::ENTER | FmtSpan::EXIT | FmtSpan::CLOSE);
-
-    // tracing_subscriber::registry()
-    //     // .with(env_filter)
-    //     .with(fmt_layer)
-    //     .with(otel_layer)
-    //     .init();
 
     provider
 }
