@@ -1,8 +1,5 @@
-
+use reagent_rs::{templates::Template, AgentBuilder};
 use std::{collections::HashMap, error::Error};
-use reagent_rs::{
-    init_default_tracing, templates::Template, AgentBuilder 
-};
 struct MyCustomDataHolder {
     pub value: String,
 }
@@ -15,16 +12,17 @@ impl From<MyCustomDataHolder> for String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
-    
+    reagent_rs::observability::init_default_tracing();
 
     // you can define your prompt template
-    // the {{values}} will be replaced by your 
-    // values when prompted. 
-    let template = Template::simple(r#"
+    // the {{values}} will be replaced by your
+    // values when prompted.
+    let template = Template::simple(
+        r#"
     Yout name is {{name}}
     Answer the following question: {{question}}
-    "#);
+    "#,
+    );
 
     // build the agent
     let mut agent = AgentBuilder::default()
@@ -36,10 +34,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // we won't pass the string as a prompt but HashMap of values
     // the map is <K, V> where K and V are Into<String> so you can
     // pass your own types
-    let prompt_data = HashMap::from([
-        ("name", "Gregor"),
-        ("question", "What's your name?")
-    ]);
+    let prompt_data = HashMap::from([("name", "Gregor"), ("question", "What's your name?")]);
 
     // if you are using a template invoke the agent using
     // invoke_flow_with_template instead invoke_flow
@@ -47,24 +42,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let resp = agent.invoke_flow_with_template(prompt_data).await?;
     println!("Agent: {}", resp.content.unwrap());
 
-
-
     // ...custom structs that implement Into<String>
-    let name = MyCustomDataHolder { 
-        value: "Peter".into()
+    let name = MyCustomDataHolder {
+        value: "Peter".into(),
     };
-    let question = MyCustomDataHolder { 
-        value: "What's your name?".into() 
+    let question = MyCustomDataHolder {
+        value: "What's your name?".into(),
     };
 
-    let prompt_data = HashMap::from([
-        ("name", name),
-        ("question", question)
-    ]);
+    let prompt_data = HashMap::from([("name", name), ("question", question)]);
 
     let resp = agent.invoke_flow_with_template(prompt_data).await?;
     println!("Agent: {}", resp.content.unwrap());
 
     Ok(())
 }
-

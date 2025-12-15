@@ -1,9 +1,9 @@
-use reagent_rs::{init_default_tracing, InvocationBuilder, Message};
+use reagent_rs::{InvocationBuilder, Message};
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     let req = InvocationBuilder::default()
         .model("ministral-3:14b")

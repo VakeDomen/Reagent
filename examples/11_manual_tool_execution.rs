@@ -1,10 +1,10 @@
-use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder};
+use reagent_rs::{AgentBuilder, AsyncToolFn, ToolBuilder};
 use serde_json::{json, Value};
 use std::{error::Error, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     let weather_exec: AsyncToolFn = {
         Arc::new(move |_model_args_json: Value| {

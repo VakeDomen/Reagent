@@ -1,9 +1,9 @@
-use reagent_rs::{init_default_tracing, AgentBuilder};
+use reagent_rs::AgentBuilder;
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     // creating agents follows the builder pattern
     let mut agent = AgentBuilder::default()

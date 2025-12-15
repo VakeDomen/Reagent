@@ -1,11 +1,9 @@
-use reagent_rs::{
-    flow, init_default_tracing, Agent, AgentBuilder, AgentError, InvocationBuilder, Message,
-};
+use reagent_rs::{flow, Agent, AgentBuilder, AgentError, InvocationBuilder, Message};
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")

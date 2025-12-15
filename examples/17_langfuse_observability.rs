@@ -1,12 +1,12 @@
 use reagent_rs::{
-    observability::langfuse::LangfuseOptions, AgentBuilder, InvocationBuilder, Message,
+    observability::{init_default_tracing, langfuse::LangfuseOptions},
+    AgentBuilder, InvocationBuilder, Message,
 };
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // returns the provider so it may be flushed on
-    // short running tasks
+    init_default_tracing();
     let provider = reagent_rs::observability::langfuse::init(LangfuseOptions {
         // made up credentials
         public_key: Some("pk-lf-48df9377-5e49-47a3-bc33-ffd2fbbe16d2"),

@@ -1,19 +1,17 @@
-
+use reagent_rs::{AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
+use serde_json::Value;
 use std::{error::Error, sync::Arc};
 use tokio::sync::Mutex;
-use reagent_rs::{init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
-use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     // agent A will be able to call agent B via a tool call
-    // we just pack invoking agent B into a tool and pass it to 
+    // we just pack invoking agent B into a tool and pass it to
     // the agent A on construction
 
     // in this case the agent B (tool) will make-up some weather data
-
 
     // another agent inside a local tool
     let weather_agent_b = AgentBuilder::default()
@@ -35,7 +33,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    
     // pass the model ref into the closure, so when the funcion is called adn
     // the closure triggers the model is invoked
     let weather_ref = Arc::new(Mutex::new(weather_agent_b));
@@ -46,15 +43,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Box::pin(async move {
                 let mut agent = weather_ref.lock().await;
                 // get "location" parameter from the args (JSON value)
-                let loc = args.get("location")
+                let loc = args
+                    .get("location")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| ToolExecutionError::ArgumentParsingError("Missing 'location' argument".into()))?;
+                    .ok_or_else(|| {
+                        ToolExecutionError::ArgumentParsingError(
+                            "Missing 'location' argument".into(),
+                        )
+                    })?;
 
                 // create prompt for our agent B
                 let prompt = format!("/no_think What is the weather in {loc}?");
 
                 // invoke it
-                let resp = agent.invoke_flow(prompt)
+                let resp = agent
+                    .invoke_flow(prompt)
                     .await
                     .map_err(|e| ToolExecutionError::ExecutionFailed(e.to_string()))?;
 
@@ -83,7 +86,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let resp = agent.invoke_flow("Say hello").await?;
     println!("Agent: {}", resp.content.unwrap());
 
-    let resp = agent.invoke_flow("What is the current weather in Koper?").await?;
+    let resp = agent
+        .invoke_flow("What is the current weather in Koper?")
+        .await?;
     println!("Agent: {}", resp.content.unwrap());
 
     let resp = agent.invoke_flow("What do you remember?").await?;

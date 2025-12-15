@@ -1,4 +1,4 @@
-use reagent_rs::{init_default_tracing, AgentBuilder, JsonSchema};
+use reagent_rs::{AgentBuilder, JsonSchema};
 use serde::Deserialize;
 use std::error::Error;
 
@@ -11,7 +11,7 @@ struct MyWeatherOuput {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")

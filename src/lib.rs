@@ -90,14 +90,12 @@ pub use crate::services::llm::models::message::Message;
 pub use crate::services::mcp::error::McpIntegrationError;
 pub use crate::services::mcp::mcp_tool_builder::McpServerType;
 
-pub use crate::services::logging::init_default_tracing;
-
 pub mod prelude {
     pub use crate::{
-        flow, init_default_tracing, Agent, AgentBuildError, AgentBuilder, AgentError, ChatRequest,
-        ChatResponse, ClientConfig, Flow, McpIntegrationError, McpServerType, Message,
-        Notification, NotificationContent, Provider, Role, Template, TemplateDataSource, Tool,
-        ToolBuilder, ToolExecutionError,
+        flow, Agent, AgentBuildError, AgentBuilder, AgentError, ChatRequest, ChatResponse,
+        ClientConfig, Flow, McpIntegrationError, McpServerType, Message, Notification,
+        NotificationContent, Provider, Role, Template, TemplateDataSource, Tool, ToolBuilder,
+        ToolExecutionError,
     };
 }
 pub use rmcp::schemars::JsonSchema;

@@ -1,12 +1,10 @@
-use reagent_rs::{
-    init_default_tracing, AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError,
-};
+use reagent_rs::{AgentBuilder, AsyncToolFn, ToolBuilder, ToolExecutionError};
 use serde_json::Value;
 use std::{error::Error, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     // what do you want to happen when the model calls the function?
     // Arcs and Boxes are needed to make the tool async and clonable

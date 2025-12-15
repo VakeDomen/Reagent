@@ -227,7 +227,7 @@ const EXECUTOR_SYSTEM_PROMPT: &str = r#"You are given a task and a set of tools.
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    init_default_tracing();
+    reagent_rs::observability::init_default_tracing();
 
     // build your agent
     let (mut agent, mut notification_reciever) =
