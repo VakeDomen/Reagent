@@ -35,27 +35,20 @@ where
         let name = meta.name();
         let target = meta.target();
 
-        if target.starts_with("opentelemetry")
-            || target.starts_with("hyper")
-            || target.starts_with("reqwest")
-            || target.starts_with("h2")
-            || target.starts_with("tower")
-            || target.starts_with("tonic")
-        {
-            return false;
+        if target.starts_with("reagent_rs") || target.starts_with("rmcp") {
+            // Keep your existing specific logic to filter NOISY internal rmcp spans
+            let name = meta.name();
+            if target.starts_with("rmcp")
+                && (name == "serve_inner" || name == "streamable_http_session")
+            {
+                return false;
+            }
+
+            return true;
         }
 
-        if target.starts_with("tokio") || target.starts_with("runtime") {
-            return false;
-        }
-
-        if target.starts_with("rmcp")
-            && (name == "serve_inner" || name == "streamable_http_session")
-        {
-            return false;
-        }
-
-        true
+        // BLOCK EVERYTHING ELSE
+        false
     }
 }
 
@@ -85,32 +78,53 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
         .build();
 
     let tracer = provider.tracer("reagent-rs");
-
-    // Install the provider as global so other crates use it
     global::set_tracer_provider(provider.clone());
 
-    // Forward tracing events (including Tokio internal spans when enabled) to OTEL
-    // and keep console logging with env-based filtering.
-    // let env_filter =
-    //     EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,tokio=info"));
-
-    // Apply the filter to the OpenTelemetry layer to exclude unwanted rmcp spans
+    // langfuse layer
     let otel_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer)
         .with_filter(RmcpSpanFilter);
 
+    let fmt_filter = EnvFilter::new("info"); // Only show INFO and above on console
     let fmt_layer = fmt::layer()
         .with_timer(UtcTime::rfc_3339())
         .with_thread_ids(true)
-        .with_thread_names(true)
         .with_target(true)
-        .with_span_events(FmtSpan::ENTER | FmtSpan::EXIT | FmtSpan::CLOSE);
+        .with_filter(fmt_filter);
 
     tracing_subscriber::registry()
-        // .with(env_filter)
         .with(fmt_layer)
         .with(otel_layer)
         .init();
+
+    // Forward tracing events (including Tokio internal spans when enabled) to OTEL
+    // and keep console logging with env-based filtering.
+    // let env_filter = EnvFilter::try_from_default_env()
+    //     .unwrap_or_else(|_| EnvFilter::new("info,reagent_rs=debug,rmcp=debug"))
+    //     .add_directive("hyper=info".parse().unwrap())
+    //     .add_directive("hyper_util=info".parse().unwrap())
+    //     .add_directive("h2=info".parse().unwrap())
+    //     .add_directive("reqwest=info".parse().unwrap())
+    //     .add_directive("opentelemetry=info".parse().unwrap())
+    //     .add_directive("tokio=info".parse().unwrap());
+    // // Apply the filter to the OpenTelemetry layer to exclude unwanted rmcp spans
+    // let otel_layer = tracing_opentelemetry::layer()
+    //     .with_tracer(tracer)
+    //     .with_filter(env_filter)
+    //     .with_filter(RmcpSpanFilter);
+
+    // let fmt_layer = fmt::layer()
+    //     .with_timer(UtcTime::rfc_3339())
+    //     .with_thread_ids(true)
+    //     .with_thread_names(true)
+    //     .with_target(true)
+    //     .with_span_events(FmtSpan::ENTER | FmtSpan::EXIT | FmtSpan::CLOSE);
+
+    // tracing_subscriber::registry()
+    //     // .with(env_filter)
+    //     .with(fmt_layer)
+    //     .with(otel_layer)
+    //     .init();
 
     provider
 }
