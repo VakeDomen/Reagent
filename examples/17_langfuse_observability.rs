@@ -1,4 +1,6 @@
-use reagent_rs::{observability::langfuse::LangfuseOptions, InvocationBuilder, Message};
+use reagent_rs::{
+    observability::langfuse::LangfuseOptions, AgentBuilder, InvocationBuilder, Message,
+};
 use std::error::Error;
 
 #[tokio::main]
@@ -20,14 +22,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let resp = req
         .clone()
         .add_message(Message::user("Ask me a question"))
-        .temperature(0.8)
+        .temperature(1.0)
+        .top_k(30)
+        .top_p(0.8)
         .invoke()
         .await;
 
-    let _ = req
-        .add_message(Message::user(resp.unwrap().message.content.unwrap()))
-        .invoke()
-        .await;
+    let mut agent = AgentBuilder::default()
+        .set_model("qwen3:0.6b")
+        .set_system_prompt("You are a helpful assistant.")
+        .set_temperature(0.6)
+        .set_num_ctx(2048)
+        .build()
+        .await?;
+
+    let resp = agent
+        .invoke_flow(resp.unwrap().message.content.unwrap())
+        .await?;
+    println!("Agent: {}", resp.content.unwrap());
 
     // shutdown will flush any unsent buffered traces
     println!("{:#?}", provider.shutdown());

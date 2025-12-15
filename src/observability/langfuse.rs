@@ -32,11 +32,23 @@ where
         meta: &Metadata<'_>,
         _cx: &tracing_subscriber::layer::Context<'_, S>,
     ) -> bool {
-        // Filter out rmcp internal spans that don't propagate trace context properly
         let name = meta.name();
         let target = meta.target();
 
-        // Exclude serve_inner and streamable_http_session spans from rmcp
+        if target.starts_with("opentelemetry")
+            || target.starts_with("hyper")
+            || target.starts_with("reqwest")
+            || target.starts_with("h2")
+            || target.starts_with("tower")
+            || target.starts_with("tonic")
+        {
+            return false;
+        }
+
+        if target.starts_with("tokio") || target.starts_with("runtime") {
+            return false;
+        }
+
         if target.starts_with("rmcp")
             && (name == "serve_inner" || name == "streamable_http_session")
         {
