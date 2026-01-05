@@ -1,5 +1,8 @@
 use reagent_rs::{templates::Template, AgentBuilder};
+use serde::Serialize;
 use std::{collections::HashMap, error::Error};
+
+#[derive(Serialize)]
 struct MyCustomDataHolder {
     pub value: String,
 }

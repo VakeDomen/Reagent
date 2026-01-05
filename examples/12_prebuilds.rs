@@ -19,20 +19,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // agent's history is reset on every invocation
 
     // simple agent whose flow is simply invoking the agent
-    // and passing the message to the user. If the agent has access
-    // to tools the message may contain tool calls but the user
-    // has to invoke the actual tool themselves
-    let _ = StatelessPrebuild::reply()
-        .set_model("qwen3:0.6b")
-        .build()
-        .await?;
-
-    let _ = StatefullPrebuild::reply()
-        .set_model("qwen3:0.6b")
-        .build()
-        .await?;
-
-    // simple agent whose flow is simply invoking the agent
     // and passing the message to the user. However even if
     // the agent has tools set, the request will not pass the
     // tool calls to the api. Returned is the message response of the

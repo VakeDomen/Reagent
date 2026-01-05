@@ -2,7 +2,8 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, fmt, future::Future, pin::Pin, sync::Arc};
-use tracing::{span, Level};
+use tracing::{span, Instrument, Level, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{services::llm::message::Message, Agent, NotificationHandler};
 
@@ -163,36 +164,58 @@ pub async fn call_tools(agent: &Agent, tool_calls: &[ToolCall]) -> Vec<Message> 
     };
 
     let results = futures::stream::iter(tool_calls.iter().cloned())
-        .map(|call| async move {
+        .map(|call| {
+            // --- UPDATED SPAN DEFINITION ---
+            // Matches: tracer.start_as_current_span("Tool Call")
             let tool_span = span!(
                 Level::INFO,
-                "tool_execution",
-                "agent.tool.name" = call.function.name.as_str(),
-                "agent.tool.input" = format!("{}", call.function.arguments),
-                "agent.tool.id" = call.id.as_deref().unwrap_or("[No ID]"),
+                "Tool Call",                          // Span Name
+                "langfuse.observation.type" = "tool", // Type is explicitly "tool"
+                "langfuse.observation.metadata.tool_name" = call.function.name.as_str(), // Metadata mapping
+                "langfuse.observation.id" = call.id.as_deref().unwrap_or("unknown"),
             );
-            let _guard = tool_span.enter();
 
-            let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name) else {
-                tool_span.record("otel.status_code", "ERROR");
-                return Message::tool("Tool not found", "0".to_string());
-            };
+            // Matches: span.set_attribute("input.value", ...)
+            // We define it here so it's captured before execution starts
+            if let Ok(input_str) = serde_json::to_string_pretty(&call.function.arguments) {
+                tool_span.set_attribute("input.value", input_str);
+            }
 
-            agent.notify_tool_request(call.clone()).await;
+            // --- ASYNC LOGIC ---
+            async move {
+                // Find tool
+                let Some(tool) = avail.iter().find(|t| t.function.name == call.function.name)
+                else {
+                    Span::current().set_attribute("otel.status_code", "ERROR");
+                    Span::current()
+                        .set_attribute("langfuse.observation.status_message", "Tool not found");
+                    return Message::tool("Tool not found", "0".to_string());
+                };
 
-            match tool.execute(call.function.arguments.clone()).await {
-                Ok(output) => {
-                    tool_span.record("agent.tool.output", output.as_str());
-                    tool_span.record("otel.status_code", "OK");
-                    agent.notify_tool_success(output.clone()).await;
-                    Message::tool(output, call.id.clone().unwrap_or(call.function.name))
-                }
-                Err(e) => {
-                    tool_span.record("otel.status_code", "ERROR");
-                    agent.notify_tool_error(e.to_string()).await;
-                    Message::tool(e.to_string(), "0".to_string())
+                agent.notify_tool_request(call.clone()).await;
+
+                // Execute Tool
+                match tool.execute(call.function.arguments.clone()).await {
+                    Ok(output) => {
+                        // Matches: span.set_attribute("output.value", ...)
+                        Span::current().set_attribute("output.value", output.clone());
+                        Span::current().set_attribute("otel.status_code", "OK");
+
+                        agent.notify_tool_success(output.clone()).await;
+                        Message::tool(output, call.id.clone().unwrap_or(call.function.name))
+                    }
+                    Err(e) => {
+                        let err_msg = e.to_string();
+                        Span::current().set_attribute("otel.status_code", "ERROR");
+                        Span::current()
+                            .set_attribute("langfuse.observation.status_message", err_msg.clone());
+
+                        agent.notify_tool_error(err_msg.clone()).await;
+                        Message::tool(err_msg, "0".to_string())
+                    }
                 }
             }
+            .instrument(tool_span) // Attach the span to the async future
         })
         .buffer_unordered(tool_calls.len())
         .collect::<Vec<Message>>()

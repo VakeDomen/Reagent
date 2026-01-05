@@ -1,10 +1,10 @@
 use reagent_rs::{AgentBuilder, Provider};
 use schemars::{schema_for, JsonSchema};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::error::Error;
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct MyWeatherOuput {
     windy: bool,
     temperature: i32,

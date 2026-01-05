@@ -250,20 +250,12 @@ fn extract_response_telemetry(gen_span: &Span, response: &ChatResponse) {
 fn set_telemetry_request_attributes(request: &ChatRequest) -> Span {
     let gen_span = span!(
         Level::INFO,
-        "llm_generation",
+        "Chat Request",
+        "langfuse.observation.type" = "generation",
         "langfuse.observation.model.name" = request.base.model.as_str(),
-    );
-
-    gen_span.set_attribute("langfuse.observation.type", "generation");
-
-    gen_span.set_attribute(
-        "langfuse.observation.input",
-        serde_json::to_string(&request.messages).unwrap_or(format!("{:#?}", request.messages)),
-    );
-
-    gen_span.set_attribute(
-        "langfuse.observation.model.parameters",
-        serde_json::to_string(&request.base.options)
+        "langfuse.observation.input" =
+            serde_json::to_string(&request.messages).unwrap_or(format!("{:#?}", request.messages)),
+        "langfuse.observation.model.parameters" = serde_json::to_string(&request.base.options)
             .unwrap_or(format!("{:#?}", request.base.options)),
     );
 

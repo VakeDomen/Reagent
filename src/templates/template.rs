@@ -1,6 +1,9 @@
 use core::fmt;
 use std::collections::HashMap;
 
+use tracing::{span, Level};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+
 use super::TemplateDataSource;
 
 /// A lightweight text template with double-brace placeholders.
@@ -56,8 +59,14 @@ impl Template {
     ///
     /// Useful for static templates where all values will be supplied
     /// at call time via [`compile`](Self::compile).
-    pub fn simple<T>(content: T) -> Self where T: Into<String> {
-        Self { content: content.into(), data_source: None }
+    pub fn simple<T>(content: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            content: content.into(),
+            data_source: None,
+        }
     }
 
     /// Render the template by replacing placeholders with values.
@@ -68,6 +77,16 @@ impl Template {
     ///
     /// Any placeholders without a matching key remain unchanged.
     pub async fn compile(&self, data: &HashMap<String, String>) -> String {
+        let trace_span = span!(
+            Level::INFO,
+            "Template Compilation",
+            "langfuse.observation.type" = "trace",
+            "langfuse.observation.metadata.tool_name" = "TemplateCompilation"
+        );
+
+        let trace_input = serde_json::to_string_pretty(&data).unwrap_or_default();
+        trace_span.set_attribute("langfuse.observation.input", trace_input);
+
         let mut filled_content = self.content.clone();
 
         if let Some(source) = &self.data_source {
@@ -83,6 +102,8 @@ impl Template {
             filled_content = filled_content.replace(&placeholder, value);
         }
 
+        trace_span.set_attribute("langfuse.observation.output", filled_content.clone());
+
         filled_content
     }
 }
@@ -93,7 +114,7 @@ impl Clone for Template {
             content: self.content.clone(),
             data_source: match &self.data_source {
                 None => None,
-                Some(data_source) => Some(data_source.clone_data_source())
+                Some(data_source) => Some(data_source.clone_data_source()),
             },
         }
     }
@@ -103,7 +124,14 @@ impl fmt::Debug for Template {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Template")
             .field("content", &self.content)
-            .field("data_source", &self.data_source.as_ref().map(|_| "Some(Box<dyn TemplateDataSource>)").unwrap_or("None"))
+            .field(
+                "data_source",
+                &self
+                    .data_source
+                    .as_ref()
+                    .map(|_| "Some(Box<dyn TemplateDataSource>)")
+                    .unwrap_or("None"),
+            )
             .finish()
     }
 }

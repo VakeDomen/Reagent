@@ -1,19 +1,19 @@
 use crate::{
-    call_tools, services::llm::message::Message, Agent, AgentError, InvocationBuilder,
-    NotificationHandler,
+    services::llm::message::Message, Agent, AgentError, InvocationBuilder, NotificationHandler,
+    Role,
 };
 
 pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
     agent.history.push(Message::user(prompt));
     let mut response = InvocationBuilder::default().invoke_with(agent).await?;
-    if let Some(tc) = response.message.tool_calls {
-        for tool_msg in call_tools(agent, &tc).await {
-            agent.history.push(tool_msg);
+
+    if let Some(last_message) = agent.history.last() {
+        if last_message.role == Role::Tool {
+            response = InvocationBuilder::default()
+                .use_tools(false)
+                .invoke_with(agent)
+                .await?;
         }
-        response = InvocationBuilder::default()
-            .use_tools(false)
-            .invoke_with(agent)
-            .await?;
     }
 
     agent

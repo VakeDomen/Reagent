@@ -3,7 +3,7 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use std::{fmt, pin::Pin};
-use tracing::{error, info_span, instrument, span, trace, Instrument, Level, Span};
+use tracing::{error, span, Instrument, Level, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::services::llm::models::chat::ChatStreamChunk;
@@ -37,11 +37,9 @@ impl OllamaClient {
     {
         let url = format!("{}{}", self.base_url, endpoint);
 
-        // 1. Create a Child Span
-        // We mark this as a "span" (not a generation) so it nests neatly under your `invoke` calls.
         let span = span!(
             Level::INFO,
-            "ollama_http_request",
+            "Ollama HTTP Request",
             "langfuse.observation.name" = format!("POST {}", endpoint).as_str(),
             "langfuse.observation.type" = "span",
             "http.request.method" = "POST",
@@ -49,8 +47,6 @@ impl OllamaClient {
             "server.address" = self.base_url.as_str(),
         );
 
-        // 2. Capture Input (Request Body)
-        // Useful for debugging raw payloads sent to the provider
         if let Ok(body) = serde_json::to_string(request_body) {
             span.set_attribute("langfuse.observation.input", body);
         }
@@ -63,7 +59,6 @@ impl OllamaClient {
                 .send()
                 .await
                 .map_err(|e| {
-                    // Record connection errors
                     Span::current().set_status(opentelemetry::trace::Status::Error {
                         description: e.to_string().into(),
                     });
@@ -72,11 +67,9 @@ impl OllamaClient {
 
             let status = response.status();
 
-            // 3. Record HTTP Status Code
             Span::current().set_attribute("http.response.status_code", status.as_u16() as i64);
 
             if !status.is_success() {
-                // ... existing error handling ...
                 let error_text = response
                     .text()
                     .await
@@ -84,7 +77,6 @@ impl OllamaClient {
 
                 error!(%status, body = %error_text, "request failed");
 
-                // Record error in Span
                 Span::current().set_status(opentelemetry::trace::Status::Error {
                     description: format!("HTTP {}", status).into(),
                 });
@@ -100,14 +92,10 @@ impl OllamaClient {
                 InferenceClientError::Api(format!("Failed to read response text: {e}"))
             })?;
 
-            // Optional: Capture raw response output (can be large)
             Span::current().set_attribute("langfuse.observation.output", response_text.clone());
 
             match serde_json::from_str::<R>(&response_text) {
-                Ok(parsed) => {
-                    // trace!(?parsed, "deserialized response");
-                    Ok(parsed)
-                }
+                Ok(parsed) => Ok(parsed),
                 Err(e) => {
                     error!(%e, raw = %response_text, "deserialization error");
                     Span::current().set_status(opentelemetry::trace::Status::Error {
@@ -137,10 +125,9 @@ impl OllamaClient {
     {
         let url = format!("{}{}", self.base_url, endpoint);
 
-        // 1. Create the span here
         let span = span!(
             Level::INFO,
-            "ollama_stream", // Renamed for clarity
+            "Ollama HTTP stream",
             "langfuse.observation.name" = format!("POST (Stream) {}", endpoint).as_str(),
             "langfuse.observation.type" = "span",
             "http.request.method" = "POST",
@@ -151,10 +138,8 @@ impl OllamaClient {
             span.set_attribute("langfuse.observation.input", b);
         }
 
-        // 2. Clone it so we can move one copy into the stream
         let stream_span = span.clone();
 
-        // 3. Instrument the initial HTTP request (Connection phase)
         let resp = async {
             let resp = self
                 .client
@@ -173,20 +158,16 @@ impl OllamaClient {
             Span::current().set_attribute("http.response.status_code", status.as_u16() as i64);
 
             if !status.is_success() {
-                // ... Error handling logic ...
                 return Err(InferenceClientError::Api(format!("HTTP {}", status)));
             }
             Ok(resp)
         }
-        .instrument(span) // This consumes the first 'span' handle
+        .instrument(span)
         .await?;
 
         let byte_stream = resp.bytes_stream();
 
-        // 4. Create the stream and move 'stream_span' inside
         let s = try_stream! {
-
-
             let mut buf = Vec::<u8>::new();
             futures::pin_mut!(byte_stream);
 
@@ -194,8 +175,6 @@ impl OllamaClient {
             let mut chunks = vec![];
 
             while let Some(chunk) = byte_stream.next().await {
-                // Handle stream errors
-
                 let chunk = match chunk {
                     Ok(c) => c,
                     Err(e) => {
@@ -226,7 +205,6 @@ impl OllamaClient {
                             yield parsed
                         },
                         Err(e) => {
-                            // Record serialization errors inside the span
                             stream_span.set_attribute("otel.status_code", "ERROR");
                             stream_span.set_attribute("error.message", e.to_string());
                             stream_span.set_status(opentelemetry::trace::Status::Error {
@@ -238,11 +216,8 @@ impl OllamaClient {
                 }
             }
 
-            // 5. Add final attributes before the stream (and the span) closes
             stream_span.set_attribute("stream.chunk_count", chunk_count);
             stream_span.set_status(opentelemetry::trace::Status::Ok);
-
-            // When this block finishes, 'stream_span' is dropped, and the span Ends.
         };
 
         Ok(Box::pin(s))
