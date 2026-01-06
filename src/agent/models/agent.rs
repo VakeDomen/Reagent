@@ -4,6 +4,7 @@ use crate::services::llm::{ClientConfig, InferenceClient, SchemaSpec};
 use crate::templates::Template;
 use crate::{default_flow, Flow, NotificationHandler};
 use core::fmt;
+use opentelemetry::trace::TraceContextExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{Error, Value};
@@ -177,16 +178,18 @@ impl Agent {
         let prompt_str = prompt.into();
 
         let trace_span = span!(
-            parent: None,
             Level::INFO,
             "Invocation",
             "langfuse.observation.type" = "trace",
-            "langfuse.trace.name" = self.name.as_str(),
             "agent.model" = self.model.as_str(),
         );
-
+        let parent_context = tracing::Span::current().context();
+        let has_parent = parent_context.span().span_context().is_valid();
+        if !has_parent {
+            let name = self.name.clone();
+            trace_span.set_attribute("langfuse.trace.name", name);
+        }
         trace_span.set_attribute("langfuse.observation.input", prompt_str.clone());
-
         let _guard = trace_span.enter();
 
         let result = self
@@ -227,16 +230,20 @@ impl Agent {
         let prompt_str = prompt.into();
 
         let trace_span = span!(
-            parent: None,
             Level::INFO,
             "Invocation with structured output",
             "langfuse.observation.type" = "trace",
-            "langfuse.trace.name" = self.name.as_str(),
             "agent.model" = self.model.as_str(),
         );
+        let parent_context = tracing::Span::current().context();
+        let has_parent = parent_context.span().span_context().is_valid();
+        if !has_parent {
+            let name = self.name.clone();
+            trace_span.set_attribute("langfuse.trace.name", name);
+        }
+        let _guard = trace_span.enter();
 
         trace_span.set_attribute("langfuse.observation.input", prompt_str.clone());
-        let _guard = trace_span.enter();
 
         // Logic (inlined slightly to capture intermediate steps if needed,
         // but calling execute_invocation is cleaner)
@@ -307,14 +314,17 @@ impl Agent {
             .collect();
 
         let trace_span = span!(
-            parent: None,
             Level::INFO,
             "Invocation with template",
             "langfuse.observation.type" = "trace",
-            "langfuse.trace.name" = self.name.as_str(),
             "agent.model" = self.model.as_str(),
         );
-
+        let parent_context = tracing::Span::current().context();
+        let has_parent = parent_context.span().span_context().is_valid();
+        if !has_parent {
+            let name = self.name.clone();
+            trace_span.set_attribute("langfuse.trace.name", name);
+        }
         trace_span.set_attribute("langfuse.observation.input", trace_input);
         let _guard = trace_span.enter();
 
@@ -374,14 +384,17 @@ impl Agent {
             .collect();
 
         let trace_span = span!(
-            parent: None,
             Level::INFO,
             "Invocation with template and structured output",
             "langfuse.observation.type" = "trace",
-            "langfuse.trace.name" = self.name.as_str(),
             "agent.model" = self.model.as_str(),
         );
-
+        let parent_context = tracing::Span::current().context();
+        let has_parent = parent_context.span().span_context().is_valid();
+        if !has_parent {
+            let name = self.name.clone();
+            trace_span.set_attribute("langfuse.trace.name", name);
+        }
         trace_span.set_attribute("langfuse.observation.input", trace_input);
         let _guard = trace_span.enter();
 
