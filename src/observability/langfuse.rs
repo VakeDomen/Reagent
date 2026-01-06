@@ -32,8 +32,7 @@ where
     ) -> bool {
         let target = meta.target();
 
-        if target.starts_with("reagent_rs") || target.starts_with("rmcp") {
-            // Keep your existing specific logic to filter NOISY internal rmcp spans
+        if target.starts_with("reagent_rs") {
             let name = meta.name();
             if target.starts_with("rmcp")
                 && (name == "serve_inner" || name == "streamable_http_session")
