@@ -177,6 +177,7 @@ impl Agent {
         let prompt_str = prompt.into();
 
         let trace_span = span!(
+            parent: None,
             Level::INFO,
             "Invocation",
             "langfuse.observation.type" = "trace",
@@ -226,6 +227,7 @@ impl Agent {
         let prompt_str = prompt.into();
 
         let trace_span = span!(
+            parent: None,
             Level::INFO,
             "Invocation with structured output",
             "langfuse.observation.type" = "trace",
@@ -305,6 +307,7 @@ impl Agent {
             .collect();
 
         let trace_span = span!(
+            parent: None,
             Level::INFO,
             "Invocation with template",
             "langfuse.observation.type" = "trace",
@@ -371,6 +374,7 @@ impl Agent {
             .collect();
 
         let trace_span = span!(
+            parent: None,
             Level::INFO,
             "Invocation with template and structured output",
             "langfuse.observation.type" = "trace",
