@@ -80,7 +80,7 @@ impl Template {
         let trace_span = span!(
             Level::INFO,
             "Template Compilation",
-            "langfuse.observation.type" = "trace",
+            "langfuse.observation.type" = "event",
             "langfuse.observation.metadata.tool_name" = "TemplateCompilation"
         );
 
