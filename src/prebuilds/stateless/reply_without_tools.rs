@@ -5,6 +5,7 @@ impl StatelessPrebuild {
         AgentBuilder::default()
             .set_flow(flow!(reply_without_tools_flow))
             .set_clear_history_on_invocation(true)
+            .remove_tools()
             .set_name("Stateless-reply_without_tools")
     }
 }

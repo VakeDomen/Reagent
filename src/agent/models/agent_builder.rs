@@ -420,6 +420,18 @@ impl AgentBuilder {
         self
     }
 
+    /// Set agent's avalible tools
+    pub fn set_tools(mut self, tools: Vec<Tool>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Remove all agents avalible tools
+    pub fn remove_tools(mut self) -> Self {
+        self.tools = None;
+        self
+    }
+
     /// Add an MCP server endpoint.
     pub fn add_mcp_server(mut self, server: McpServerType) -> Self {
         if let Some(ref mut svs) = self.mcp_servers {
