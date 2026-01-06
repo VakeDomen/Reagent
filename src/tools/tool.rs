@@ -173,6 +173,7 @@ pub async fn call_tools(agent: &Agent, tool_calls: &[ToolCall]) -> Vec<Message> 
                 "langfuse.observation.type" = "tool", // Type is explicitly "tool"
                 "langfuse.observation.metadata.tool_name" = call.function.name.as_str(), // Metadata mapping
                 "langfuse.observation.id" = call.id.as_deref().unwrap_or("unknown"),
+                "langfuse.trace.name" = &format!("Tool: {}", call.function.name.as_str()),
             );
 
             // Matches: span.set_attribute("input.value", ...)
