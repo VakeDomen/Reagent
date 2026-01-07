@@ -31,20 +31,15 @@ where
         _cx: &tracing_subscriber::layer::Context<'_, S>,
     ) -> bool {
         let target = meta.target();
+        let name = meta.name();
 
-        if target.starts_with("reagent_rs") {
-            let name = meta.name();
-            if target.starts_with("rmcp")
-                && (name == "serve_inner" || name == "streamable_http_session")
-            {
-                return false;
-            }
-
-            return true;
+        // drop noisy spans by name
+        if name == "serve_inner" || name == "streamable_http_session" {
+            return false;
         }
 
-        // BLOCK EVERYTHING ELSE
-        false
+        // allow only your crate
+        target.starts_with("reagent_rs")
     }
 }
 pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
@@ -75,7 +70,7 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
     global::set_tracer_provider(provider.clone());
 
     let console_filter =
-        EnvFilter::try_from_env("RUST_LOG").unwrap_or_else(|_| EnvFilter::new("reagent=info,info"));
+        EnvFilter::try_from_env("RUST_LOG").unwrap_or_else(|_| EnvFilter::new("none,reagent=info"));
 
     let fmt_layer = fmt::layer()
         .with_timer(UtcTime::rfc_3339())
@@ -89,7 +84,10 @@ pub fn init(config: LangfuseOptions) -> SdkTracerProvider {
         .with_tracer(tracer)
         .with_filter(otel_filter);
 
-    Registry::default().with(fmt_layer).with(otel_layer).init();
+    let _ = Registry::default()
+        .with(fmt_layer)
+        .with(otel_layer)
+        .try_init();
 
     provider
 }
