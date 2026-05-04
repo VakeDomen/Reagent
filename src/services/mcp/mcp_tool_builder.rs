@@ -5,7 +5,7 @@ use tokio::{
     process::Command,
     sync::{mpsc::Sender, Mutex},
 };
-use tracing::{info, instrument, trace};
+use tracing::{info, trace};
 
 use crate::{
     notifications::{Notification, NotificationContent},

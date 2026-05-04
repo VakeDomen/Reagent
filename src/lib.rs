@@ -98,4 +98,6 @@ pub mod prelude {
         ToolExecutionError,
     };
 }
+
 pub use rmcp::schemars::JsonSchema;
+pub use serde_json::Value;

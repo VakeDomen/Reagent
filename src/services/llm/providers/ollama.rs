@@ -1,5 +1,6 @@
 use async_stream::try_stream;
 use futures::{Stream, StreamExt};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use std::{fmt, pin::Pin};
@@ -23,11 +24,37 @@ pub struct OllamaClient {
 
 impl OllamaClient {
     pub fn new(cfg: ClientConfig) -> Result<Self, InferenceClientError> {
-        let base_url = cfg.base_url.unwrap_or("http://localhost:11434".into());
-        Ok(Self {
-            client: Client::new(),
-            base_url,
-        })
+        let base_url = cfg
+            .base_url
+            .clone()
+            .unwrap_or("http://localhost:11434".into());
+
+        let mut headers = HeaderMap::new();
+        if let Some(api_key) = cfg.api_key {
+            headers.insert(
+                AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {api_key}")).map_err(|e| {
+                    InferenceClientError::Config(format!("Invalid api_key header: {e}"))
+                })?,
+            );
+        }
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+        if let Some(extra) = cfg.extra_headers {
+            for (k, v) in extra.into_iter() {
+                let name = HeaderName::from_bytes(k.as_bytes()).map_err(|_| {
+                    InferenceClientError::Config(format!("Invalid header name: {k}"))
+                })?;
+                let value = HeaderValue::from_str(&v).map_err(|_| {
+                    InferenceClientError::Config(format!("Invalid header value for {k}"))
+                })?;
+                headers.insert(name, value);
+            }
+        }
+
+        let client = Client::builder().default_headers(headers).build()?;
+
+        Ok(Self { client, base_url })
     }
 
     async fn post<T, R>(&self, endpoint: &str, request_body: &T) -> Result<R, InferenceClientError>
@@ -52,7 +79,7 @@ impl OllamaClient {
         }
 
         async {
-            let response = self
+            let mut response = self
                 .client
                 .post(&url)
                 .json(request_body)
@@ -141,7 +168,7 @@ impl OllamaClient {
         let stream_span = span.clone();
 
         let resp = async {
-            let resp = self
+            let mut resp = self
                 .client
                 .post(&url)
                 .json(body)
