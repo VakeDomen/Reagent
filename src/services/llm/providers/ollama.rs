@@ -79,7 +79,7 @@ impl OllamaClient {
         }
 
         async {
-            let mut response = self
+            let response = self
                 .client
                 .post(&url)
                 .json(request_body)
@@ -168,7 +168,7 @@ impl OllamaClient {
         let stream_span = span.clone();
 
         let resp = async {
-            let mut resp = self
+            let resp = self
                 .client
                 .post(&url)
                 .json(body)

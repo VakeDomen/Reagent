@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
-use tracing::{instrument, span, Instrument, Level, Span};
+use tracing::{span, Instrument, Level};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
