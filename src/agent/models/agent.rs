@@ -1,6 +1,6 @@
 use crate::agent::models::configs::{ModelConfig, PromptConfig};
 use crate::agent::models::error::{AgentBuildError, AgentError};
-use crate::services::llm::{ClientConfig, InferenceClient, SchemaSpec};
+use crate::services::llm::{ClientConfig, InferenceClient, InferenceOptions, SchemaSpec};
 use crate::templates::Template;
 use crate::{default_flow, Flow, NotificationHandler};
 use core::fmt;
@@ -580,6 +580,24 @@ impl Agent {
             num_predict: self.num_predict,
             top_k: self.top_k,
             min_p: self.min_p,
+        }
+    }
+
+    pub(crate) fn inference_options(&self) -> InferenceOptions {
+        InferenceOptions {
+            num_ctx: self.num_ctx,
+            repeat_last_n: self.repeat_last_n,
+            repeat_penalty: self.repeat_penalty,
+            temperature: self.temperature,
+            seed: self.seed,
+            stop: self.stop.clone(),
+            num_predict: self.num_predict,
+            max_tokens: None,
+            top_k: self.top_k,
+            top_p: self.top_p,
+            min_p: self.min_p,
+            presence_penalty: self.presence_penalty,
+            frequency_penalty: self.frequency_penalty,
         }
     }
 

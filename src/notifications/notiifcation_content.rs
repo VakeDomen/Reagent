@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{services::llm::models::chat::{ChatRequest, ChatResponse}, ToolCall};
-
+use crate::{
+    services::llm::models::chat::{ChatRequest, ChatResponse},
+    ToolCall,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NotificationContent {
@@ -15,9 +17,8 @@ pub enum NotificationContent {
     ToolCallErrorResult(String),
     Token(Token),
     McpToolNotification(String),
-    Custom(Value)
+    Custom(Value),
 }
-
 
 pub type Success = bool;
 pub type Response = Option<String>;

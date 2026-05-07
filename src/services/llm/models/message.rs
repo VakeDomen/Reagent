@@ -10,6 +10,8 @@ pub struct Message {
     pub role: Role,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -24,6 +26,7 @@ impl Message {
             id: new_uuid(),
             role,
             content: Some(content),
+            thinking: None,
             images: None,
             tool_calls: None,
             tool_call_id,

@@ -6,7 +6,6 @@ use crate::ToolExecutionError;
 
 use super::tool::{AsyncToolFn, Function, FunctionParameters, Property, Tool, ToolType};
 
-
 /// Errors that can occur while building a [`Tool`] with [`ToolBuilder`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolBuilderError {
@@ -22,8 +21,12 @@ impl std::fmt::Display for ToolBuilderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ToolBuilderError::MissingFunctionName => write!(f, "Function name is required."),
-            ToolBuilderError::MissingFunctionDescription => write!(f, "Function description is required."),
-            ToolBuilderError::MissingExecutor => write!(f, "Executor function is required for the tool."),
+            ToolBuilderError::MissingFunctionDescription => {
+                write!(f, "Function description is required.")
+            }
+            ToolBuilderError::MissingExecutor => {
+                write!(f, "Executor function is required for the tool.")
+            }
         }
     }
 }
@@ -106,11 +109,13 @@ impl ToolBuilder {
     }
 
     /// Sets the description of the function for the tool. (Required)
-    pub fn function_description<T>(mut self, description: T) -> Self where T: Into<String> {
+    pub fn function_description<T>(mut self, description: T) -> Self
+    where
+        T: Into<String>,
+    {
         self.function_description = Some(description.into());
         self
     }
-
 
     /// Adds a property to the function's parameters.
     ///
@@ -137,7 +142,7 @@ impl ToolBuilder {
     /// Marks a property as required for the function.
     /// The property must have been previously added using `add_property`.
     pub fn add_required_property(
-        mut self, 
+        mut self,
         name: impl Into<String>,
         property_type: impl Into<String>,
         description: impl Into<String>,
@@ -174,12 +179,16 @@ impl ToolBuilder {
     /// # Errors
     /// Returns a `ToolBuilderError` if required fields are missing.
     pub fn build(self) -> Result<Tool, ToolBuilderError> {
-        let function_name = self.function_name.ok_or(ToolBuilderError::MissingFunctionName)?;
-        let function_description = self.function_description.ok_or(ToolBuilderError::MissingFunctionDescription)?;
+        let function_name = self
+            .function_name
+            .ok_or(ToolBuilderError::MissingFunctionName)?;
+        let function_description = self
+            .function_description
+            .ok_or(ToolBuilderError::MissingFunctionDescription)?;
         let executor = self.executor.ok_or(ToolBuilderError::MissingExecutor)?; // Check for executor
 
         let parameters = FunctionParameters {
-            param_type:"object".to_string(),
+            param_type: "object".to_string(),
             properties: self.function_properties,
             required: self.function_required,
         };
@@ -193,25 +202,22 @@ impl ToolBuilder {
         Ok(Tool {
             tool_type: self.tool_type.unwrap_or(ToolType::Function),
             function,
-            executor, 
+            executor,
         })
     }
 }
-
 
 // In your tool_builder.rs or a dedicated test module
 #[cfg(test)]
 mod tests {
     use super::*; // Imports ToolBuilder, ToolBuilderError
     use crate::AsyncToolFn;
-    use std::sync::Arc;
     use serde_json::Value;
+    use std::sync::Arc;
 
     // A simple placeholder executor for testing definitions
     fn create_dummy_executor() -> AsyncToolFn {
-        Arc::new(|_args: Value| {
-            Box::pin(async { Ok("dummy execution".to_string()) })
-        })
+        Arc::new(|_args: Value| Box::pin(async { Ok("dummy execution".to_string()) }))
     }
 
     #[test]
@@ -226,8 +232,20 @@ mod tests {
         assert!(tool_result.is_ok());
         let tool = tool_result.unwrap();
         assert_eq!(tool.function.name, "test_tool");
-        assert_eq!(tool.function.parameters.properties.get("param1").unwrap().property_type, "string");
-        assert!(tool.function.parameters.required.contains(&"param1".to_string()));
+        assert_eq!(
+            tool.function
+                .parameters
+                .properties
+                .get("param1")
+                .unwrap()
+                .property_type,
+            "string"
+        );
+        assert!(tool
+            .function
+            .parameters
+            .required
+            .contains(&"param1".to_string()));
     }
 
     #[test]
@@ -237,7 +255,10 @@ mod tests {
             .executor(create_dummy_executor())
             .build();
         assert!(tool_result.is_err());
-        assert_eq!(tool_result.unwrap_err(), ToolBuilderError::MissingFunctionName);
+        assert_eq!(
+            tool_result.unwrap_err(),
+            ToolBuilderError::MissingFunctionName
+        );
     }
 
     #[test]
@@ -248,7 +269,10 @@ mod tests {
             .build();
         assert!(tool_result.is_err());
         // Assuming you have a MissingFunctionDescription error variant
-        assert_eq!(tool_result.unwrap_err(), ToolBuilderError::MissingFunctionDescription);
+        assert_eq!(
+            tool_result.unwrap_err(),
+            ToolBuilderError::MissingFunctionDescription
+        );
     }
 
     #[test]

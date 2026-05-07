@@ -1,11 +1,7 @@
 mod data_source;
 mod template;
 
-pub use self::{
-    data_source::TemplateDataSource,
-    template::Template
-};
-
+pub use self::{data_source::TemplateDataSource, template::Template};
 
 #[cfg(test)]
 mod tests {
@@ -51,7 +47,10 @@ mod tests {
         user_data.insert("user_input".to_string(), "Hello, world!".to_string());
 
         let compiled_template = template.compile(&user_data).await;
-        assert_eq!(compiled_template, "Current datetime is: 2023-10-01T12:00:00. User input: Hello, world!.");
+        assert_eq!(
+            compiled_template,
+            "Current datetime is: 2023-10-01T12:00:00. User input: Hello, world!."
+        );
     }
 
     #[tokio::test]
@@ -62,13 +61,13 @@ mod tests {
             data
         });
 
-        let template = Template::new(
-            "Current datetime is: {{datetime}}.",
-            mock_data_source,
-        );
+        let template = Template::new("Current datetime is: {{datetime}}.", mock_data_source);
 
         let user_data = HashMap::new();
         let compiled_template = template.compile(&user_data).await;
-        assert_eq!(compiled_template, "Current datetime is: 2023-10-01T12:00:00.");
+        assert_eq!(
+            compiled_template,
+            "Current datetime is: 2023-10-01T12:00:00."
+        );
     }
 }

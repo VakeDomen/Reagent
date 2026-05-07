@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    services::llm::{message::Message, models::base::BaseRequest, InferenceOptions},
+    services::llm::{message::Message, models::base::BaseRequest},
     Agent, Tool,
 };
 
@@ -16,28 +16,13 @@ pub struct ChatRequest {
 
 impl From<&Agent> for ChatRequest {
     fn from(val: &Agent) -> Self {
-        let options = InferenceOptions {
-            num_ctx: val.num_ctx,
-            repeat_last_n: val.repeat_last_n,
-            repeat_penalty: val.repeat_penalty,
-            temperature: val.temperature,
-            seed: val.seed,
-            stop: val.stop.clone(),
-            num_predict: val.num_predict,
-            top_k: val.top_k,
-            top_p: val.top_p,
-            min_p: val.min_p,
-            presence_penalty: val.presence_penalty,
-            frequency_penalty: val.frequency_penalty,
-            max_tokens: None,
-        };
         ChatRequest {
             base: BaseRequest {
                 model: val.model.clone(),
                 format: val.response_format.clone(),
-                options: Some(options),
+                options: val.inference_options().into_option(),
                 stream: Some(val.stream),
-                keep_alive: Some("5m".to_string()),
+                keep_alive: val.keep_alive.clone(),
             },
             messages: val.history.clone(),
             tools: val.tools.clone(),

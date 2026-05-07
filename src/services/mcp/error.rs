@@ -1,6 +1,5 @@
 use std::fmt;
 
-
 /// Errors that can occur while integrating with an MCP server.
 ///
 /// These errors typically arise when discovering available tools,
@@ -34,7 +33,10 @@ impl fmt::Display for McpIntegrationError {
                 write!(f, "Failed to convert MCP action to agent tool: {s}")
             }
             McpIntegrationError::InvalidSchema(s) => {
-                write!(f, "MCP action input schema is missing or not an object: {s}")
+                write!(
+                    f,
+                    "MCP action input schema is missing or not an object: {s}"
+                )
             }
         }
     }

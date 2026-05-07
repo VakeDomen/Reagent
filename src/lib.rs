@@ -9,13 +9,13 @@
 //!
 //! Create an [`Agent`] using [`AgentBuilder`] :
 //!
-//! ```
+//! ```no_run
 //! use std::error::Error;
 //! use reagent_rs::{init_default_tracing, AgentBuilder};
-//! use schemars::{schema_for, JsonSchema};
-//! use serde::Deserialize;
+//! use schemars::JsonSchema;
+//! use serde::{Deserialize, Serialize};
 //!
-//! #[derive(Debug, Deserialize, JsonSchema)]
+//! #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 //! struct MyWeatherOuput {
 //!   windy: bool,
 //!   temperature: i32,
@@ -81,6 +81,7 @@ pub use crate::prebuilds::*;
 pub use crate::templates::*;
 pub use crate::tools::*;
 
+pub use crate::observability::init_default_tracing;
 pub use crate::services::llm::{ClientConfig, Provider};
 
 pub use crate::services::llm::models::base::Role;

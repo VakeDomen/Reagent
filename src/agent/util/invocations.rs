@@ -57,11 +57,7 @@ pub(super) async fn invoke_nonstreaming(
         .await;
 
     if strip_thinking {
-        if let Some(content) = resp.message.content.clone() {
-            if let Some(after) = content.split("</think>").nth(1) {
-                resp.message.content = Some(after.to_string());
-            }
-        }
+        strip_thinking_from_response(&mut resp);
     }
 
     Ok(resp)
@@ -153,14 +149,6 @@ pub(super) async fn invoke_streaming(
     final_msg.content = full_content;
     final_msg.tool_calls = tool_calls;
 
-    if strip_thinking {
-        if let Some(c) = &final_msg.content {
-            if let Some(after) = c.split("</think>").nth(1) {
-                final_msg.content = Some(after.to_string());
-            }
-        }
-    }
-
     let mut response = ChatResponse {
         model: chunk.model,
         created_at: chunk.created_at,
@@ -182,14 +170,19 @@ pub(super) async fn invoke_streaming(
         .await;
 
     if strip_thinking {
-        if let Some(content) = response.message.content.clone() {
-            if let Some(after) = content.split("</think>").nth(1) {
-                response.message.content = Some(after.to_string());
-            }
-        }
+        strip_thinking_from_response(&mut response);
     }
 
     Ok(response)
+}
+
+fn strip_thinking_from_response(response: &mut ChatResponse) {
+    if let Some(content) = response.message.content.clone() {
+        if let Some(after) = content.split("</think>").nth(1) {
+            response.message.content = Some(after.to_string());
+        }
+    }
+    response.message.thinking = None;
 }
 
 fn extract_error_telemetry(gen_span: &Span, error_message: &str) {

@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 
-use rmcp::schemars::{gen::SchemaSettings, schema::RootSchema, JsonSchema, SchemaGenerator};
+use rmcp::schemars::JsonSchema;
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
     call_tools,
-    services::llm::{message::Message, BaseRequest, ClientBuilder, InferenceOptions, SchemaSpec},
+    services::llm::{
+        message::Message, BaseRequest, ClientBuilder, InferenceOptions, ResponseFormatConfig,
+        SchemaSpec,
+    },
     Agent, ChatRequest, ChatResponse, ClientConfig, InvocationError, InvocationRequest,
     Notification, Provider, Tool,
 };
@@ -29,27 +32,13 @@ pub struct InvocationBuilder {
     strip_thinking: Option<bool>,
     use_tools: Option<bool>,
 
-    /// Provider selection for the LLM client
-    provider: Option<Provider>,
-    /// Optional base URL for custom or self-hosted endpoints
-    base_url: Option<String>,
-    /// API key used by the selected provider
-    api_key: Option<String>,
-    /// Optional organization or tenant identifier
-    organization: Option<String>,
-    /// Extra HTTP headers appended to every request
-    extra_headers: Option<HashMap<String, String>>,
+    /// Provider, endpoint, credentials, and headers for standalone invocations.
+    client_config: ClientConfig,
     /// Notification channel to send notifications to
     notification_channel: Option<Sender<Notification>>,
 
-    // The normalized, typed form used by Agent and provider adapters
-    response_format: Option<SchemaSpec>,
-    // Optional raw JSON string the user gave; parsed and merged at build
-    response_format_raw: Option<String>,
-    // Optional hint when caller set only a raw string
-    pending_name: Option<String>,
-    // Optional hint when caller set only a raw string
-    pending_strict: Option<bool>,
+    /// Response schema input plus optional provider hints.
+    response_format: ResponseFormatConfig,
 }
 
 impl InvocationBuilder {
@@ -168,31 +157,31 @@ impl InvocationBuilder {
 
     /// Select the LLM provider implementation.
     pub fn set_provider(mut self, provider: Provider) -> Self {
-        self.provider = Some(provider);
+        self.client_config = self.client_config.provider(Some(provider));
         self
     }
 
     /// Override the base URL for the provider client.
     pub fn set_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = Some(base_url.into());
+        self.client_config = self.client_config.base_url(Some(base_url));
         self
     }
 
     /// Set the API key used by the provider client.
     pub fn set_api_key(mut self, api_key: impl Into<String>) -> Self {
-        self.api_key = Some(api_key.into());
+        self.client_config = self.client_config.api_key(Some(api_key));
         self
     }
 
     /// Set the organization or tenant identifier for requests.
     pub fn set_organization(mut self, organization: impl Into<String>) -> Self {
-        self.organization = Some(organization.into());
+        self.client_config = self.client_config.organization(Some(organization));
         self
     }
 
     /// Provide additional HTTP headers to include on each request.
     pub fn set_extra_headers(mut self, extra_headers: HashMap<String, String>) -> Self {
-        self.extra_headers = Some(extra_headers);
+        self.client_config = self.client_config.extra_headers(Some(extra_headers));
         self
     }
 
@@ -206,85 +195,71 @@ impl InvocationBuilder {
 
     // A string of JSON Schema
     pub fn set_response_format_str(mut self, schema_json: &str) -> Self {
-        self.response_format_raw = Some(schema_json.to_owned());
+        self.response_format.set_raw(schema_json);
         self
     }
 
     // A ready-made serde_json::Value
     pub fn set_response_format_value(mut self, schema: serde_json::Value) -> Self {
-        self.response_format = Some(SchemaSpec {
-            schema,
-            name: None,
-            strict: None,
-        });
+        self.response_format.set_value(schema);
         self
     }
 
     // From a Rust type via schemars
     pub fn set_response_format_from<T: JsonSchema>(mut self) -> Self {
-        let settings = SchemaSettings::draft07().with(|s| {
-            s.inline_subschemas = true;
-            s.meta_schema = None;
-        });
-        let gen = SchemaGenerator::new(settings);
-        let root: RootSchema = gen.into_root_schema_for::<T>();
-        let mut schema = serde_json::to_value(&root.schema).unwrap();
-        if let Some(obj) = schema.as_object_mut() {
-            obj.remove("$schema");
-            obj.remove("definitions");
-        }
-        self.response_format = Some(SchemaSpec {
-            schema,
-            name: None,
-            strict: None,
-        });
+        self.response_format.set_type::<T>();
         self
     }
 
     // From a Rust type via SchemaSpec
     pub fn set_response_format_spec(mut self, schema: SchemaSpec) -> Self {
-        self.response_format = Some(schema);
+        self.response_format.set_spec(schema);
+        self
+    }
+
+    pub fn set_schema_name(mut self, name: impl Into<String>) -> Self {
+        self.response_format.set_name(name);
+        self
+    }
+
+    pub fn set_schema_strict(mut self, strict: bool) -> Self {
+        self.response_format.set_strict(strict);
         self
     }
 
     pub async fn invoke_with(self, agent: &mut Agent) -> Result<ChatResponse, InvocationError> {
         let model = self.model.or(Some(agent.model.clone()));
-        let format = self.format.or(agent.response_format.clone());
+        let format = match self.format {
+            Some(format) => Some(format),
+            None => match self
+                .response_format
+                .resolve()
+                .map_err(InvocationError::InvalidJsonSchema)?
+            {
+                Some(spec) => Some(agent.inference_client.structured_output_format(&spec)?),
+                None => agent.response_format.clone(),
+            },
+        };
         let stream = self.stream.or(Some(agent.stream));
         let keep_alive = self.keep_alive.or(agent.keep_alive.clone());
         let messages = self
             .messages
             .or(Some(agent.history.clone()))
             .unwrap_or_default();
-        let tools = self.tools.or(agent.tools.clone());
+        let tools = match self.use_tools {
+            Some(false) => None,
+            Some(true) | None => self.tools.or(agent.tools.clone()),
+        };
 
         let name = self
             .name
             .or(Some(agent.name.clone()))
             .unwrap_or("Invocation".into());
 
-        // merge inference options field by field
-        let merged_opts = InferenceOptions {
-            num_ctx: self.opts.num_ctx.or(agent.num_ctx),
-            repeat_last_n: self.opts.repeat_last_n.or(agent.repeat_last_n),
-            repeat_penalty: self.opts.repeat_penalty.or(agent.repeat_penalty),
-            temperature: self.opts.temperature.or(agent.temperature),
-            seed: self.opts.seed.or(agent.seed),
-            stop: self.opts.stop.or_else(|| agent.stop.clone()),
-            num_predict: self.opts.num_predict.or(agent.num_predict),
-            top_k: self.opts.top_k.or(agent.top_k),
-            top_p: self.opts.top_p.or(agent.top_p),
-            min_p: self.opts.min_p.or(agent.min_p),
-            presence_penalty: self.opts.presence_penalty.or(agent.presence_penalty),
-            frequency_penalty: self.opts.frequency_penalty.or(agent.frequency_penalty),
-            max_tokens: self.opts.max_tokens.or(None),
-        };
-
-        let options = if all_none(&merged_opts) {
-            None
-        } else {
-            Some(merged_opts)
-        };
+        let options = self
+            .opts
+            .merge_over(agent.inference_options())
+            .into_option();
 
         let Some(model) = model else {
             return Err(InvocationError::ModelNotDefined);
@@ -303,7 +278,7 @@ impl InvocationBuilder {
         };
 
         let invcation_request = InvocationRequest::new(
-            self.strip_thinking.unwrap_or(false),
+            self.strip_thinking.unwrap_or(agent.strip_thinking),
             request,
             agent.inference_client.clone(),
             agent.notification_channel.clone(),
@@ -327,30 +302,9 @@ impl InvocationBuilder {
     }
 
     pub async fn invoke(mut self) -> Result<ChatResponse, InvocationError> {
-        // merge inference options field by field
-        let merged_opts = InferenceOptions {
-            num_ctx: self.opts.num_ctx,
-            repeat_last_n: self.opts.repeat_last_n,
-            repeat_penalty: self.opts.repeat_penalty,
-            temperature: self.opts.temperature,
-            seed: self.opts.seed,
-            stop: self.opts.stop.take(),
-            num_predict: self.opts.num_predict,
-            top_k: self.opts.top_k,
-            top_p: self.opts.top_p,
-            min_p: self.opts.min_p,
-            presence_penalty: self.opts.presence_penalty,
-            frequency_penalty: self.opts.frequency_penalty,
-            max_tokens: self.opts.max_tokens.or(None),
-        };
-
         let name = self.name.take().unwrap_or("Invocation".into());
 
-        let options = if all_none(&merged_opts) {
-            None
-        } else {
-            Some(merged_opts)
-        };
+        let options = self.opts.into_option();
 
         let Some(model) = self.model.take() else {
             return Err(InvocationError::ModelNotDefined);
@@ -362,44 +316,17 @@ impl InvocationBuilder {
             None => self.tools.take(),
         };
 
-        let client = ClientConfig::default()
-            .provider(self.provider.take())
-            .base_url(self.base_url.take())
-            .api_key(self.api_key.take())
-            .organization(self.organization.take())
-            .extra_headers(self.extra_headers.take())
-            .build()?;
+        let client = self.client_config.build()?;
 
-        if self.response_format.is_some() && self.response_format_raw.is_some() {
-            return Err(InvocationError::InvalidJsonSchema(
-                "Both set_structured_output_* and \
-                set_response_format_str were called. Use only one source."
-                    .to_string(),
-            ));
-        }
-
-        let response_format: Option<SchemaSpec> = if let Some(spec) = self.response_format.take() {
-            Some(SchemaSpec {
-                name: self.pending_name.take().or(spec.name),
-                strict: self.pending_strict.or(spec.strict),
-                schema: spec.schema,
-            })
-        } else if let Some(raw) = self.response_format_raw.take() {
-            let v: serde_json::Value = serde_json::from_str(raw.trim()).map_err(|e| {
-                InvocationError::InvalidJsonSchema(format!("Failed to parse JSON schema: {e}"))
-            })?;
-            Some(SchemaSpec {
-                schema: v,
-                name: self.pending_name.take(),
-                strict: self.pending_strict,
-            })
-        } else {
-            None
-        };
+        let response_format = self
+            .response_format
+            .resolve()
+            .map_err(InvocationError::InvalidJsonSchema)?;
 
         let format = response_format
             .map(|f| client.structured_output_format(&f))
             .transpose()?;
+        let format = self.format.take().or(format);
 
         let request = ChatRequest {
             base: BaseRequest {
@@ -428,20 +355,4 @@ impl InvocationBuilder {
 
         Ok(response)
     }
-}
-
-fn all_none(o: &InferenceOptions) -> bool {
-    o.num_ctx.is_none()
-        && o.repeat_last_n.is_none()
-        && o.repeat_penalty.is_none()
-        && o.temperature.is_none()
-        && o.seed.is_none()
-        && o.stop.is_none()
-        && o.num_predict.is_none()
-        && o.top_k.is_none()
-        && o.top_p.is_none()
-        && o.min_p.is_none()
-        && o.presence_penalty.is_none()
-        && o.frequency_penalty.is_none()
-        && o.max_tokens.is_none()
 }

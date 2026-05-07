@@ -1,4 +1,8 @@
-use crate::{services::llm::SchemaSpec, templates::Template, McpServerType, Tool};
+use crate::{
+    services::llm::{InferenceOptions, SchemaSpec},
+    templates::Template,
+    McpServerType, Tool,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct ModelConfig {
@@ -28,6 +32,26 @@ pub struct ModelConfig {
     pub top_k: Option<u32>,
     /// Minimum probability threshold for token acceptance.
     pub min_p: Option<f32>,
+}
+
+impl From<&ModelConfig> for InferenceOptions {
+    fn from(config: &ModelConfig) -> Self {
+        Self {
+            num_ctx: config.num_ctx,
+            repeat_last_n: config.repeat_last_n,
+            repeat_penalty: config.repeat_penalty,
+            temperature: config.temperature,
+            seed: config.seed,
+            stop: config.stop.clone(),
+            num_predict: config.num_predict,
+            max_tokens: None,
+            top_k: config.top_k,
+            top_p: config.top_p,
+            min_p: config.min_p,
+            presence_penalty: config.presence_penalty,
+            frequency_penalty: config.frequency_penalty,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]

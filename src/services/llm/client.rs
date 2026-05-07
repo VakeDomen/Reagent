@@ -56,11 +56,9 @@ impl InferenceClient {
         match self.get_config().provider {
             Some(Provider::Ollama) => Ok(OllamaClient::format(spec)),
             Some(Provider::OpenRouter) => Ok(OpenRouterClient::format(spec)),
-            _ => {
-                Err(InferenceClientError::Unsupported(
-                    "Structured outputs not yet supported for this provider".into(),
-                ))
-            }
+            _ => Err(InferenceClientError::Unsupported(
+                "Structured outputs not yet supported for this provider".into(),
+            )),
         }
     }
 

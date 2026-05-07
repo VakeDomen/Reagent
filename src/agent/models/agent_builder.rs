@@ -7,14 +7,13 @@ use crate::{
     },
     notifications::Notification,
     services::{
-        llm::{ClientBuilder, ClientConfig, Provider, SchemaSpec},
+        llm::{ClientBuilder, ClientConfig, Provider, ResponseFormatConfig, SchemaSpec},
         mcp::mcp_tool_builder::McpServerType,
     },
     templates::Template,
     Agent, Flow, FlowFuture, Tool,
 };
 use rmcp::schemars::JsonSchema;
-use rmcp::schemars::{gen::SchemaSettings, schema::RootSchema, SchemaGenerator};
 use tokio::sync::{mpsc, Mutex};
 
 /// A builder for [`Agent`].
@@ -46,19 +45,11 @@ use tokio::sync::{mpsc, Mutex};
 pub struct AgentBuilder {
     /// Name used for logging and defaults
     name: Option<String>,
-    /// Model identifier passed to the LLM provider
-    model: Option<String>,
 
-    /// Provider selection for the LLM client
-    provider: Option<Provider>,
-    /// Optional base URL for custom or self-hosted endpoints
-    base_url: Option<String>,
-    /// API key used by the selected provider
-    api_key: Option<String>,
-    /// Optional organization or tenant identifier
-    organization: Option<String>,
-    /// Extra HTTP headers appended to every request
-    extra_headers: Option<HashMap<String, String>>,
+    /// Provider, endpoint, credentials, and headers for the LLM client.
+    client_config: ClientConfig,
+    /// Model name plus sampling/decoding options.
+    model_config: ModelConfig,
 
     /// Optional first-message template used to build the system prompt
     template: Option<Arc<Mutex<Template>>>,
@@ -66,14 +57,8 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     /// Local tools the agent can call during a flow
     tools: Option<Vec<Tool>>,
-    /// The normalized, typed form used by Agent and provider adapters
-    response_format: Option<SchemaSpec>,
-    /// Optional raw JSON string the user gave; parsed and merged at build
-    response_format_raw: Option<String>,
-    /// Optional hint when caller set only a raw string
-    pending_name: Option<String>,
-    /// Optional hint when caller set only a raw string
-    pending_strict: Option<bool>,
+    /// Response schema input plus optional provider hints.
+    response_format: ResponseFormatConfig,
     /// MCP tool servers the agent can reach
     mcp_servers: Option<Vec<McpServerType>>,
     /// Prompt inserted when a tool-call branch begins
@@ -87,30 +72,6 @@ pub struct AgentBuilder {
     /// Clear conversation history before each invocation
     clear_histroy_on_invoke: Option<bool>,
 
-    /// Sampling temperature
-    temperature: Option<f32>,
-    /// Nucleus sampling probability
-    top_p: Option<f32>,
-    /// Presence penalty
-    presence_penalty: Option<f32>,
-    /// Frequency penalty
-    frequency_penalty: Option<f32>,
-    /// Maximum context window
-    num_ctx: Option<u32>,
-    /// N tokens considered for repetition penalty
-    repeat_last_n: Option<i32>,
-    /// Repetition penalty value
-    repeat_penalty: Option<f32>,
-    /// RNG seed
-    seed: Option<i32>,
-    /// Hard stop sequence
-    stop: Option<String>,
-    /// Max tokens to predict
-    num_predict: Option<i32>,
-    /// Top-K sampling parameter
-    top_k: Option<u32>,
-    /// Minimum probability threshold
-    min_p: Option<f32>,
     /// Enable server streaming for token events
     stream: Option<bool>,
     /// Keep-alive in memory for model after inference
@@ -246,7 +207,7 @@ impl AgentBuilder {
 
     /// Select the LLM provider implementation.
     pub fn set_provider(mut self, provider: Provider) -> Self {
-        self.provider = Some(provider);
+        self.client_config = self.client_config.provider(Some(provider));
         self
     }
 
@@ -255,7 +216,7 @@ impl AgentBuilder {
     where
         T: Into<String>,
     {
-        self.base_url = Some(base_url.into());
+        self.client_config = self.client_config.base_url(Some(base_url));
         self
     }
 
@@ -264,7 +225,7 @@ impl AgentBuilder {
     where
         T: Into<String>,
     {
-        self.api_key = Some(api_key.into());
+        self.client_config = self.client_config.api_key(Some(api_key));
         self
     }
 
@@ -273,13 +234,13 @@ impl AgentBuilder {
     where
         T: Into<String>,
     {
-        self.organization = Some(organization.into());
+        self.client_config = self.client_config.organization(Some(organization));
         self
     }
 
     /// Provide additional HTTP headers to include on each request.
     pub fn set_extra_headers(mut self, extra_headers: HashMap<String, String>) -> Self {
-        self.extra_headers = Some(extra_headers);
+        self.client_config = self.client_config.extra_headers(Some(extra_headers));
         self
     }
 
@@ -292,37 +253,37 @@ impl AgentBuilder {
 
     /// Set the sampling temperature.
     pub fn set_temperature(mut self, v: f32) -> Self {
-        self.temperature = Some(v);
+        self.model_config.temperature = Some(v);
         self
     }
 
     /// Set nucleus sampling probability.
     pub fn set_top_p(mut self, v: f32) -> Self {
-        self.top_p = Some(v);
+        self.model_config.top_p = Some(v);
         self
     }
 
     /// Set presence penalty.
     pub fn set_presence_penalty(mut self, v: f32) -> Self {
-        self.presence_penalty = Some(v);
+        self.model_config.presence_penalty = Some(v);
         self
     }
 
     /// Set frequency penalty.
     pub fn set_frequency_penalty(mut self, v: f32) -> Self {
-        self.frequency_penalty = Some(v);
+        self.model_config.frequency_penalty = Some(v);
         self
     }
 
     /// Set maximum context length (in tokens/chunks).
     pub fn set_num_ctx(mut self, v: u32) -> Self {
-        self.num_ctx = Some(v);
+        self.model_config.num_ctx = Some(v);
         self
     }
 
     /// Repeat penalty for the last N tokens.
     pub fn set_repeat_last_n(mut self, v: i32) -> Self {
-        self.repeat_last_n = Some(v);
+        self.model_config.repeat_last_n = Some(v);
         self
     }
 
@@ -334,43 +295,43 @@ impl AgentBuilder {
 
     /// Set penalty for repeated tokens.
     pub fn set_repeat_penalty(mut self, v: f32) -> Self {
-        self.repeat_penalty = Some(v);
+        self.model_config.repeat_penalty = Some(v);
         self
     }
 
     /// Set RNG seed for sampling.
     pub fn set_seed(mut self, v: i32) -> Self {
-        self.seed = Some(v);
+        self.model_config.seed = Some(v);
         self
     }
 
     /// Set the hard stop string.
     pub fn set_stop<T: Into<String>>(mut self, v: T) -> Self {
-        self.stop = Some(v.into());
+        self.model_config.stop = Some(v.into());
         self
     }
 
     /// Number of tokens to predict.
     pub fn set_num_predict(mut self, v: i32) -> Self {
-        self.num_predict = Some(v);
+        self.model_config.num_predict = Some(v);
         self
     }
 
     /// Top-K sampling.
     pub fn set_top_k(mut self, v: u32) -> Self {
-        self.top_k = Some(v);
+        self.model_config.top_k = Some(v);
         self
     }
 
     /// Minimum probability threshold.
     pub fn set_min_p(mut self, v: f32) -> Self {
-        self.min_p = Some(v);
+        self.model_config.min_p = Some(v);
         self
     }
 
     /// Select the underlying model name.
     pub fn set_model<T: Into<String>>(mut self, model: T) -> Self {
-        self.model = Some(model.into());
+        self.model_config.model = Some(model.into());
         self
     }
 
@@ -464,63 +425,36 @@ impl AgentBuilder {
     }
     // A string of JSON Schema
     pub fn set_response_format_str(mut self, schema_json: &str) -> Self {
-        self.response_format_raw = Some(schema_json.to_owned());
+        self.response_format.set_raw(schema_json);
         self
     }
 
     /// A ready-made serde_json::Value
     pub fn set_response_format_value(mut self, schema: serde_json::Value) -> Self {
-        self.response_format = Some(SchemaSpec {
-            schema,
-            name: None,
-            strict: None,
-        });
+        self.response_format.set_value(schema);
         self
     }
 
     /// From a Rust type via schemars
     pub fn set_response_format_from<T: JsonSchema>(mut self) -> Self {
-        let settings = SchemaSettings::draft07().with(|s| {
-            s.inline_subschemas = true;
-            s.meta_schema = None;
-        });
-        let gen = SchemaGenerator::new(settings);
-        let root: RootSchema = gen.into_root_schema_for::<T>();
-        let mut schema = serde_json::to_value(&root.schema).unwrap();
-        if let Some(obj) = schema.as_object_mut() {
-            obj.remove("$schema");
-            obj.remove("definitions");
-        }
-        self.response_format = Some(SchemaSpec {
-            schema,
-            name: None,
-            strict: None,
-        });
+        self.response_format.set_type::<T>();
         self
     }
 
     /// From a Rust type via SchemaSpec
     pub fn set_response_format_spec(mut self, schema: SchemaSpec) -> Self {
-        self.response_format = Some(schema);
+        self.response_format.set_spec(schema);
         self
     }
 
     /// Optional hints that apply whether you used *_str, *_value, or *_from
     pub fn set_schema_name(mut self, name: impl Into<String>) -> Self {
-        if let Some(spec) = &mut self.response_format {
-            spec.name = Some(name.into());
-        } else {
-            self.pending_name = Some(name.into());
-        }
+        self.response_format.set_name(name);
         self
     }
 
     pub fn set_schema_strict(mut self, strict: bool) -> Self {
-        if let Some(spec) = &mut self.response_format {
-            spec.strict = Some(strict);
-        } else {
-            self.pending_strict = Some(strict);
-        }
+        self.response_format.set_strict(strict);
         self
     }
 
@@ -538,7 +472,11 @@ impl AgentBuilder {
 
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
-        let model = self.model.ok_or(AgentBuildError::ModelNotSet)?;
+        let model_config = self.model_config;
+        let model = model_config
+            .model
+            .clone()
+            .ok_or(AgentBuildError::ModelNotSet)?;
 
         let system_prompt = self
             .system_prompt
@@ -555,41 +493,12 @@ impl AgentBuilder {
 
         let stream = self.stream.unwrap_or(false);
 
-        let inference_client = ClientConfig::default()
-            .provider(self.provider)
-            .base_url(self.base_url)
-            .api_key(self.api_key)
-            .organization(self.organization)
-            .extra_headers(self.extra_headers)
-            .build()?;
+        let inference_client = self.client_config.build()?;
 
-        if self.response_format.is_some() && self.response_format_raw.is_some() {
-            return Err(AgentBuildError::InvalidJsonSchema(
-                "Both set_structured_output_* and \
-                set_response_format_str were called. Use only one source."
-                    .to_string(),
-            ));
-        }
-
-        let response_format: Option<SchemaSpec> = if let Some(spec) = self.response_format {
-            // merge pending hints if any
-            Some(SchemaSpec {
-                name: self.pending_name.or(spec.name),
-                strict: self.pending_strict.or(spec.strict),
-                schema: spec.schema,
-            })
-        } else if let Some(raw) = self.response_format_raw {
-            let v: serde_json::Value = serde_json::from_str(raw.trim()).map_err(|e| {
-                AgentBuildError::InvalidJsonSchema(format!("Failed to parse JSON schema: {e}"))
-            })?;
-            Some(SchemaSpec {
-                schema: v,
-                name: self.pending_name,
-                strict: self.pending_strict,
-            })
-        } else {
-            None
-        };
+        let response_format = self
+            .response_format
+            .resolve()
+            .map_err(AgentBuildError::InvalidJsonSchema)?;
 
         let response_format = match response_format {
             Some(f) => Some(inference_client.structured_output_format(&f)?),
@@ -606,19 +515,19 @@ impl AgentBuilder {
             self.stop_prompt,
             self.stopword,
             strip_thinking,
-            self.temperature,
-            self.top_p,
-            self.presence_penalty,
-            self.frequency_penalty,
-            self.num_ctx,
-            self.repeat_last_n,
-            self.repeat_penalty,
-            self.seed,
-            self.stop,
-            self.num_predict,
+            model_config.temperature,
+            model_config.top_p,
+            model_config.presence_penalty,
+            model_config.frequency_penalty,
+            model_config.num_ctx,
+            model_config.repeat_last_n,
+            model_config.repeat_penalty,
+            model_config.seed,
+            model_config.stop,
+            model_config.num_predict,
             stream,
-            self.top_k,
-            self.min_p,
+            model_config.top_k,
+            model_config.min_p,
             self.keep_alive,
             self.notification_channel,
             self.mcp_servers,
