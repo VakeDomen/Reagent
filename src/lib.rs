@@ -69,6 +69,7 @@ pub mod flows;
 pub mod notifications;
 pub mod observability;
 pub mod prebuilds;
+pub mod skills;
 pub mod templates;
 pub mod tools;
 
@@ -78,6 +79,7 @@ pub use crate::agent::*;
 pub use crate::flows::*;
 pub use crate::notifications::*;
 pub use crate::prebuilds::*;
+pub use crate::skills::*;
 pub use crate::templates::*;
 pub use crate::tools::*;
 
@@ -94,9 +96,9 @@ pub use crate::services::mcp::mcp_tool_builder::McpServerType;
 pub mod prelude {
     pub use crate::{
         flow, Agent, AgentBuildError, AgentBuilder, AgentError, ChatRequest, ChatResponse,
-        ClientConfig, Flow, McpIntegrationError, McpServerType, Message, Notification,
-        NotificationContent, Provider, Role, Template, TemplateDataSource, Tool, ToolBuilder,
-        ToolExecutionError,
+        ClientConfig, Flow, LoadTemplateError, McpIntegrationError, McpServerType, Message,
+        Notification, NotificationContent, Provider, Role, Skill, SkillLoadError, SkillResource,
+        SkillResourceKind, Template, TemplateDataSource, Tool, ToolBuilder, ToolExecutionError,
     };
 }
 

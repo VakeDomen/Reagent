@@ -1,8 +1,10 @@
 use core::fmt;
-use std::collections::HashMap;
+use std::{collections::HashMap, fs, io, path::PathBuf};
 
 use tracing::{span, Level};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+use crate::templates::errors::LoadTemplateError;
 
 use super::TemplateDataSource;
 
@@ -69,6 +71,50 @@ impl Template {
         }
     }
 
+    /// Create a template from a file without a data source.
+    ///
+    /// Reads the entire file into memory.
+    ///
+    /// # Example
+    /// ```
+    /// # async {
+    /// use std::collections::HashMap;
+    /// use reagent_rs::templates::Template;
+    ///
+    /// let t = Template::from_file("templates/system.md").unwrap();
+    /// let out = t.compile(&HashMap::new()).await;
+    /// # };
+    /// ```
+    pub fn from_file<P>(path: P) -> Result<Self, LoadTemplateError>
+    where
+        P: Into<PathBuf>,
+    {
+        let path = path.into();
+        let content = fs::read_to_string(path)?;
+
+        Ok(Self {
+            content,
+            data_source: None,
+        })
+    }
+
+    /// Create a template from a file with a dynamic data source.
+    ///
+    /// Reads the entire file into memory and queries the data source during compilation.
+    pub fn from_file_with_source<P, D>(path: P, data_source: D) -> Result<Self, LoadTemplateError>
+    where
+        P: Into<PathBuf>,
+        D: TemplateDataSource + 'static,
+    {
+        let path = path.into();
+        let content = fs::read_to_string(path)?;
+
+        Ok(Self {
+            content,
+            data_source: Some(Box::new(data_source)),
+        })
+    }
+
     /// Render the template by replacing placeholders with values.
     ///
     /// The lookup order is:
@@ -76,13 +122,22 @@ impl Template {
     /// 2. Values from the provided `data` map, which override duplicates
     ///
     /// Any placeholders without a matching key remain unchanged.
-    pub async fn compile(&self, data: &HashMap<String, String>) -> String {
+    pub async fn compile<K, V>(&self, data: &HashMap<K, V>) -> String
+    where
+        K: Clone + Into<String>,
+        V: Clone + Into<String>,
+    {
         let trace_span = span!(
             Level::INFO,
             "Template Compilation",
             "langfuse.observation.type" = "event",
             "langfuse.observation.metadata.tool_name" = "TemplateCompilation"
         );
+
+        let data: HashMap<String, String> = data
+            .iter()
+            .map(|(k, v)| (k.clone().into(), v.clone().into()))
+            .collect();
 
         let trace_input = serde_json::to_string_pretty(&data).unwrap_or_default();
         trace_span.set_attribute("langfuse.observation.input", trace_input);
@@ -99,7 +154,7 @@ impl Template {
 
         for (key, value) in data {
             let placeholder = format!("{{{{{key}}}}}");
-            filled_content = filled_content.replace(&placeholder, value);
+            filled_content = filled_content.replace(&placeholder, &value);
         }
 
         trace_span.set_attribute("langfuse.observation.output", filled_content.clone());

@@ -1,5 +1,3 @@
-use std::{collections::HashMap, sync::Arc};
-
 use crate::{
     agent::models::{
         configs::{ModelConfig, PromptConfig},
@@ -10,10 +8,13 @@ use crate::{
         llm::{ClientBuilder, ClientConfig, Provider, ResponseFormatConfig, SchemaSpec},
         mcp::mcp_tool_builder::McpServerType,
     },
+    skills::{build_read_skill_tool, load_skill_sources},
     templates::Template,
-    Agent, Flow, FlowFuture, Tool,
+    Agent, Flow, FlowFuture, Tool, SKILL_SYSTEM_PROMPT_TEMPLATE,
 };
+use futures::{future::join_all, Future};
 use rmcp::schemars::JsonSchema;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 
 /// A builder for [`Agent`].
@@ -61,6 +62,10 @@ pub struct AgentBuilder {
     response_format: ResponseFormatConfig,
     /// MCP tool servers the agent can reach
     mcp_servers: Option<Vec<McpServerType>>,
+    /// Individual skill roots or SKILL.md files to load.
+    skill_paths: Vec<PathBuf>,
+    /// Directories containing multiple skill directories.
+    skill_collection_paths: Vec<PathBuf>,
     /// Prompt inserted when a tool-call branch begins
     stop_prompt: Option<String>,
     /// Stopword that indicates end of generation
@@ -403,6 +408,18 @@ impl AgentBuilder {
         self
     }
 
+    /// Add a skill by pointing to either `SKILL.md`/`skill.md` or its containing directory.
+    pub fn add_skill(mut self, path: impl Into<PathBuf>) -> Self {
+        self.skill_paths.push(path.into());
+        self
+    }
+
+    /// Add all skills found in the immediate child directories of a collection directory.
+    pub fn add_skill_collection(mut self, path: impl Into<PathBuf>) -> Self {
+        self.skill_collection_paths.push(path.into());
+        self
+    }
+
     /// Set a template for the agent's first prompt
     pub fn set_template(mut self, template: Template) -> Self {
         self.template = Some(Arc::new(Mutex::new(template)));
@@ -478,9 +495,46 @@ impl AgentBuilder {
             .clone()
             .ok_or(AgentBuildError::ModelNotSet)?;
 
-        let system_prompt = self
+        let skill_template = Template::simple(SKILL_SYSTEM_PROMPT_TEMPLATE);
+
+        let mut system_prompt = self
             .system_prompt
             .unwrap_or_else(|| "You are a helpful agent.".into());
+
+        let skills = load_skill_sources(&self.skill_paths, &self.skill_collection_paths)?;
+        let mut tools = self.tools.clone();
+
+        if !skills.is_empty() {
+            let skill_descriptions = join_all(
+                skills
+                    .iter()
+                    .map(|s| async move { s.discovery_description().await }),
+            )
+            .await;
+
+            let skills_section = skill_descriptions.join("\n\n---\n\n");
+
+            let data = HashMap::from([
+                ("system_prompt", system_prompt),
+                ("skills_discovery", skills_section),
+            ]);
+
+            system_prompt = skill_template.compile(&data).await;
+
+            if tools
+                .as_ref()
+                .is_some_and(|tools| tools.iter().any(|tool| tool.name() == "read_skill"))
+            {
+                return Err(AgentBuildError::ReservedToolName("read_skill".into()));
+            }
+
+            let read_skill_tool = build_read_skill_tool(&skills)?;
+            match tools.as_mut() {
+                Some(tools) => tools.push(read_skill_tool),
+                None => tools = Some(vec![read_skill_tool]),
+            }
+        }
+
         let strip_thinking = self.strip_thinking.unwrap_or(true);
         let clear_histroy_on_invoke = self.clear_histroy_on_invoke.unwrap_or(false);
 
@@ -510,7 +564,7 @@ impl AgentBuilder {
             &model,
             inference_client,
             &system_prompt,
-            self.tools.clone(),
+            tools,
             response_format,
             self.stop_prompt,
             self.stopword,
@@ -533,6 +587,7 @@ impl AgentBuilder {
             self.mcp_servers,
             flow,
             self.template,
+            skills,
             self.max_iterations,
             clear_histroy_on_invoke,
         )

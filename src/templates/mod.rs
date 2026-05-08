@@ -1,7 +1,12 @@
+mod core_templates;
 mod data_source;
+mod errors;
 mod template;
 
-pub use self::{data_source::TemplateDataSource, template::Template};
+pub use self::{
+    core_templates::*, data_source::TemplateDataSource, errors::LoadTemplateError,
+    template::Template,
+};
 
 #[cfg(test)]
 mod tests {
@@ -63,7 +68,7 @@ mod tests {
 
         let template = Template::new("Current datetime is: {{datetime}}.", mock_data_source);
 
-        let user_data = HashMap::new();
+        let user_data: HashMap<String, String> = HashMap::new();
         let compiled_template = template.compile(&user_data).await;
         assert_eq!(
             compiled_template,

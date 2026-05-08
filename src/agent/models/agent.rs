@@ -1,6 +1,7 @@
 use crate::agent::models::configs::{ModelConfig, PromptConfig};
 use crate::agent::models::error::{AgentBuildError, AgentError};
 use crate::services::llm::{ClientConfig, InferenceClient, InferenceOptions, SchemaSpec};
+use crate::skills::Skill;
 use crate::templates::Template;
 use crate::{default_flow, Flow, NotificationHandler};
 use core::fmt;
@@ -79,6 +80,8 @@ pub struct Agent {
     pub notification_channel: Option<Sender<Notification>>,
     /// Optional reusable template for prompt building.
     pub template: Option<Arc<Mutex<Template>>>,
+    /// Loaded Agent Skills available to this agent.
+    pub skills: Vec<Skill>,
     /// Maximum allowed iterations during a conversation.
     pub max_iterations: Option<usize>,
     /// If true, clears history on every invocation.
@@ -118,6 +121,7 @@ impl Agent {
         mcp_servers: Option<Vec<McpServerType>>,
         flow: Flow,
         template: Option<Arc<Mutex<Template>>>,
+        skills: Vec<Skill>,
         max_iterations: Option<usize>,
         clear_history_on_invoke: bool,
     ) -> Result<Self, AgentBuildError> {
@@ -152,6 +156,7 @@ impl Agent {
             flow,
             tools: None,
             template,
+            skills,
             max_iterations,
             clear_history_on_invoke,
             stream,
@@ -171,10 +176,7 @@ impl Agent {
     /// the configured [`Flow`] (either `Default` or `Custom`).
     ///
     /// Returns the raw [`Message`] produced by the flow.
-    pub async fn invoke_flow<T>(&mut self, prompt: T) -> Result<Message, AgentError>
-    where
-        T: Into<String>,
-    {
+    pub async fn invoke_flow(&mut self, prompt: impl Into<String>) -> Result<Message, AgentError> {
         let prompt_str = prompt.into();
 
         let trace_span = span!(
@@ -662,6 +664,7 @@ impl fmt::Debug for Agent {
             .field("min_p", &self.min_p)
             .field("notification_channel", &self.notification_channel)
             .field("mcp_servers", &self.mcp_servers)
+            .field("skills", &self.skills)
             .finish()
     }
 }

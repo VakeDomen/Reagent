@@ -1,6 +1,8 @@
 use crate::{
     services::{llm::models::errors::InferenceClientError, mcp::error::McpIntegrationError},
-    InvocationError, ToolExecutionError,
+    skills::SkillLoadError,
+    templates::LoadTemplateError,
+    InvocationError, ToolBuilderError, ToolExecutionError,
 };
 
 /// Errors that can occur while running an [`Agent`].
@@ -12,33 +14,29 @@ pub enum AgentError {
     AgentBuild(AgentBuildError),
     /// Integration errors when connecting to MCP servers.
     Mcp(McpIntegrationError),
-    /// A runtime failure (e.g. missing data, unexpected state).
+    /// A runtime failure, such as missing data or unexpected state.
     Runtime(String),
-    /// A tool execution error (local or remote).
+    /// A tool execution error, local or remote.
     Tool(ToolExecutionError),
     /// Failure when deserializing structured model output.
     Deserialization(serde_json::Error),
     /// Attempted to use a feature not yet supported by the provider or client.
     Unsupported(String),
-    /// Invocation error (building request shape during invocation)
+    /// Invocation error, usually while building request shape during invocation.
     InvocationError(InvocationError),
 }
 
 impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AgentError::InferenceClient(e) => write!(f, "InferenceClientError API Error: {e}"),
-            AgentError::AgentBuild(agent_build_error) => {
-                write!(f, "Agent Build Error: {agent_build_error}")
-            }
-            AgentError::Mcp(mcp_integration_error) => {
-                write!(f, "Mcp Error: {mcp_integration_error}")
-            }
+            AgentError::InferenceClient(e) => write!(f, "Inference client error: {e}"),
+            AgentError::AgentBuild(e) => write!(f, "Agent build error: {e}"),
+            AgentError::Mcp(e) => write!(f, "MCP error: {e}"),
             AgentError::Runtime(s) => write!(f, "Runtime error: {s}"),
-            AgentError::Deserialization(error) => write!(f, "Deserialize error: {error}"),
-            AgentError::Tool(error) => write!(f, "Tool error: {error}"),
-            AgentError::Unsupported(error) => write!(f, "Unsuppored: {error:#?}"),
-            AgentError::InvocationError(error) => write!(f, "InvocationError: {error:#?}"),
+            AgentError::Tool(e) => write!(f, "Tool error: {e}"),
+            AgentError::Deserialization(e) => write!(f, "Deserialization error: {e}"),
+            AgentError::Unsupported(e) => write!(f, "Unsupported: {e}"),
+            AgentError::InvocationError(e) => write!(f, "Invocation error: {e}"),
         }
     }
 }
@@ -47,13 +45,13 @@ impl std::error::Error for AgentError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             AgentError::InferenceClient(e) => Some(e),
-            AgentError::AgentBuild(agent_build_error) => Some(agent_build_error),
-            AgentError::Mcp(mcp_integration_error) => Some(mcp_integration_error),
-            AgentError::Runtime(_) => Some(self),
-            AgentError::Deserialization(error) => Some(error),
-            AgentError::Tool(tool_execution_error) => Some(tool_execution_error),
-            AgentError::Unsupported(_) => Some(self),
-            AgentError::InvocationError(error) => Some(error),
+            AgentError::AgentBuild(e) => Some(e),
+            AgentError::Mcp(e) => Some(e),
+            AgentError::Runtime(_) => None,
+            AgentError::Tool(e) => Some(e),
+            AgentError::Deserialization(e) => Some(e),
+            AgentError::Unsupported(_) => None,
+            AgentError::InvocationError(e) => Some(e),
         }
     }
 }
@@ -101,16 +99,48 @@ pub enum AgentBuildError {
     ModelNotSet,
     /// Attempted to use a feature not yet supported by the provider or client.
     Unsupported(String),
+    /// A configured tool name conflicts with a reserved prebuilt tool.
+    ReservedToolName(String),
+    /// Failure while building a local tool definition.
+    ToolBuild(ToolBuilderError),
+    /// Failure while loading skill metadata or instructions.
+    Skill(SkillLoadError),
+    /// Failure while loading a prompt template from disk.
+    TemplateLoad(LoadTemplateError),
 }
 
 impl std::fmt::Display for AgentBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AgentBuildError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {e}"),
+            AgentBuildError::InvalidJsonSchema(e) => {
+                write!(f, "Invalid JSON schema provided: {e}")
+            }
+            AgentBuildError::McpError(e) => write!(f, "MCP error: {e}"),
+            AgentBuildError::InferenceClient(e) => write!(f, "Inference client error: {e}"),
             AgentBuildError::ModelNotSet => write!(f, "Model not set."),
-            AgentBuildError::McpError(e) => write!(f, "Mcp error: {e}"),
-            AgentBuildError::InferenceClient(e) => write!(f, "InferenceClient error: {e}"),
-            AgentBuildError::Unsupported(error) => write!(f, "Unsuppored: {error:#?}"),
+            AgentBuildError::Unsupported(e) => write!(f, "Unsupported: {e}"),
+            AgentBuildError::ReservedToolName(name) => {
+                write!(f, "Tool name `{name}` is reserved")
+            }
+            AgentBuildError::ToolBuild(e) => write!(f, "Tool build error: {e}"),
+            AgentBuildError::Skill(e) => write!(f, "Skill error: {e}"),
+            AgentBuildError::TemplateLoad(e) => write!(f, "Template load error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for AgentBuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            AgentBuildError::InvalidJsonSchema(_) => None,
+            AgentBuildError::McpError(e) => Some(e),
+            AgentBuildError::InferenceClient(e) => Some(e),
+            AgentBuildError::ModelNotSet => None,
+            AgentBuildError::Unsupported(_) => None,
+            AgentBuildError::ReservedToolName(_) => None,
+            AgentBuildError::ToolBuild(e) => Some(e),
+            AgentBuildError::Skill(e) => Some(e),
+            AgentBuildError::TemplateLoad(e) => Some(e),
         }
     }
 }
@@ -121,4 +151,26 @@ impl From<InferenceClientError> for AgentBuildError {
     }
 }
 
-impl std::error::Error for AgentBuildError {}
+impl From<McpIntegrationError> for AgentBuildError {
+    fn from(err: McpIntegrationError) -> Self {
+        AgentBuildError::McpError(err)
+    }
+}
+
+impl From<SkillLoadError> for AgentBuildError {
+    fn from(err: SkillLoadError) -> Self {
+        AgentBuildError::Skill(err)
+    }
+}
+
+impl From<ToolBuilderError> for AgentBuildError {
+    fn from(err: ToolBuilderError) -> Self {
+        AgentBuildError::ToolBuild(err)
+    }
+}
+
+impl From<LoadTemplateError> for AgentBuildError {
+    fn from(err: LoadTemplateError) -> Self {
+        AgentBuildError::TemplateLoad(err)
+    }
+}
