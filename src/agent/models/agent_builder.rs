@@ -10,9 +10,9 @@ use crate::{
     },
     skills::{build_read_skill_tool, load_skill_sources},
     templates::Template,
-    Agent, Flow, FlowFuture, Tool, SKILL_SYSTEM_PROMPT_TEMPLATE,
+    Agent, Flow, FlowFuture, Skill, Tool, ToolBuilderError, SKILL_SYSTEM_PROMPT_TEMPLATE,
 };
-use futures::{future::join_all, Future};
+use futures::future::join_all;
 use rmcp::schemars::JsonSchema;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
@@ -66,6 +66,8 @@ pub struct AgentBuilder {
     skill_paths: Vec<PathBuf>,
     /// Directories containing multiple skill directories.
     skill_collection_paths: Vec<PathBuf>,
+    /// Built-in skills loaded directly from the library.
+    builtin_skills: Vec<Skill>,
     /// Prompt inserted when a tool-call branch begins
     stop_prompt: Option<String>,
     /// Stopword that indicates end of generation
@@ -420,6 +422,20 @@ impl AgentBuilder {
         self
     }
 
+    pub fn add_bash(mut self) -> Result<Self, ToolBuilderError> {
+        let bash_tool = crate::tools::prebuilt::bash::build_bash_tool(Default::default())?;
+
+        self = self.add_tool(bash_tool);
+        self = self.add_bash_skill();
+
+        Ok(self)
+    }
+
+    fn add_bash_skill(mut self) -> Self {
+        self.builtin_skills.push(crate::skills::bash_skill());
+        self
+    }
+
     /// Set a template for the agent's first prompt
     pub fn set_template(mut self, template: Template) -> Self {
         self.template = Some(Arc::new(Mutex::new(template)));
@@ -501,7 +517,9 @@ impl AgentBuilder {
             .system_prompt
             .unwrap_or_else(|| "You are a helpful agent.".into());
 
-        let skills = load_skill_sources(&self.skill_paths, &self.skill_collection_paths)?;
+        let mut skills = load_skill_sources(&self.skill_paths, &self.skill_collection_paths)?;
+        skills.extend(self.builtin_skills);
+
         let mut tools = self.tools.clone();
 
         if !skills.is_empty() {

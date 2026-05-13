@@ -1,12 +1,14 @@
 mod error;
 mod loader;
 mod models;
+mod prebuilt;
 mod prompt;
 mod tool;
 
 pub use error::SkillLoadError;
 pub use loader::{load_skill, load_skill_collection, load_skill_sources};
 pub use models::{Skill, SkillResource, SkillResourceKind};
+pub use prebuilt::bash_skill;
 pub use tool::build_read_skill_tool;
 
 #[cfg(test)]

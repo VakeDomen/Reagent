@@ -1,4 +1,5 @@
 mod errors;
+pub mod prebuilt;
 mod tool;
 mod tool_builder;
 
