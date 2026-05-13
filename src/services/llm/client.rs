@@ -55,6 +55,7 @@ impl InferenceClient {
     ) -> Result<serde_json::Value, InferenceClientError> {
         match self.get_config().provider {
             Some(Provider::Ollama) => Ok(OllamaClient::format(spec)),
+            Some(Provider::OpenAi) => Ok(OpenAiClient::format(spec)),
             Some(Provider::OpenRouter) => Ok(OpenRouterClient::format(spec)),
             _ => Err(InferenceClientError::Unsupported(
                 "Structured outputs not yet supported for this provider".into(),

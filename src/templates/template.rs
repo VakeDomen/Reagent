@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{collections::HashMap, fs, io, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use tracing::{span, Level};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -46,7 +46,7 @@ impl Template {
     ///
     /// async {
     ///     let t = Template::new("Hello, {{name}}!", StaticDS);
-    ///     let out = t.compile(&HashMap::new()).await;
+    ///     let out = t.compile(&HashMap::<String, String>::new()).await;
     ///     assert_eq!(out, "Hello, Ada!");
     /// };
     /// ```
@@ -82,7 +82,7 @@ impl Template {
     /// use reagent_rs::templates::Template;
     ///
     /// let t = Template::from_file("templates/system.md").unwrap();
-    /// let out = t.compile(&HashMap::new()).await;
+    /// let out = t.compile(&HashMap::<String, String>::new()).await;
     /// # };
     /// ```
     pub fn from_file<P>(path: P) -> Result<Self, LoadTemplateError>

@@ -27,12 +27,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let _agent = AgentBuilder::default()
         .set_model("mistralai/mistral-small-3.2-24b-instruct:free")
-        // Currently open router is the only one
-        // supported outside of ollama
-        // you can specify other but the agent will
-        // fail to build, throwing "unsupported" error
+        // OpenRouter uses its hosted OpenAI-compatible chat endpoint.
         .set_provider(Provider::OpenRouter)
         .set_api_key("MY_API_KEY")
+        .build()
+        .await?;
+
+    let _agent = AgentBuilder::default()
+        .set_model("DeepSeek-V4-Flash")
+        // OpenAI is implemented as an OpenAI-compatible endpoint.
+        // Set base_url for local providers such as vLLM, SGLang, or llama.cpp servers.
+        .set_provider(Provider::OpenAi)
+        .set_base_url("http://localhost:8000/v1")
+        .set_system_prompt("You are a concise assistant running behind an OpenAI-compatible API.")
         .build()
         .await?;
 
