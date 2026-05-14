@@ -1,9 +1,9 @@
 [package]
 name = "reagent-rs"
-version = "0.2.8"
+version = "0.2.9"
 edition = "2021"
 rust-version = "1.74"
-description = "A Rust library for building AI agents with MCP & custom tools"
+description = "A Rust library for building AI agents with MCP, custom tools and skills"
 license = "MIT"
 repository = "https://github.com/VakeDomen/reagent"
 documentation = "https://docs.rs/reagent-rs"

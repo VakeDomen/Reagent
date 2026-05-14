@@ -5,7 +5,6 @@ use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    call_tools,
     services::llm::{
         message::Message, BaseRequest, ClientBuilder, InferenceOptions, ResponseFormatConfig,
         SchemaSpec,
@@ -291,12 +290,6 @@ impl InvocationBuilder {
         };
 
         agent.history.push(response.message.clone());
-
-        if let Some(tc) = response.message.tool_calls.clone() {
-            for tool_msg in call_tools(agent, &tc).await {
-                agent.history.push(tool_msg);
-            }
-        }
 
         Ok(response)
     }
