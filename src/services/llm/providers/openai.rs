@@ -425,8 +425,10 @@ struct OpenAiParams {
 struct OpenAiMessage {
     role: String,
 
+    /// Content is a plain string when no images are present,
+    /// or an array of content parts (text / image_url) for multimodal messages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
+    content: Option<Value>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<OpenAiToolCall>>,
@@ -437,15 +439,59 @@ struct OpenAiMessage {
 
 impl From<&Message> for OpenAiMessage {
     fn from(message: &Message) -> Self {
+        let role = match message.role {
+            Role::System => "system".to_string(),
+            Role::Developer => "system".to_string(),
+            Role::User => "user".to_string(),
+            Role::Assistant => "assistant".to_string(),
+            Role::Tool => "tool".to_string(),
+        };
+
+        // If the message has images, build an array of content parts (multimodal).
+        // Otherwise, keep it as a simple string.
+        let has_images = message.images.as_ref().is_some_and(|imgs| !imgs.is_empty());
+
+        let content = if has_images {
+            let mut parts: Vec<Value> = Vec::new();
+
+            // Text part (always present; use empty string if no text)
+            if let Some(ref text) = message.content {
+                if !text.is_empty() {
+                    parts.push(serde_json::json!({
+                        "type": "text",
+                        "text": text,
+                    }));
+                }
+            }
+
+            // Image parts.
+            // OpenAI expects a full data URI (`data:image/...;base64,...`).
+            // If the string is already a data URI we pass it through;
+            // otherwise we treat it as raw base64 and wrap it.
+            if let Some(ref images) = message.images {
+                for img in images {
+                    let url = if img.starts_with("data:") {
+                        img.clone()
+                    } else {
+                        format!("data:image/png;base64,{img}")
+                    };
+                    parts.push(serde_json::json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": url,
+                        }
+                    }));
+                }
+            }
+
+            Some(Value::Array(parts))
+        } else {
+            message.content.clone().map(Value::String)
+        };
+
         Self {
-            role: match message.role {
-                Role::System => "system".to_string(),
-                Role::Developer => "system".to_string(),
-                Role::User => "user".to_string(),
-                Role::Assistant => "assistant".to_string(),
-                Role::Tool => "tool".to_string(),
-            },
-            content: message.content.clone(),
+            role,
+            content,
             tool_calls: message
                 .tool_calls
                 .as_ref()

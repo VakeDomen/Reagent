@@ -5,7 +5,7 @@ use std::io::{self, Write};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let (mut agent, mut notification_reciever) = AgentBuilder::default()
-        .set_model("hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:UD-Q4_K_XL")
+        .set_model("qwen3:30b")
         .set_system_prompt(
             "You are an autonomous agent that performs actions. Use
             tools and skills until you are able to answer user's questions or complete the tasks.",

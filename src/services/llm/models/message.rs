@@ -52,6 +52,21 @@ impl Message {
     {
         Self::new(Role::Tool, content.into(), Some(tool_call_id.into()))
     }
+
+    pub fn with_image<T: Into<String>>(mut self, base64: T) -> Self {
+        match self.images {
+            Some(_) => todo!(),
+            None => self.images = Some(vec![base64.into()]),
+        }
+        self
+    }
+
+    pub fn with_images<T: Into<String>>(mut self, base64: Vec<T>) -> Self {
+        for image in base64 {
+            self = self.with_image(image)
+        }
+        self
+    }
 }
 
 fn new_uuid() -> String {

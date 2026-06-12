@@ -326,7 +326,7 @@ impl InvocationBuilder {
                 model,
                 format,
                 options,
-                stream: self.stream,
+                stream: Some(self.stream.unwrap_or(false)),
                 keep_alive: self.keep_alive.take(),
             },
             messages: self.messages.unwrap_or_default(),
