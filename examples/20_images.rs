@@ -15,6 +15,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("{:#?}", resp);
 
+    let message =
+        Message::user("Describe the image").with_image(format!("data:image/png;base64,{}", image));
+
+    let resp = InvocationBuilder::default()
+        .set_provider(reagent_rs::Provider::OpenAi)
+        .set_base_url("http://localhost:11434/v1")
+        .model("qwen3:30b")
+        .set_message(message)
+        .invoke()
+        .await;
+
+    println!("{:#?}", resp);
+
     Ok(())
 }
 
