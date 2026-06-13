@@ -26,7 +26,9 @@ reagent = { git = "https://github.com/VakeDomen/Reagent" }
 
 ## Features
 
-* **Multiple providers**: Ollama (default) and OpenRouter (experimental)
+* **Multiple providers**: Ollama (default), OpenRouter, and OpenAI-compatible endpoints
+* **Direct invocations** with typed `InvocationBuilder` modes for chat and embeddings
+* **Images** via `Message::with_image` and multi-modal model inputs
 * **Structured output** via JSON Schema (manual or via `schemars`)
 * **Tooling**:
 
@@ -152,6 +154,61 @@ To get parsed output directly:
 
 ```rust
 let resp: Weather = agent.invoke_flow_structured_output("What's the weather?").await?;
+```
+
+---
+
+## Direct Invocations
+
+`InvocationBuilder` gives you a direct API when you want to call the model without building a full `Agent`. Chat is the default mode.
+
+```rust
+use reagent_rs::{InvocationBuilder, Message};
+
+let chat = InvocationBuilder::chat()
+    .model("qwen3:0.6b")
+    .set_message(Message::user("Hello"))
+    .invoke()
+    .await?;
+```
+
+For embeddings, switch the builder into embedding mode and pass one or more inputs:
+
+```rust
+use reagent_rs::InvocationBuilder;
+
+let resp = InvocationBuilder::embedding()
+    .model("bge-m3")
+    .inputs(["first text", "second text"])
+    .invoke()
+    .await?;
+
+println!("{} embeddings returned", resp.embeddings.len());
+```
+
+OpenAI-compatible endpoints use the same typed invocation API:
+
+```rust
+use reagent_rs::{InvocationBuilder, Provider};
+
+let chat = InvocationBuilder::chat()
+    .set_provider(Provider::OpenAi)
+    .set_base_url("https://api.example.com/v1")
+    .model("gpt-4o-mini")
+    .invoke()
+    .await?;
+```
+
+Images are attached to messages directly:
+
+```rust
+use reagent_rs::{InvocationBuilder, Message};
+
+let resp = InvocationBuilder::chat()
+    .model("llava")
+    .set_message(Message::user("Describe the image").with_image("BASE64_DATA"))
+    .invoke()
+    .await?;
 ```
 
 ---

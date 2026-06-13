@@ -4,7 +4,7 @@ use std::collections::HashMap;
 #[derive(Serialize, Debug, Clone)]
 pub struct EmbeddingsRequest {
     pub model: String,
-    pub input: String,
+    pub input: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<HashMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -14,4 +14,5 @@ pub struct EmbeddingsRequest {
 #[derive(Deserialize, Debug, Clone)]
 pub struct EmbeddingsResponse {
     pub embedding: Vec<f64>,
+    pub embeddings: Vec<Vec<f64>>,
 }

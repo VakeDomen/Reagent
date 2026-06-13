@@ -336,14 +336,21 @@ impl OpenAiClient {
             InferenceClientError::Serialization(format!("decode error: {e}; raw: {text}"))
         })?;
 
-        let Some(first) = response.data.into_iter().next() else {
+        let embeddings: Vec<Vec<f64>> = response
+            .data
+            .into_iter()
+            .map(|item| item.embedding)
+            .collect();
+
+        let Some(embedding) = embeddings.first().cloned() else {
             return Err(InferenceClientError::Api(
                 "OpenAI embeddings response did not include data".into(),
             ));
         };
 
         Ok(EmbeddingsResponse {
-            embedding: first.embedding,
+            embedding,
+            embeddings,
         })
     }
 }
@@ -607,7 +614,7 @@ struct PartialToolCall {
 #[derive(Serialize)]
 struct OpenAiEmbeddingsRequest {
     model: String,
-    input: String,
+    input: Vec<String>,
 }
 
 #[derive(Deserialize)]

@@ -3,6 +3,7 @@ use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::{fmt, pin::Pin};
 use tracing::{error, span, Instrument, Level, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -268,8 +269,41 @@ impl OllamaClient {
         &self,
         request: EmbeddingsRequest,
     ) -> Result<EmbeddingsResponse, InferenceClientError> {
-        self.post("/api/embeddings", &request).await
+        let request = OllamaEmbedRequest {
+            model: request.model,
+            input: request.input,
+            options: request.options,
+            keep_alive: request.keep_alive,
+        };
+
+        let response: OllamaEmbedResponse = self.post("/api/embed", &request).await?;
+
+        let Some(embedding) = response.embeddings.first().cloned() else {
+            return Err(InferenceClientError::Api(
+                "Ollama embeddings response did not include embeddings".into(),
+            ));
+        };
+
+        Ok(EmbeddingsResponse {
+            embedding,
+            embeddings: response.embeddings,
+        })
     }
+}
+
+#[derive(Serialize, Debug)]
+struct OllamaEmbedRequest {
+    model: String,
+    input: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<std::collections::HashMap<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keep_alive: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct OllamaEmbedResponse {
+    embeddings: Vec<Vec<f64>>,
 }
 
 impl StructuredOuputFormat for OllamaClient {

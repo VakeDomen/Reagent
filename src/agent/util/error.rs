@@ -3,6 +3,7 @@ use crate::services::llm::InferenceClientError;
 #[derive(Debug)]
 pub enum InvocationError {
     ModelNotDefined,
+    InputNotDefined,
     InferenceError(InferenceClientError),
     /// Provided JSON schema for response format could not be parsed.
     InvalidJsonSchema(String),
@@ -20,6 +21,7 @@ impl std::fmt::Display for InvocationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InvocationError::ModelNotDefined => write!(f, "Inference model not defined"),
+            InvocationError::InputNotDefined => write!(f, "Invocation input not defined"),
             InvocationError::InferenceError(inference_client_error) => {
                 write!(f, "Client error during inference: {inference_client_error}")
             }

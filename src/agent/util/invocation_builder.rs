@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
 use rmcp::schemars::JsonSchema;
 use serde_json::Value;
@@ -6,61 +6,149 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     services::llm::{
-        message::Message, BaseRequest, ClientBuilder, InferenceOptions, ResponseFormatConfig,
-        SchemaSpec,
+        message::Message,
+        models::embedding::{EmbeddingsRequest, EmbeddingsResponse},
+        BaseRequest, ClientBuilder, InferenceOptions, ResponseFormatConfig, SchemaSpec,
     },
     Agent, ChatRequest, ChatResponse, ClientConfig, InvocationError, InvocationRequest,
     Notification, Provider, Tool,
 };
 
 #[derive(Debug, Clone, Default)]
-pub struct InvocationBuilder {
+pub struct ChatMode;
+
+#[derive(Debug, Clone, Default)]
+pub struct EmbeddingMode;
+
+pub type InvocationBuilder = TypedInvocationBuilder<ChatMode>;
+pub type EmbeddingInvocationBuilder = TypedInvocationBuilder<EmbeddingMode>;
+
+#[derive(Debug, Clone)]
+pub struct TypedInvocationBuilder<M = ChatMode> {
+    mode: PhantomData<M>,
     model: Option<String>,
     format: Option<Value>,
     stream: Option<bool>,
     keep_alive: Option<String>,
-
     name: Option<String>,
-
-    // payload
     messages: Option<Vec<Message>>,
     tools: Option<Vec<Tool>>,
-
-    // flattened options: None means inherit, Some(_) means override
+    embedding_input: Option<Vec<String>>,
     opts: InferenceOptions,
     strip_thinking: Option<bool>,
     use_tools: Option<bool>,
-
-    /// Provider, endpoint, credentials, and headers for standalone invocations.
     client_config: ClientConfig,
-    /// Notification channel to send notifications to
     notification_channel: Option<Sender<Notification>>,
-
-    /// Response schema input plus optional provider hints.
     response_format: ResponseFormatConfig,
 }
 
-impl InvocationBuilder {
+impl Default for TypedInvocationBuilder<ChatMode> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<M> TypedInvocationBuilder<M> {
+    fn new() -> Self {
+        Self {
+            mode: PhantomData,
+            model: None,
+            format: None,
+            stream: None,
+            keep_alive: None,
+            name: None,
+            messages: None,
+            tools: None,
+            embedding_input: None,
+            opts: InferenceOptions::default(),
+            strip_thinking: None,
+            use_tools: None,
+            client_config: ClientConfig::default(),
+            notification_channel: None,
+            response_format: ResponseFormatConfig::default(),
+        }
+    }
+
     pub fn model(mut self, v: impl Into<String>) -> Self {
         self.model = Some(v.into());
         self
     }
-    pub fn response_format_some(mut self, v: Value) -> Self {
-        self.format = Some(v);
-        self
-    }
-    pub fn stream(mut self, v: bool) -> Self {
-        self.stream = Some(v);
-        self
-    }
+
     pub fn keep_alive(mut self, v: impl Into<String>) -> Self {
         self.keep_alive = Some(v.into());
         self
     }
+
+    pub fn set_name<T>(mut self, name: T) -> Self
+    where
+        T: Into<String>,
+    {
+        self.name = Some(name.into());
+        self
+    }
+
+    pub fn set_provider(mut self, provider: Provider) -> Self {
+        self.client_config = self.client_config.provider(Some(provider));
+        self
+    }
+
+    pub fn set_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.client_config = self.client_config.base_url(Some(base_url));
+        self
+    }
+
+    pub fn set_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.client_config = self.client_config.api_key(Some(api_key));
+        self
+    }
+
+    pub fn set_organization(mut self, organization: impl Into<String>) -> Self {
+        self.client_config = self.client_config.organization(Some(organization));
+        self
+    }
+
+    pub fn set_extra_headers(mut self, extra_headers: HashMap<String, String>) -> Self {
+        self.client_config = self.client_config.extra_headers(Some(extra_headers));
+        self
+    }
+
+    pub fn notification_channel(
+        mut self,
+        notification_channel: Option<Sender<Notification>>,
+    ) -> Self {
+        self.notification_channel = notification_channel;
+        self
+    }
+}
+
+impl TypedInvocationBuilder<ChatMode> {
+    pub fn chat() -> Self {
+        Self::default()
+    }
+
+    pub fn generate() -> Self {
+        Self::default()
+    }
+
+    pub fn embedding() -> EmbeddingInvocationBuilder {
+        TypedInvocationBuilder::<EmbeddingMode>::new()
+    }
+
+    pub fn response_format_some(mut self, v: Value) -> Self {
+        self.format = Some(v);
+        self
+    }
+
+    pub fn stream(mut self, v: bool) -> Self {
+        self.stream = Some(v);
+        self
+    }
+
     pub fn messages(mut self, msgs: Vec<Message>) -> Self {
         self.messages = Some(msgs);
         self
     }
+
     pub fn history(mut self, msg: Vec<Message>) -> Self {
         self.messages = Some(msg);
         self
@@ -80,137 +168,102 @@ impl InvocationBuilder {
         self.tools = Some(tools);
         self
     }
+
     pub fn add_tool(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
         self
     }
+
     pub fn num_ctx(mut self, v: u32) -> Self {
         self.opts.num_ctx = Some(v);
         self
     }
+
     pub fn repeat_last_n(mut self, v: i32) -> Self {
         self.opts.repeat_last_n = Some(v);
         self
     }
+
     pub fn repeat_penalty(mut self, v: f32) -> Self {
         self.opts.repeat_penalty = Some(v);
         self
     }
+
     pub fn temperature(mut self, v: f32) -> Self {
         self.opts.temperature = Some(v);
         self
     }
+
     pub fn seed(mut self, v: i32) -> Self {
         self.opts.seed = Some(v);
         self
     }
+
     pub fn stop(mut self, v: String) -> Self {
         self.opts.stop = Some(v);
         self
     }
+
     pub fn num_predict(mut self, v: i32) -> Self {
         self.opts.num_predict = Some(v);
         self
     }
+
     pub fn top_k(mut self, v: u32) -> Self {
         self.opts.top_k = Some(v);
         self
     }
+
     pub fn top_p(mut self, v: f32) -> Self {
         self.opts.top_p = Some(v);
         self
     }
+
     pub fn min_p(mut self, v: f32) -> Self {
         self.opts.min_p = Some(v);
         self
     }
+
     pub fn presence_penalty(mut self, v: f32) -> Self {
         self.opts.presence_penalty = Some(v);
         self
     }
+
     pub fn frequency_penalty(mut self, v: f32) -> Self {
         self.opts.frequency_penalty = Some(v);
         self
     }
+
     pub fn max_tokens(mut self, v: i32) -> Self {
         self.opts.max_tokens = Some(v);
         self
     }
+
     pub fn strip_thinking(mut self, strip_thinking: bool) -> Self {
         self.strip_thinking = Some(strip_thinking);
         self
     }
+
     pub fn use_tools(mut self, use_tools: bool) -> Self {
         self.use_tools = Some(use_tools);
         self
     }
 
-    /// Set the name identifier of the invocation
-    pub fn set_name<T>(mut self, name: T) -> Self
-    where
-        T: Into<String>,
-    {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Select the LLM provider implementation.
-    pub fn set_provider(mut self, provider: Provider) -> Self {
-        self.client_config = self.client_config.provider(Some(provider));
-        self
-    }
-
-    /// Override the base URL for the provider client.
-    pub fn set_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.client_config = self.client_config.base_url(Some(base_url));
-        self
-    }
-
-    /// Set the API key used by the provider client.
-    pub fn set_api_key(mut self, api_key: impl Into<String>) -> Self {
-        self.client_config = self.client_config.api_key(Some(api_key));
-        self
-    }
-
-    /// Set the organization or tenant identifier for requests.
-    pub fn set_organization(mut self, organization: impl Into<String>) -> Self {
-        self.client_config = self.client_config.organization(Some(organization));
-        self
-    }
-
-    /// Provide additional HTTP headers to include on each request.
-    pub fn set_extra_headers(mut self, extra_headers: HashMap<String, String>) -> Self {
-        self.client_config = self.client_config.extra_headers(Some(extra_headers));
-        self
-    }
-
-    pub fn notification_channel(
-        mut self,
-        notification_channel: Option<Sender<Notification>>,
-    ) -> Self {
-        self.notification_channel = notification_channel;
-        self
-    }
-
-    // A string of JSON Schema
     pub fn set_response_format_str(mut self, schema_json: &str) -> Self {
         self.response_format.set_raw(schema_json);
         self
     }
 
-    // A ready-made serde_json::Value
     pub fn set_response_format_value(mut self, schema: serde_json::Value) -> Self {
         self.response_format.set_value(schema);
         self
     }
 
-    // From a Rust type via schemars
     pub fn set_response_format_from<T: JsonSchema>(mut self) -> Self {
         self.response_format.set_type::<T>();
         self
     }
 
-    // From a Rust type via SchemaSpec
     pub fn set_response_format_spec(mut self, schema: SchemaSpec) -> Self {
         self.response_format.set_spec(schema);
         self
@@ -276,7 +329,7 @@ impl InvocationBuilder {
             tools,
         };
 
-        let invcation_request = InvocationRequest::new(
+        let invocation_request = InvocationRequest::new(
             self.strip_thinking.unwrap_or(agent.strip_thinking),
             request,
             agent.inference_client.clone(),
@@ -284,9 +337,9 @@ impl InvocationBuilder {
             name,
         );
 
-        let response = match &invcation_request.request.base.stream {
-            Some(true) => super::invocations::invoke_streaming(invcation_request).await?,
-            _ => super::invocations::invoke_nonstreaming(invcation_request).await?,
+        let response = match &invocation_request.request.base.stream {
+            Some(true) => super::invocations::invoke_streaming(invocation_request).await?,
+            _ => super::invocations::invoke_nonstreaming(invocation_request).await?,
         };
 
         agent.history.push(response.message.clone());
@@ -296,7 +349,6 @@ impl InvocationBuilder {
 
     pub async fn invoke(mut self) -> Result<ChatResponse, InvocationError> {
         let name = self.name.take().unwrap_or("Invocation".into());
-
         let options = self.opts.into_option();
 
         let Some(model) = self.model.take() else {
@@ -333,7 +385,7 @@ impl InvocationBuilder {
             tools,
         };
 
-        let invcation_request = InvocationRequest::new(
+        let invocation_request = InvocationRequest::new(
             self.strip_thinking.unwrap_or(false),
             request,
             client,
@@ -341,11 +393,71 @@ impl InvocationBuilder {
             name,
         );
 
-        let response = match &invcation_request.request.base.stream {
-            Some(true) => super::invocations::invoke_streaming(invcation_request).await?,
-            _ => super::invocations::invoke_nonstreaming(invcation_request).await?,
+        let response = match &invocation_request.request.base.stream {
+            Some(true) => super::invocations::invoke_streaming(invocation_request).await?,
+            _ => super::invocations::invoke_nonstreaming(invocation_request).await?,
         };
 
         Ok(response)
+    }
+}
+
+impl TypedInvocationBuilder<EmbeddingMode> {
+    pub fn input(mut self, input: impl Into<String>) -> Self {
+        self.embedding_input = Some(vec![input.into()]);
+        self
+    }
+
+    pub fn inputs<T, I>(mut self, inputs: I) -> Self
+    where
+        T: Into<String>,
+        I: IntoIterator<Item = T>,
+    {
+        self.embedding_input = Some(inputs.into_iter().map(Into::into).collect());
+        self
+    }
+
+    pub async fn invoke_with(self, agent: &Agent) -> Result<EmbeddingsResponse, InvocationError> {
+        let Some(model) = self.model.or(Some(agent.model.clone())) else {
+            return Err(InvocationError::ModelNotDefined);
+        };
+
+        let Some(input) = self.embedding_input.filter(|input| !input.is_empty()) else {
+            return Err(InvocationError::InputNotDefined);
+        };
+
+        let request = EmbeddingsRequest {
+            model,
+            input,
+            options: None,
+            keep_alive: self.keep_alive.or(agent.keep_alive.clone()),
+        };
+
+        Ok(agent.inference_client.embeddings(request).await?)
+    }
+
+    pub async fn invoke(mut self) -> Result<EmbeddingsResponse, InvocationError> {
+        let Some(model) = self.model.take() else {
+            return Err(InvocationError::ModelNotDefined);
+        };
+
+        let Some(input) = self
+            .embedding_input
+            .take()
+            .filter(|input| !input.is_empty())
+        else {
+            return Err(InvocationError::InputNotDefined);
+        };
+
+        let client = self.client_config.build()?;
+
+        let request = EmbeddingsRequest {
+            model,
+            input,
+            options: None,
+            keep_alive: self.keep_alive.take(),
+        };
+
+        Ok(client.embeddings(request).await?)
     }
 }

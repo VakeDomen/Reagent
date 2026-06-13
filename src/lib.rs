@@ -88,6 +88,7 @@ pub use crate::services::llm::{ClientConfig, Provider};
 
 pub use crate::services::llm::models::base::Role;
 pub use crate::services::llm::models::chat::{ChatRequest, ChatResponse};
+pub use crate::services::llm::models::embedding::EmbeddingsResponse;
 pub use crate::services::llm::models::message::Message;
 
 pub use crate::services::mcp::error::McpIntegrationError;
@@ -96,8 +97,9 @@ pub use crate::services::mcp::mcp_tool_builder::McpServerType;
 pub mod prelude {
     pub use crate::{
         flow, Agent, AgentBuildError, AgentBuilder, AgentError, ChatRequest, ChatResponse,
-        ClientConfig, Flow, LoadTemplateError, McpIntegrationError, McpServerType, Message,
-        Notification, NotificationContent, Provider, Role, Skill, SkillLoadError, SkillResource,
+        ClientConfig, EmbeddingInvocationBuilder, EmbeddingsResponse, Flow, InvocationBuilder,
+        LoadTemplateError, McpIntegrationError, McpServerType, Message, Notification,
+        NotificationContent, Provider, Role, Skill, SkillLoadError, SkillResource,
         SkillResourceKind, Template, TemplateDataSource, Tool, ToolBuilder, ToolExecutionError,
     };
 }
