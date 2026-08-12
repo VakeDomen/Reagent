@@ -1,4 +1,4 @@
-use reagent_rs::{flow, Agent, AgentBuilder, AgentError, Invocation, Message};
+use reagent_rs::{flow, Agent, AgentBuilder, AgentError, Message};
 use std::error::Error;
 
 #[tokio::main]
@@ -24,11 +24,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
-    agent.history.push(Message::user(prompt));
-    // let response = invoke_without_tools(agent).await?;
-    let response = agent
-        .invoke_model(Invocation::chat().messages(agent.history.clone()))
-        .await?;
+    let input = Message::user(prompt);
+    agent.history.push(input);
+    agent.model.set_history(agent.history.clone());
+    let response = agent.model.invoke(()).await?;
     agent.history.push(response.message.clone());
 
     // insert into agent state

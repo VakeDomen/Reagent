@@ -2,15 +2,40 @@ use std::marker::PhantomData;
 
 use serde::de::DeserializeOwned;
 
-use super::execution;
 use crate::{
-    services::llm::{
-        models::{chat::ChatRequest, embedding::EmbeddingsRequest},
-        BaseRequest, ClientBuilder,
-    },
-    ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, InvocationError, Message,
-    ModelBuilder, NotificationOutputChannel, SchemaSpec,
+    ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, Invocation, InvocationError,
+    Message, ModelBuilder, Notification, SchemaSpec, Tool,
 };
+use tokio::sync::mpsc::Sender;
+
+pub trait IntoModelInput {
+    fn into_messages(self) -> Vec<Message>;
+}
+impl IntoModelInput for Message {
+    fn into_messages(self) -> Vec<Message> {
+        vec![self]
+    }
+}
+impl IntoModelInput for String {
+    fn into_messages(self) -> Vec<Message> {
+        vec![Message::user(self)]
+    }
+}
+impl IntoModelInput for &str {
+    fn into_messages(self) -> Vec<Message> {
+        vec![Message::user(self)]
+    }
+}
+impl IntoModelInput for Vec<Message> {
+    fn into_messages(self) -> Vec<Message> {
+        self
+    }
+}
+impl IntoModelInput for () {
+    fn into_messages(self) -> Vec<Message> {
+        Vec::new()
+    }
+}
 
 /// A reusable, sessionless inference model.
 ///
@@ -42,7 +67,10 @@ pub struct Model<M = Llm, O = Standard> {
     stream: bool,
     keep_alive: Option<String>,
     history: Vec<Message>,
+    tools: Option<Vec<Tool>>,
     response_format: Option<SchemaSpec>,
+    name: Option<String>,
+    notification_channel: Option<Sender<Notification>>,
     kind: PhantomData<(M, O)>,
 }
 
@@ -59,32 +87,34 @@ impl Model<Llm, Standard> {
     /// Execute a prompt using configured history plus one ephemeral user message.
     pub async fn invoke(
         &self,
-        prompt: impl Into<Message>,
+        input: impl IntoModelInput,
     ) -> Result<ChatResponse, InvocationError> {
-        let client = self.client_config.clone().build()?;
         let messages = self
             .history
             .iter()
             .cloned()
-            .chain(std::iter::once(prompt.into()))
+            .chain(input.into_messages())
             .collect();
-        let request = ChatRequest {
-            base: BaseRequest {
-                model: self.id.clone(),
-                format: None,
-                options: self.options.clone().into_option(),
-                stream: Some(self.stream),
-                keep_alive: self.keep_alive.clone(),
-            },
-            messages,
-            tools: None,
-        };
-        let notifications = NotificationOutputChannel::new(None, self.id.clone());
-        if self.stream {
-            execution::invoke_streaming(request, &client, notifications).await
-        } else {
-            execution::invoke_nonstreaming(request, &client, notifications).await
+        let mut invocation = Invocation::chat()
+            .model(self.id.clone())
+            .client_config(self.client_config.clone())
+            .messages(messages)
+            .options(self.options.clone())
+            .stream(self.stream)
+            .notification_channel(self.notification_channel.clone());
+        if let Some(tools) = &self.tools {
+            invocation = invocation.tools(tools.clone());
         }
+        if let Some(format) = &self.response_format {
+            invocation = invocation.response_format(format.clone());
+        }
+        if let Some(keep_alive) = &self.keep_alive {
+            invocation = invocation.keep_alive(keep_alive.clone());
+        }
+        if let Some(name) = &self.name {
+            invocation = invocation.name(name.clone());
+        }
+        invocation.invoke().await
     }
 }
 
@@ -98,53 +128,45 @@ impl Model<Embedding> {
         &self,
         input: impl Into<crate::EmbeddingInvocation>,
     ) -> Result<EmbeddingsResponse, InvocationError> {
-        let input = input.into().request.input;
-        if input.is_empty() {
-            return Err(InvocationError::InputNotDefined);
+        let mut invocation = input
+            .into()
+            .model(self.id.clone())
+            .client_config(self.client_config.clone());
+        if let Some(keep_alive) = &self.keep_alive {
+            invocation = invocation.keep_alive(keep_alive.clone());
         }
-        let client = self.client_config.clone().build()?;
-        Ok(client
-            .embeddings(EmbeddingsRequest {
-                model: self.id.clone(),
-                input,
-                options: None,
-                keep_alive: self.keep_alive.clone(),
-            })
-            .await?)
+        invocation.invoke().await
     }
 }
 
 impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
-    pub async fn invoke(&self, prompt: impl Into<Message>) -> Result<T, InvocationError> {
-        let client = self.client_config.clone().build()?;
-        let format = self
-            .response_format
-            .as_ref()
-            .map(|schema| client.structured_output_format(schema))
-            .transpose()?;
+    pub async fn invoke(&self, input: impl IntoModelInput) -> Result<T, InvocationError> {
         let messages = self
             .history
             .iter()
             .cloned()
-            .chain(std::iter::once(prompt.into()))
+            .chain(input.into_messages())
             .collect();
-        let request = ChatRequest {
-            base: BaseRequest {
-                model: self.id.clone(),
-                format,
-                options: self.options.clone().into_option(),
-                stream: Some(self.stream),
-                keep_alive: self.keep_alive.clone(),
-            },
-            messages,
-            tools: None,
-        };
-        let notifications = NotificationOutputChannel::new(None, self.id.clone());
-        let response = if self.stream {
-            execution::invoke_streaming(request, &client, notifications).await?
-        } else {
-            execution::invoke_nonstreaming(request, &client, notifications).await?
-        };
+        let mut invocation = Invocation::chat()
+            .model(self.id.clone())
+            .client_config(self.client_config.clone())
+            .messages(messages)
+            .options(self.options.clone())
+            .stream(self.stream)
+            .notification_channel(self.notification_channel.clone());
+        if let Some(tools) = &self.tools {
+            invocation = invocation.tools(tools.clone());
+        }
+        if let Some(format) = &self.response_format {
+            invocation = invocation.response_format(format.clone());
+        }
+        if let Some(keep_alive) = &self.keep_alive {
+            invocation = invocation.keep_alive(keep_alive.clone());
+        }
+        if let Some(name) = &self.name {
+            invocation = invocation.name(name.clone());
+        }
+        let response = invocation.invoke().await?;
         let content = response.message.content.ok_or_else(|| {
             InvocationError::InvalidStructuredOutput("model did not return content".into())
         })?;
@@ -163,6 +185,22 @@ impl<O> Model<Llm, O> {
     }
     pub fn clear_history(&mut self) -> &mut Self {
         self.history.clear();
+        self
+    }
+    pub fn set_tools(&mut self, tools: Option<Vec<Tool>>) -> &mut Self {
+        self.tools = tools;
+        self
+    }
+    pub fn set_response_format(&mut self, response_format: Option<SchemaSpec>) -> &mut Self {
+        self.response_format = response_format;
+        self
+    }
+    pub fn set_name(&mut self, name: Option<String>) -> &mut Self {
+        self.name = name;
+        self
+    }
+    pub fn set_notification_channel(&mut self, channel: Option<Sender<Notification>>) -> &mut Self {
+        self.notification_channel = channel;
         self
     }
     pub fn set_temperature(&mut self, value: f32) -> &mut Self {
@@ -211,7 +249,10 @@ impl<M, O> Model<M, O> {
         stream: bool,
         keep_alive: Option<String>,
         history: Vec<Message>,
+        tools: Option<Vec<Tool>>,
         response_format: Option<SchemaSpec>,
+        name: Option<String>,
+        notification_channel: Option<Sender<Notification>>,
         kind: PhantomData<(M, O)>,
     ) -> Self {
         Self {
@@ -221,7 +262,10 @@ impl<M, O> Model<M, O> {
             stream,
             keep_alive,
             history,
+            tools,
             response_format,
+            name,
+            notification_channel,
             kind,
         }
     }

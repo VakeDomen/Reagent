@@ -100,6 +100,12 @@ impl Agent {
         };
 
         agent.tools = agent.get_compiled_tools().await?;
+        agent
+            .model
+            .set_tools(agent.tools.clone())
+            .set_response_format(agent.response_format.clone())
+            .set_name(Some(agent.name.clone()))
+            .set_notification_channel(agent.notification_channel.clone());
 
         Ok(agent)
     }
@@ -425,6 +431,9 @@ impl Agent {
         let (s, r) = mpsc::channel::<Notification>(100);
         self.notification_channel = Some(s);
         self.tools = self.get_compiled_tools().await?;
+        self.model
+            .set_tools(self.tools.clone())
+            .set_notification_channel(self.notification_channel.clone());
         Ok(r)
     }
 

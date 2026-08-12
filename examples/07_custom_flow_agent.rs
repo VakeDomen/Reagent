@@ -1,4 +1,4 @@
-use reagent_rs::{flow, Agent, AgentBuilder, AgentError, Invocation, Message};
+use reagent_rs::{flow, Agent, AgentBuilder, AgentError, Message};
 use std::error::Error;
 
 #[tokio::main]
@@ -23,14 +23,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 // this is the function that will override the default flow if the
 // agent
 async fn custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
-    agent.history.push(Message::user(prompt));
     let mut last = None;
-    for _ in 0..agent.max_iterations.unwrap_or(1) {
-        let mut invocation = Invocation::chat().messages(agent.history.clone());
-        if let Some(tools) = agent.tools.clone().filter(|tools| !tools.is_empty()) {
-            invocation = invocation.tools(tools);
+    for iteration in 0..agent.max_iterations.unwrap_or(1) {
+        if iteration == 0 {
+            agent.history.push(Message::user(prompt.clone()));
         }
-        let response = agent.invoke_model(invocation).await?;
+        agent.model.set_history(agent.history.clone());
+        let response = agent.model.invoke(()).await?;
         agent.history.push(response.message.clone());
         last = Some(response.message);
     }

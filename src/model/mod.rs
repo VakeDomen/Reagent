@@ -3,7 +3,9 @@ pub(crate) mod execution;
 mod model;
 
 pub use builder::*;
-pub use model::{Embedding, EmbeddingModel, Llm, LlmModel, Model, Standard, Structured};
+pub use model::{
+    Embedding, EmbeddingModel, IntoModelInput, Llm, LlmModel, Model, Standard, Structured,
+};
 
 #[test]
 fn model_requires_an_identifier() {

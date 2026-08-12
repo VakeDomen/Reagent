@@ -96,7 +96,10 @@ impl<M, O> ModelBuilder<M, O> {
             self.stream,
             self.keep_alive,
             self.history,
+            None,
             self.response_format,
+            None,
+            None,
             self.kind,
         ))
     }

@@ -3,7 +3,6 @@ mod builder;
 mod config;
 mod error;
 mod flows;
-mod model;
 
 pub use agent::*;
 pub use builder::*;
