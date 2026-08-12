@@ -2,25 +2,27 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use crate::{
     services::llm::ClientBuilder, ClientConfig, Embedding, InferenceOptions, InvocationError, Llm,
-    Model, Provider,
+    Message, Model, Provider, SchemaSpec, Standard, Structured,
 };
 
-pub type LlmModelBuilder = ModelBuilder<Llm>;
+pub type LlmModelBuilder = ModelBuilder<Llm, Standard>;
 pub type EmbeddingModelBuilder = ModelBuilder<Embedding>;
 
 /// Builds a reusable [`Model`]. Invocation inputs intentionally do not belong
 /// here; they are supplied to [`Model::invoke`] for each call.
 #[derive(Debug, Clone)]
-pub struct ModelBuilder<M = Llm> {
+pub struct ModelBuilder<M = Llm, O = Standard> {
     id: Option<String>,
     client_config: ClientConfig,
     options: InferenceOptions,
     stream: bool,
     keep_alive: Option<String>,
-    kind: PhantomData<M>,
+    history: Vec<Message>,
+    response_format: Option<SchemaSpec>,
+    kind: PhantomData<(M, O)>,
 }
 
-impl<M> Default for ModelBuilder<M> {
+impl<M, O> Default for ModelBuilder<M, O> {
     fn default() -> Self {
         Self {
             id: None,
@@ -28,12 +30,14 @@ impl<M> Default for ModelBuilder<M> {
             options: InferenceOptions::default(),
             stream: false,
             keep_alive: None,
+            history: Vec::new(),
+            response_format: None,
             kind: PhantomData,
         }
     }
 }
 
-impl<M> ModelBuilder<M> {
+impl<M, O> ModelBuilder<M, O> {
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             id: Some(id.into()),
@@ -81,22 +85,43 @@ impl<M> ModelBuilder<M> {
         self
     }
 
-    pub fn build(self) -> Result<Model<M>, InvocationError> {
+    pub fn build(self) -> Result<Model<M, O>, InvocationError> {
         let id = self.id.ok_or(InvocationError::ModelNotDefined)?;
-        let client = self.client_config.build()?;
+        self.client_config.clone().build()?;
 
         Ok(Model::new(
             id,
-            client,
+            self.client_config,
             self.options,
             self.stream,
             self.keep_alive,
+            self.history,
+            self.response_format,
             self.kind,
         ))
     }
 }
 
-impl ModelBuilder<Llm> {
+impl ModelBuilder<Llm, Standard> {
+    pub fn set_history(mut self, history: impl Into<Vec<Message>>) -> Self {
+        self.history = history.into();
+        self
+    }
+
+    pub fn structured_output<T: rmcp::schemars::JsonSchema>(
+        self,
+    ) -> ModelBuilder<Llm, Structured<T>> {
+        ModelBuilder {
+            id: self.id,
+            client_config: self.client_config,
+            options: self.options,
+            stream: self.stream,
+            keep_alive: self.keep_alive,
+            history: self.history,
+            response_format: Some(SchemaSpec::from_type::<T>()),
+            kind: PhantomData,
+        }
+    }
     pub fn options(mut self, options: InferenceOptions) -> Self {
         self.options = options;
         self

@@ -1,9 +1,12 @@
 use rmcp::schemars::JsonSchema;
 use serde_json::Value;
 
+use crate::model::execution;
+use crate::services::llm::models::chat::ChatRequest;
 use crate::{
-    services::llm::ResponseFormatConfig, InferenceOptions, Invocation, Message, Notification,
-    SchemaSpec, Tool,
+    services::llm::{BaseRequest, ClientBuilder, ResponseFormatConfig},
+    ChatResponse, InferenceOptions, Invocation, InvocationError, Message,
+    NotificationOutputChannel, SchemaSpec, Tool,
 };
 
 /// Provider-neutral input for one chat/completion call.
@@ -161,5 +164,37 @@ impl Invocation<Chat> {
     pub fn provider_format(mut self, format: Value) -> Self {
         self.request.provider_format = Some(format);
         self
+    }
+
+    /// Execute this fully configured invocation once.
+    pub async fn invoke(self) -> Result<ChatResponse, InvocationError> {
+        let model = self.model.ok_or(InvocationError::ModelNotDefined)?;
+        let client = self.client_config.build()?;
+        let schema = self
+            .request
+            .response_format
+            .resolve()
+            .map_err(InvocationError::InvalidJsonSchema)?;
+        let format = schema
+            .map(|schema| client.structured_output_format(&schema))
+            .transpose()?;
+        let request = ChatRequest {
+            base: BaseRequest {
+                model: model.clone(),
+                format: self.request.provider_format.or(format),
+                options: self.request.options.into_option(),
+                stream: self.request.stream,
+                keep_alive: self.request.keep_alive,
+            },
+            messages: self.request.messages,
+            tools: self.request.tools,
+        };
+        let notifications =
+            NotificationOutputChannel::new(self.notification_channel, self.name.unwrap_or(model));
+        if request.base.stream == Some(true) {
+            execution::invoke_streaming(request, &client, notifications).await
+        } else {
+            execution::invoke_nonstreaming(request, &client, notifications).await
+        }
     }
 }

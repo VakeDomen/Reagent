@@ -1,4 +1,7 @@
-use crate::Invocation;
+use crate::{
+    services::llm::{models::embedding::EmbeddingsRequest, ClientBuilder},
+    EmbeddingsResponse, Invocation, InvocationError,
+};
 
 /// Provider-neutral input for one embedding call.
 #[derive(Debug, Clone, Default)]
@@ -31,5 +34,21 @@ impl Invocation<Embedding> {
     pub fn keep_alive(mut self, value: impl Into<String>) -> Self {
         self.request.keep_alive = Some(value.into());
         self
+    }
+
+    pub async fn invoke(self) -> Result<EmbeddingsResponse, InvocationError> {
+        if self.request.input.is_empty() {
+            return Err(InvocationError::InputNotDefined);
+        }
+        let model = self.model.ok_or(InvocationError::ModelNotDefined)?;
+        let client = self.client_config.build()?;
+        Ok(client
+            .embeddings(EmbeddingsRequest {
+                model,
+                input: self.request.input,
+                options: None,
+                keep_alive: self.request.keep_alive,
+            })
+            .await?)
     }
 }

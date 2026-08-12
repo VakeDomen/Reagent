@@ -160,18 +160,16 @@ let resp: Weather = agent.invoke_flow_structured_output("What's the weather?").a
 
 ## Models and Invocations
 
-`Model` owns reusable provider and inference configuration. `Invocation` is the
-passive input for exactly one call; the model never remembers it afterward.
-Models are typed by capability: use `Model::llm(...)` for chat and
-`Model::embedding(...)` for embeddings.
+`Invocation` is the fully configured, one-off API. `Model` is the easier,
+reusable API: it owns defaults and optional configured history, but never keeps
+the prompt or response from an individual call. Models are typed by capability:
+use `Model::llm(...)` for chat and `Model::embedding(...)` for embeddings.
 
 ```rust
-use reagent_rs::{Invocation, Message, Model};
+use reagent_rs::Model;
 
 let model = Model::llm("qwen3:0.6b").build()?;
-let chat = model
-    .invoke(Invocation::chat().message(Message::user("Hello")))
-    .await?;
+let chat = model.invoke("Hello").await?;
 ```
 
 The same model can be called repeatedly without accumulating conversation state.
@@ -187,43 +185,39 @@ let mut agent = AgentBuilder::default()
     .await?;
 ```
 
-For embeddings, use a typed embedding invocation:
+For embeddings:
 
 ```rust
-use reagent_rs::{Invocation, Model};
+use reagent_rs::Model;
 
 let model = Model::embedding("bge-m3").build()?;
-let resp = model
-    .invoke(Invocation::embeddings(["first text", "second text"]))
-    .await?;
+let resp = model.invoke(["first text", "second text"]).await?;
 
 println!("{} embeddings returned", resp.embeddings.len());
 ```
 
-OpenAI-compatible endpoints use the same typed invocation API:
+For a direct, one-off call, configure and invoke an `Invocation` directly:
 
 ```rust
-use reagent_rs::{Invocation, Model, Provider};
+use reagent_rs::{Invocation, Message, Provider};
 
-let model = Model::llm("gpt-4o-mini")
+let chat = Invocation::chat()
+    .model("gpt-4o-mini")
     .provider(Provider::OpenAi)
     .base_url("https://api.example.com/v1")
-    .build()?;
-let chat = model
-    .invoke(Invocation::chat())
+    .message(Message::user("Hello"))
+    .invoke()
     .await?;
 ```
 
 Images are attached to messages directly:
 
 ```rust
-use reagent_rs::{Invocation, Message, Model};
+use reagent_rs::{Message, Model};
 
 let model = Model::llm("llava").build()?;
 let resp = model
-    .invoke(Invocation::chat().message(
-        Message::user("Describe the image").with_image("BASE64_DATA")
-    ))
+    .invoke(Message::user("Describe the image").with_image("BASE64_DATA"))
     .await?;
 ```
 

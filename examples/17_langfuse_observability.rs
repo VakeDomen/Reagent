@@ -1,6 +1,4 @@
-use reagent_rs::{
-    observability::langfuse::LangfuseOptions, AgentBuilder, Invocation, Message, Model,
-};
+use reagent_rs::{observability::langfuse::LangfuseOptions, AgentBuilder, Message, Model};
 use std::error::Error;
 
 #[tokio::main]
@@ -12,18 +10,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         host: Some("http://localhost:3000"),
     });
 
-    let model = Model::llm("ministral-3:14b").stream(true).build()?;
-    let request = Invocation::chat().message(Message::system("You are short and creative"));
-
-    let resp = model
-        .invoke(
-            request
-                .message(Message::user("Ask me a question"))
-                .temperature(1.0)
-                .top_k(30)
-                .top_p(0.8),
-        )
-        .await;
+    let model = Model::llm("ministral-3:14b")
+        .stream(true)
+        .temperature(1.0)
+        .top_k(30)
+        .top_p(0.8)
+        .set_history(vec![Message::system("You are short and creative")])
+        .build()?;
+    let resp = model.invoke("Ask me a question").await;
 
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")

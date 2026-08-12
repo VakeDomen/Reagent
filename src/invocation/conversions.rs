@@ -51,3 +51,15 @@ impl From<&str> for Invocation<Chat> {
         Invocation::chat().message(Message::user(prompt))
     }
 }
+
+impl From<String> for Message {
+    fn from(prompt: String) -> Self {
+        Message::user(prompt)
+    }
+}
+
+impl From<&str> for Message {
+    fn from(prompt: &str) -> Self {
+        Message::user(prompt)
+    }
+}

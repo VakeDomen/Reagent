@@ -1,44 +1,52 @@
 use std::marker::PhantomData;
 
-use crate::{
-    invocation::{Chat as ChatRequest, Embedding as EmbeddingRequest, Invocation, InvocationError},
-    services::llm::{
-        models::{
-            chat::{ChatRequest as ChatRequestWire, ChatResponse},
-            embedding::{EmbeddingsRequest, EmbeddingsResponse},
-        },
-        BaseRequest, ClientConfig, InferenceClient, InferenceOptions,
-    },
-    ModelBuilder, NotificationOutputChannel,
-};
+use serde::de::DeserializeOwned;
 
 use super::execution;
+use crate::{
+    services::llm::{
+        models::{chat::ChatRequest, embedding::EmbeddingsRequest},
+        BaseRequest, ClientBuilder,
+    },
+    ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, InvocationError, Message,
+    ModelBuilder, NotificationOutputChannel, SchemaSpec,
+};
 
 /// A reusable, sessionless inference model.
 ///
-/// `Model` owns immutable endpoint and inference defaults. Calling it never
-/// records messages or changes subsequent calls, so it can be cloned and shared
-/// safely by tasks and agents.
+/// `Model` owns reusable endpoint, inference, and optional history defaults.
+/// Calling it never records its prompt or response, though its configuration can
+/// be changed explicitly through mutable setters.
 #[derive(Debug, Clone, Default)]
 pub struct Llm;
 
 #[derive(Debug, Clone, Default)]
 pub struct Embedding;
 
-pub type LlmModel = Model<Llm>;
+/// The default LLM output: the provider response is returned unchanged.
+#[derive(Debug, Clone, Default)]
+pub struct Standard;
+
+/// A schema-backed LLM output parsed directly into `T`.
+#[derive(Debug, Clone, Default)]
+pub struct Structured<T>(PhantomData<T>);
+
+pub type LlmModel = Model<Llm, Standard>;
 pub type EmbeddingModel = Model<Embedding>;
 
 #[derive(Clone, Debug)]
-pub struct Model<M = Llm> {
+pub struct Model<M = Llm, O = Standard> {
     id: String,
-    client: InferenceClient,
+    client_config: ClientConfig,
     options: InferenceOptions,
     stream: bool,
     keep_alive: Option<String>,
-    kind: PhantomData<M>,
+    history: Vec<Message>,
+    response_format: Option<SchemaSpec>,
+    kind: PhantomData<(M, O)>,
 }
 
-impl Model<Llm> {
+impl Model<Llm, Standard> {
     pub fn llm(id: impl Into<String>) -> ModelBuilder<Llm> {
         ModelBuilder::new(id)
     }
@@ -48,49 +56,34 @@ impl Model<Llm> {
         Self::llm(id)
     }
 
-    /// Execute one chat invocation without retaining any state from it.
+    /// Execute a prompt using configured history plus one ephemeral user message.
     pub async fn invoke(
         &self,
-        invocation: impl Into<Invocation<ChatRequest>>,
+        prompt: impl Into<Message>,
     ) -> Result<ChatResponse, InvocationError> {
-        let invocation = invocation.into();
-        let schema = invocation
-            .request
-            .response_format
-            .resolve()
-            .map_err(InvocationError::InvalidJsonSchema)?;
-        let format = schema
-            .map(|schema| self.client.structured_output_format(&schema))
-            .transpose()?;
-
-        let request = ChatRequestWire {
+        let client = self.client_config.clone().build()?;
+        let messages = self
+            .history
+            .iter()
+            .cloned()
+            .chain(std::iter::once(prompt.into()))
+            .collect();
+        let request = ChatRequest {
             base: BaseRequest {
                 model: self.id.clone(),
-                format: invocation.request.provider_format.or(format),
-                options: invocation
-                    .request
-                    .options
-                    .merge_over(self.options.clone())
-                    .into_option(),
-                stream: Some(invocation.request.stream.unwrap_or(self.stream)),
-                keep_alive: invocation
-                    .request
-                    .keep_alive
-                    .or_else(|| self.keep_alive.clone()),
+                format: None,
+                options: self.options.clone().into_option(),
+                stream: Some(self.stream),
+                keep_alive: self.keep_alive.clone(),
             },
-            messages: invocation.request.messages,
-            tools: invocation.request.tools,
+            messages,
+            tools: None,
         };
-
-        let notifications = NotificationOutputChannel::new(
-            invocation.notification_channel,
-            invocation.name.unwrap_or_else(|| self.id.clone()),
-        );
-
-        if request.base.stream == Some(true) {
-            execution::invoke_streaming(request, &self.client, notifications).await
+        let notifications = NotificationOutputChannel::new(None, self.id.clone());
+        if self.stream {
+            execution::invoke_streaming(request, &client, notifications).await
         } else {
-            execution::invoke_nonstreaming(request, &self.client, notifications).await
+            execution::invoke_nonstreaming(request, &client, notifications).await
         }
     }
 }
@@ -100,37 +93,99 @@ impl Model<Embedding> {
         ModelBuilder::new(id)
     }
 
-    /// Execute one embedding invocation without retaining any state from it.
+    /// Execute embedding input without retaining it.
     pub async fn invoke(
         &self,
-        invocation: impl Into<Invocation<EmbeddingRequest>>,
+        input: impl Into<crate::EmbeddingInvocation>,
     ) -> Result<EmbeddingsResponse, InvocationError> {
-        let invocation = invocation.into();
-        if invocation.request.input.is_empty() {
+        let input = input.into().request.input;
+        if input.is_empty() {
             return Err(InvocationError::InputNotDefined);
         }
-
-        let request = EmbeddingsRequest {
-            model: self.id.clone(),
-            input: invocation.request.input,
-            options: None,
-            keep_alive: invocation
-                .request
-                .keep_alive
-                .or_else(|| self.keep_alive.clone()),
-        };
-
-        Ok(self.client.embeddings(request).await?)
+        let client = self.client_config.clone().build()?;
+        Ok(client
+            .embeddings(EmbeddingsRequest {
+                model: self.id.clone(),
+                input,
+                options: None,
+                keep_alive: self.keep_alive.clone(),
+            })
+            .await?)
     }
 }
 
-impl<M> Model<M> {
+impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
+    pub async fn invoke(&self, prompt: impl Into<Message>) -> Result<T, InvocationError> {
+        let client = self.client_config.clone().build()?;
+        let format = self
+            .response_format
+            .as_ref()
+            .map(|schema| client.structured_output_format(schema))
+            .transpose()?;
+        let messages = self
+            .history
+            .iter()
+            .cloned()
+            .chain(std::iter::once(prompt.into()))
+            .collect();
+        let request = ChatRequest {
+            base: BaseRequest {
+                model: self.id.clone(),
+                format,
+                options: self.options.clone().into_option(),
+                stream: Some(self.stream),
+                keep_alive: self.keep_alive.clone(),
+            },
+            messages,
+            tools: None,
+        };
+        let notifications = NotificationOutputChannel::new(None, self.id.clone());
+        let response = if self.stream {
+            execution::invoke_streaming(request, &client, notifications).await?
+        } else {
+            execution::invoke_nonstreaming(request, &client, notifications).await?
+        };
+        let content = response.message.content.ok_or_else(|| {
+            InvocationError::InvalidStructuredOutput("model did not return content".into())
+        })?;
+        serde_json::from_str(&content)
+            .map_err(|error| InvocationError::InvalidStructuredOutput(error.to_string()))
+    }
+}
+
+impl<O> Model<Llm, O> {
+    pub fn history(&self) -> &[Message] {
+        &self.history
+    }
+    pub fn set_history(&mut self, history: impl Into<Vec<Message>>) -> &mut Self {
+        self.history = history.into();
+        self
+    }
+    pub fn clear_history(&mut self) -> &mut Self {
+        self.history.clear();
+        self
+    }
+    pub fn set_temperature(&mut self, value: f32) -> &mut Self {
+        self.options.temperature = Some(value);
+        self
+    }
+    pub fn set_stream(&mut self, stream: bool) -> &mut Self {
+        self.stream = stream;
+        self
+    }
+    pub fn set_keep_alive(&mut self, value: impl Into<String>) -> &mut Self {
+        self.keep_alive = Some(value.into());
+        self
+    }
+}
+
+impl<M, O> Model<M, O> {
     pub fn id(&self) -> &str {
         &self.id
     }
 
     pub fn client_config(&self) -> &ClientConfig {
-        self.client.get_config()
+        &self.client_config
     }
 
     pub fn options(&self) -> &InferenceOptions {
@@ -149,20 +204,24 @@ impl<M> Model<M> {
         self.options.clone()
     }
 
-    pub fn new(
+    pub(crate) fn new(
         id: String,
-        client: InferenceClient,
+        client_config: ClientConfig,
         options: InferenceOptions,
         stream: bool,
         keep_alive: Option<String>,
-        kind: PhantomData<M>,
+        history: Vec<Message>,
+        response_format: Option<SchemaSpec>,
+        kind: PhantomData<(M, O)>,
     ) -> Self {
         Self {
             id,
-            client,
+            client_config,
             options,
             stream,
             keep_alive,
+            history,
+            response_format,
             kind,
         }
     }

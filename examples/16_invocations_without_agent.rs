@@ -9,8 +9,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let _ = model.invoke("Who is the owner of Nvidia?").await;
     let _ = model.invoke("What's the meaning of life?").await;
 
-    let request = Invocation::chat().message(Message::system("You are short and concise"));
-    let _ = model.invoke(request).await;
+    let request = Invocation::chat()
+        .model("qwen3:0.6b")
+        .message(Message::system("You are short and concise"))
+        .message(Message::user("Explain stateless models."));
+    let _ = request.invoke().await;
 
     Ok(())
 }

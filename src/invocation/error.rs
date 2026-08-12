@@ -7,6 +7,7 @@ pub enum InvocationError {
     InferenceError(InferenceClientError),
     /// Provided JSON schema for response format could not be parsed.
     InvalidJsonSchema(String),
+    InvalidStructuredOutput(String),
 }
 
 impl From<InferenceClientError> for InvocationError {
@@ -26,6 +27,9 @@ impl std::fmt::Display for InvocationError {
                 write!(f, "Client error during inference: {inference_client_error}")
             }
             InvocationError::InvalidJsonSchema(e) => write!(f, "Invalid JSON schema provided: {e}"),
+            InvocationError::InvalidStructuredOutput(e) => {
+                write!(f, "Invalid structured output: {e}")
+            }
         }
     }
 }

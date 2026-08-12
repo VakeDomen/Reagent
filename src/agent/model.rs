@@ -17,6 +17,10 @@ impl Agent {
         if invocation.notification_channel.is_none() {
             invocation.notification_channel = self.notification_channel.clone();
         }
-        self.model.invoke(invocation).await
+        invocation
+            .model(self.model.id().to_owned())
+            .client_config(self.model.client_config().clone())
+            .invoke()
+            .await
     }
 }

@@ -1,6 +1,5 @@
 use reagent_rs::{
-    prelude::*, Invocation, ModelConfig, NotificationHandler, PromptConfig, StatefullPrebuild,
-    StatelessPrebuild,
+    prelude::*, Invocation, NotificationHandler, PromptConfig, StatefullPrebuild, StatelessPrebuild,
 };
 use serde_json::Value;
 use std::{collections::HashMap, error::Error};
@@ -613,7 +612,7 @@ pub async fn create_executor_agent(
         .await
 }
 
-async fn extract_configurations(agent: &Agent) -> (ClientConfig, ModelConfig, PromptConfig) {
+async fn extract_configurations(agent: &Agent) -> (ClientConfig, InferenceOptions, PromptConfig) {
     let client_config = agent.export_client_config();
     let model_config = agent.export_model_config();
     let prompt_config = agent.export_prompt_config().await.unwrap_or_default();
