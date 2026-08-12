@@ -107,6 +107,8 @@ pub enum AgentBuildError {
     Skill(SkillLoadError),
     /// Failure while loading a prompt template from disk.
     TemplateLoad(LoadTemplateError),
+    /// Failure while reading or decoding a prompt file.
+    IOError(std::io::Error),
 }
 
 impl std::fmt::Display for AgentBuildError {
@@ -125,6 +127,7 @@ impl std::fmt::Display for AgentBuildError {
             AgentBuildError::ToolBuild(e) => write!(f, "Tool build error: {e}"),
             AgentBuildError::Skill(e) => write!(f, "Skill error: {e}"),
             AgentBuildError::TemplateLoad(e) => write!(f, "Template load error: {e}"),
+            AgentBuildError::IOError(e) => write!(f, "I/O error: {e}"),
         }
     }
 }
@@ -141,6 +144,7 @@ impl std::error::Error for AgentBuildError {
             AgentBuildError::ToolBuild(e) => Some(e),
             AgentBuildError::Skill(e) => Some(e),
             AgentBuildError::TemplateLoad(e) => Some(e),
+            AgentBuildError::IOError(e) => Some(e),
         }
     }
 }

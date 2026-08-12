@@ -161,6 +161,8 @@ impl OpenAiClient {
         let message = choice
             .map(|choice| message_from_openai(choice.message))
             .unwrap_or_else(|| Message::assistant(String::new()));
+        let prompt_eval_count = response.usage.as_ref().map(|usage| usage.prompt_tokens);
+        let eval_count = response.usage.as_ref().map(|usage| usage.completion_tokens);
 
         Ok(ChatResponse {
             model: response.model,
@@ -170,9 +172,9 @@ impl OpenAiClient {
             done_reason,
             total_duration: None,
             load_duration: None,
-            prompt_eval_count: None,
+            prompt_eval_count,
             prompt_eval_duration: None,
-            eval_count: None,
+            eval_count,
             eval_duration: None,
         })
     }
@@ -206,6 +208,7 @@ impl OpenAiClient {
             let mut latest_model = String::new();
             let mut latest_created = String::new();
             let mut done_reason: Option<String> = None;
+            let mut latest_usage: Option<OpenAiUsage> = None;
             futures::pin_mut!(byte_stream);
 
             while let Some(chunk) = byte_stream.next().await {
@@ -249,6 +252,8 @@ impl OpenAiClient {
                             latest_model,
                             latest_created,
                             done_reason.or_else(|| Some("stop".into())),
+                            None,
+                            None,
                         );
                         return;
                     }
@@ -268,6 +273,9 @@ impl OpenAiClient {
                     latest_model = parsed.model.unwrap_or_else(|| latest_model.clone());
                     if let Some(created) = parsed.created {
                         latest_created = created.to_string();
+                    }
+                    if let Some(usage) = parsed.usage {
+                        latest_usage = Some(usage);
                     }
 
                     for choice in parsed.choices {
@@ -317,7 +325,13 @@ impl OpenAiClient {
                 };
             }
 
-            yield done_stream_chunk(latest_model, latest_created, done_reason.or_else(|| Some("eof".into())));
+            yield done_stream_chunk(
+                latest_model,
+                latest_created,
+                done_reason.or_else(|| Some("eof".into())),
+                latest_usage.as_ref().map(|usage| usage.prompt_tokens),
+                latest_usage.as_ref().map(|usage| usage.completion_tokens),
+            );
         };
 
         Ok(Box::pin(s))
@@ -548,6 +562,8 @@ struct OpenAiChatResponse {
     created: Option<u64>,
     model: String,
     choices: Vec<OpenAiChoice>,
+    #[serde(default)]
+    usage: Option<OpenAiUsage>,
 }
 
 #[derive(Deserialize)]
@@ -573,6 +589,16 @@ struct OpenAiStreamChunk {
     created: Option<u64>,
     model: Option<String>,
     choices: Vec<OpenAiStreamChoice>,
+    #[serde(default)]
+    usage: Option<OpenAiUsage>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiUsage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    #[allow(dead_code)]
+    total_tokens: u32,
 }
 
 #[derive(Deserialize)]
@@ -715,6 +741,8 @@ fn done_stream_chunk(
     model: String,
     created_at: String,
     done_reason: Option<String>,
+    prompt_eval_count: Option<u32>,
+    eval_count: Option<u32>,
 ) -> ChatStreamChunk {
     ChatStreamChunk {
         model,
@@ -724,9 +752,9 @@ fn done_stream_chunk(
         done_reason,
         total_duration: None,
         load_duration: None,
-        prompt_eval_count: None,
+        prompt_eval_count,
         prompt_eval_duration: None,
-        eval_count: None,
+        eval_count,
         eval_duration: None,
     }
 }

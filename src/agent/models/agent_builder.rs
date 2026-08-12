@@ -15,10 +15,7 @@ use crate::{
 use futures::future::join_all;
 use rmcp::schemars::JsonSchema;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use tokio::{
-    fs,
-    sync::{mpsc, Mutex},
-};
+use tokio::sync::{mpsc, Mutex};
 
 /// A builder for [`Agent`].
 ///
@@ -358,9 +355,11 @@ impl AgentBuilder {
     ) -> Result<Self, std::io::Error> {
         let path: PathBuf = prompt.into();
         let file_content = std::fs::read(path)?;
-        let contents = String::from_utf8(file_content).map_err(|e| std::io::Error::from(e));
+        let contents = String::from_utf8(file_content).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+        })?;
         self.system_prompt = Some(contents);
-        self
+        Ok(self)
     }
 
     /// Optional prompt to insert on each tool‐call branch.
