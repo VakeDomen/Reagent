@@ -174,3 +174,9 @@ impl From<LoadTemplateError> for AgentBuildError {
         AgentBuildError::TemplateLoad(err)
     }
 }
+
+impl From<std::io::Error> for AgentBuildError {
+    fn from(err: std::io::Error) -> Self {
+        AgentBuildError::IOError(err)
+    }
+}

@@ -15,7 +15,10 @@ use crate::{
 use futures::future::join_all;
 use rmcp::schemars::JsonSchema;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use tokio::sync::{mpsc, Mutex};
+use tokio::{
+    fs,
+    sync::{mpsc, Mutex},
+};
 
 /// A builder for [`Agent`].
 ///
@@ -345,6 +348,18 @@ impl AgentBuilder {
     /// System prompt that initializes conversation history.
     pub fn set_system_prompt<T: Into<String>>(mut self, prompt: T) -> Self {
         self.system_prompt = Some(prompt.into());
+        self
+    }
+
+    /// System prompt that initializes conversation history.
+    pub fn set_system_prompt_file<T: Into<PathBuf>>(
+        mut self,
+        prompt: T,
+    ) -> Result<Self, std::io::Error> {
+        let path: PathBuf = prompt.into();
+        let file_content = std::fs::read(path)?;
+        let contents = String::from_utf8(file_content).map_err(|e| std::io::Error::from(e));
+        self.system_prompt = Some(contents);
         self
     }
 
