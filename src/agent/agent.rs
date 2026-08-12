@@ -3,7 +3,7 @@ use crate::agent::error::{AgentBuildError, AgentError};
 use crate::services::llm::{ClientConfig, SchemaSpec};
 use crate::skills::Skill;
 use crate::templates::Template;
-use crate::{default_flow, Flow, LlmModel, ModelConfig, NotificationHandler};
+use crate::{default_flow, Flow, InferenceOptions, LlmModel, NotificationHandler};
 use core::fmt;
 use opentelemetry::trace::TraceContextExt;
 use serde::de::DeserializeOwned;
@@ -503,7 +503,7 @@ impl Agent {
     }
 
     /// Export current model configuration (temperature, top_p, penalties, etc.).
-    pub fn export_model_config(&self) -> ModelConfig {
+    pub fn export_model_config(&self) -> InferenceOptions {
         self.model.export_config()
     }
 

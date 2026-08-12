@@ -1,10 +1,8 @@
 mod builder;
-mod config;
 mod execution;
 mod model;
 
 pub use builder::*;
-pub use config::*;
 pub use model::{Embedding, EmbeddingModel, Llm, LlmModel, Model};
 
 #[test]

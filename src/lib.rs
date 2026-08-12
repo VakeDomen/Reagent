@@ -102,9 +102,9 @@ pub mod prelude {
         ChatResponse, ClientConfig, Embedding, EmbeddingInvocation, EmbeddingModel,
         EmbeddingModelBuilder, EmbeddingsResponse, Flow, InferenceOptions, Invocation, Llm,
         LlmModel, LlmModelBuilder, LoadTemplateError, McpIntegrationError, McpServerType, Message,
-        Model, ModelBuilder, ModelConfig, Notification, NotificationContent, Provider, Role,
-        SchemaSpec, Skill, SkillLoadError, SkillResource, SkillResourceKind, Template,
-        TemplateDataSource, Tool, ToolBuilder, ToolExecutionError,
+        Model, ModelBuilder, Notification, NotificationContent, Provider, Role, SchemaSpec, Skill,
+        SkillLoadError, SkillResource, SkillResourceKind, Template, TemplateDataSource, Tool,
+        ToolBuilder, ToolExecutionError,
     };
 }
 

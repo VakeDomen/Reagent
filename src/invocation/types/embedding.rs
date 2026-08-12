@@ -1,4 +1,4 @@
-use super::Invocation;
+use crate::Invocation;
 
 /// Provider-neutral input for one embedding call.
 #[derive(Debug, Clone, Default)]

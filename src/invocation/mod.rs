@@ -1,13 +1,11 @@
-mod chat;
 mod conversions;
-mod embedding;
 mod error;
 mod model;
+mod types;
 
-pub use chat::*;
-pub use embedding::*;
 pub use error::*;
 pub use model::*;
+pub use types::*;
 
 #[test]
 fn chat_and_embedding_have_distinct_payloads() {

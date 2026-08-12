@@ -12,7 +12,7 @@ use crate::{
     ModelBuilder, NotificationOutputChannel,
 };
 
-use super::{config::ModelConfig, execution};
+use super::execution;
 
 /// A reusable, sessionless inference model.
 ///
@@ -145,8 +145,8 @@ impl<M> Model<M> {
         self.keep_alive.as_deref()
     }
 
-    pub fn export_config(&self) -> ModelConfig {
-        ModelConfig::from_parts(self.id.clone(), self.options.clone())
+    pub fn export_config(&self) -> InferenceOptions {
+        self.options.clone()
     }
 
     pub fn new(

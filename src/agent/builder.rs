@@ -7,8 +7,8 @@ use crate::{
     },
     skills::{build_read_skill_tool, load_skill_sources},
     templates::Template,
-    Agent, Flow, FlowFuture, LlmModel, LlmModelBuilder, ModelConfig, Skill, Tool, ToolBuilderError,
-    SKILL_SYSTEM_PROMPT_TEMPLATE,
+    Agent, Flow, FlowFuture, InferenceOptions, LlmModel, LlmModelBuilder, Skill, Tool,
+    ToolBuilderError, SKILL_SYSTEM_PROMPT_TEMPLATE,
 };
 use futures::future::join_all;
 use rmcp::schemars::JsonSchema;
@@ -45,10 +45,13 @@ pub struct AgentBuilder {
     /// Name used for logging and defaults
     name: Option<String>,
 
+    /// Model name/id
+    model: Option<String>,
+
     /// Provider, endpoint, credentials, and headers for the LLM client.
     client_config: ClientConfig,
     /// Model name plus sampling/decoding options.
-    model_config: ModelConfig,
+    inference_options: InferenceOptions,
     /// An already-built model to reuse instead of constructing one from legacy setters.
     runtime_model: Option<LlmModel>,
 
@@ -157,13 +160,10 @@ impl AgentBuilder {
         self
     }
 
-    /// Import model sampling and decoding parameters from a `ModelConfig`.
+    /// Import model sampling and decoding parameters from a `InferenceOptions`.
     /// Existing values already set on the builder are preserved unless overwritten by `conf`.
     /// Only fields present in `conf` are applied.
-    pub fn import_model_config(mut self, conf: ModelConfig) -> Self {
-        if let Some(model) = conf.model {
-            self = self.set_model(model)
-        }
+    pub fn import_model_config(mut self, conf: InferenceOptions) -> Self {
         if let Some(temperature) = conf.temperature {
             self = self.set_temperature(temperature)
         }
@@ -261,37 +261,37 @@ impl AgentBuilder {
 
     /// Set the sampling temperature.
     pub fn set_temperature(mut self, v: f32) -> Self {
-        self.model_config.temperature = Some(v);
+        self.inference_options.temperature = Some(v);
         self
     }
 
     /// Set nucleus sampling probability.
     pub fn set_top_p(mut self, v: f32) -> Self {
-        self.model_config.top_p = Some(v);
+        self.inference_options.top_p = Some(v);
         self
     }
 
     /// Set presence penalty.
     pub fn set_presence_penalty(mut self, v: f32) -> Self {
-        self.model_config.presence_penalty = Some(v);
+        self.inference_options.presence_penalty = Some(v);
         self
     }
 
     /// Set frequency penalty.
     pub fn set_frequency_penalty(mut self, v: f32) -> Self {
-        self.model_config.frequency_penalty = Some(v);
+        self.inference_options.frequency_penalty = Some(v);
         self
     }
 
     /// Set maximum context length (in tokens/chunks).
     pub fn set_num_ctx(mut self, v: u32) -> Self {
-        self.model_config.num_ctx = Some(v);
+        self.inference_options.num_ctx = Some(v);
         self
     }
 
     /// Repeat penalty for the last N tokens.
     pub fn set_repeat_last_n(mut self, v: i32) -> Self {
-        self.model_config.repeat_last_n = Some(v);
+        self.inference_options.repeat_last_n = Some(v);
         self
     }
 
@@ -303,43 +303,43 @@ impl AgentBuilder {
 
     /// Set penalty for repeated tokens.
     pub fn set_repeat_penalty(mut self, v: f32) -> Self {
-        self.model_config.repeat_penalty = Some(v);
+        self.inference_options.repeat_penalty = Some(v);
         self
     }
 
     /// Set RNG seed for sampling.
     pub fn set_seed(mut self, v: i32) -> Self {
-        self.model_config.seed = Some(v);
+        self.inference_options.seed = Some(v);
         self
     }
 
     /// Set the hard stop string.
     pub fn set_stop<T: Into<String>>(mut self, v: T) -> Self {
-        self.model_config.stop = Some(v.into());
+        self.inference_options.stop = Some(v.into());
         self
     }
 
     /// Number of tokens to predict.
     pub fn set_num_predict(mut self, v: i32) -> Self {
-        self.model_config.num_predict = Some(v);
+        self.inference_options.num_predict = Some(v);
         self
     }
 
     /// Top-K sampling.
     pub fn set_top_k(mut self, v: u32) -> Self {
-        self.model_config.top_k = Some(v);
+        self.inference_options.top_k = Some(v);
         self
     }
 
     /// Minimum probability threshold.
     pub fn set_min_p(mut self, v: f32) -> Self {
-        self.model_config.min_p = Some(v);
+        self.inference_options.min_p = Some(v);
         self
     }
 
     /// Select the underlying model name.
     pub fn set_model<T: Into<String>>(mut self, model: T) -> Self {
-        self.model_config.model = Some(model.into());
+        self.model = Some(model.into());
         self
     }
 
@@ -513,12 +513,12 @@ impl AgentBuilder {
 
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
-        let model_config = self.model_config;
-        let model_id = self
+        let model_config = self.inference_options;
+        let mut model_id = self
             .runtime_model
             .as_ref()
             .map(|model| model.id().to_owned())
-            .or_else(|| model_config.model.clone())
+            .or_else(|| self.model.clone())
             .ok_or(AgentBuildError::ModelNotSet)?;
 
         let skill_template = Template::simple(SKILL_SYSTEM_PROMPT_TEMPLATE);
@@ -585,7 +585,7 @@ impl AgentBuilder {
                 let mut builder = LlmModelBuilder::default()
                     .model(model_id)
                     .client_config(self.client_config)
-                    .options((&model_config).into())
+                    .options(model_config)
                     .stream(stream);
                 if let Some(keep_alive) = self.keep_alive {
                     builder = builder.keep_alive(keep_alive);

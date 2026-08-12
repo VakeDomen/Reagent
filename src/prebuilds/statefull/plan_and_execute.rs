@@ -8,7 +8,7 @@ use crate::{
     prebuilds::{StatefullPrebuild, StatelessPrebuild},
     services::llm::{message::Message, ClientConfig},
     templates::Template,
-    Agent, AgentBuildError, AgentBuilder, AgentError, Invocation, ModelConfig, Notification,
+    Agent, AgentBuildError, AgentBuilder, AgentError, InferenceOptions, Invocation, Notification,
     NotificationHandler, PromptConfig,
 };
 
@@ -590,7 +590,7 @@ async fn create_executor_agent(
         .await
 }
 
-async fn extract_configurations(agent: &Agent) -> (ClientConfig, ModelConfig, PromptConfig) {
+async fn extract_configurations(agent: &Agent) -> (ClientConfig, InferenceOptions, PromptConfig) {
     let client_config = agent.export_client_config();
     let model_config = agent.export_model_config();
     let prompt_config = agent.export_prompt_config().await.unwrap_or_default();
