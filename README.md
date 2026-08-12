@@ -27,7 +27,7 @@ reagent = { git = "https://github.com/VakeDomen/Reagent" }
 ## Features
 
 * **Multiple providers**: Ollama (default), OpenRouter, and OpenAI-compatible endpoints
-* **Direct invocations** with typed `InvocationBuilder` modes for chat and embeddings
+* **Reusable stateless models** with typed chat and embedding invocations
 * **Images** via `Message::with_image` and multi-modal model inputs
 * **Structured output** via JSON Schema (manual or via `schemars`)
 * **Tooling**:
@@ -158,29 +158,43 @@ let resp: Weather = agent.invoke_flow_structured_output("What's the weather?").a
 
 ---
 
-## Direct Invocations
+## Models and Invocations
 
-`InvocationBuilder` gives you a direct API when you want to call the model without building a full `Agent`. Chat is the default mode.
+`Model` owns reusable provider and inference configuration. `Invocation` is the
+passive input for exactly one call; the model never remembers it afterward.
+Models are typed by capability: use `Model::llm(...)` for chat and
+`Model::embedding(...)` for embeddings.
 
 ```rust
-use reagent_rs::{InvocationBuilder, Message};
+use reagent_rs::{Invocation, Message, Model};
 
-let chat = InvocationBuilder::chat()
-    .model("qwen3:0.6b")
-    .set_message(Message::user("Hello"))
-    .invoke()
+let model = Model::llm("qwen3:0.6b").build()?;
+let chat = model
+    .invoke(Invocation::chat().message(Message::user("Hello")))
     .await?;
 ```
 
-For embeddings, switch the builder into embedding mode and pass one or more inputs:
+The same model can be called repeatedly without accumulating conversation state.
+Agents can reuse that model while keeping independent histories:
 
 ```rust
-use reagent_rs::InvocationBuilder;
+use reagent_rs::AgentBuilder;
 
-let resp = InvocationBuilder::embedding()
-    .model("bge-m3")
-    .inputs(["first text", "second text"])
-    .invoke()
+let mut agent = AgentBuilder::default()
+    .with_model(model.clone())
+    .set_system_prompt("You are a helpful assistant.")
+    .build()
+    .await?;
+```
+
+For embeddings, use a typed embedding invocation:
+
+```rust
+use reagent_rs::{Invocation, Model};
+
+let model = Model::embedding("bge-m3").build()?;
+let resp = model
+    .invoke(Invocation::embeddings(["first text", "second text"]))
     .await?;
 
 println!("{} embeddings returned", resp.embeddings.len());
@@ -189,25 +203,27 @@ println!("{} embeddings returned", resp.embeddings.len());
 OpenAI-compatible endpoints use the same typed invocation API:
 
 ```rust
-use reagent_rs::{InvocationBuilder, Provider};
+use reagent_rs::{Invocation, Model, Provider};
 
-let chat = InvocationBuilder::chat()
-    .set_provider(Provider::OpenAi)
-    .set_base_url("https://api.example.com/v1")
-    .model("gpt-4o-mini")
-    .invoke()
+let model = Model::llm("gpt-4o-mini")
+    .provider(Provider::OpenAi)
+    .base_url("https://api.example.com/v1")
+    .build()?;
+let chat = model
+    .invoke(Invocation::chat())
     .await?;
 ```
 
 Images are attached to messages directly:
 
 ```rust
-use reagent_rs::{InvocationBuilder, Message};
+use reagent_rs::{Invocation, Message, Model};
 
-let resp = InvocationBuilder::chat()
-    .model("llava")
-    .set_message(Message::user("Describe the image").with_image("BASE64_DATA"))
-    .invoke()
+let model = Model::llm("llava").build()?;
+let resp = model
+    .invoke(Invocation::chat().message(
+        Message::user("Describe the image").with_image("BASE64_DATA")
+    ))
     .await?;
 ```
 

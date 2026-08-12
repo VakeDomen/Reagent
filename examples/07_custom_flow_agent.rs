@@ -1,4 +1,4 @@
-use reagent_rs::{flow, Agent, AgentBuilder, AgentError, InvocationBuilder, Message};
+use reagent_rs::{flow, Agent, AgentBuilder, AgentError, Invocation, Message};
 use std::error::Error;
 
 #[tokio::main]
@@ -26,10 +26,12 @@ async fn custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, Agent
     agent.history.push(Message::user(prompt));
     let mut last = None;
     for _ in 0..agent.max_iterations.unwrap_or(1) {
-        let response = InvocationBuilder::default()
-            .use_tools(true)
-            .invoke_with(agent)
-            .await?;
+        let mut invocation = Invocation::chat().messages(agent.history.clone());
+        if let Some(tools) = agent.tools.clone().filter(|tools| !tools.is_empty()) {
+            invocation = invocation.tools(tools);
+        }
+        let response = agent.invoke_model(invocation).await?;
+        agent.history.push(response.message.clone());
         last = Some(response.message);
     }
 

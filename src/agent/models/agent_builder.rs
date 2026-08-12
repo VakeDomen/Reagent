@@ -1,8 +1,5 @@
 use crate::{
-    agent::models::{
-        configs::{ModelConfig, PromptConfig},
-        error::AgentBuildError,
-    },
+    agent::models::{configs::PromptConfig, error::AgentBuildError},
     notifications::Notification,
     services::{
         llm::{ClientBuilder, ClientConfig, Provider, ResponseFormatConfig, SchemaSpec},
@@ -10,7 +7,8 @@ use crate::{
     },
     skills::{build_read_skill_tool, load_skill_sources},
     templates::Template,
-    Agent, Flow, FlowFuture, Skill, Tool, ToolBuilderError, SKILL_SYSTEM_PROMPT_TEMPLATE,
+    Agent, Flow, FlowFuture, LlmModel, LlmModelBuilder, ModelConfig, Skill, Tool, ToolBuilderError,
+    SKILL_SYSTEM_PROMPT_TEMPLATE,
 };
 use futures::future::join_all;
 use rmcp::schemars::JsonSchema;
@@ -51,6 +49,8 @@ pub struct AgentBuilder {
     client_config: ClientConfig,
     /// Model name plus sampling/decoding options.
     model_config: ModelConfig,
+    /// An already-built model to reuse instead of constructing one from legacy setters.
+    runtime_model: Option<LlmModel>,
 
     /// Optional first-message template used to build the system prompt
     template: Option<Arc<Mutex<Template>>>,
@@ -72,8 +72,6 @@ pub struct AgentBuilder {
     stop_prompt: Option<String>,
     /// Stopword that indicates end of generation
     stopword: Option<String>,
-    /// Whether to strip think tags from model output
-    strip_thinking: Option<bool>,
     /// Safety cap on the number of conversation iterations
     max_iterations: Option<usize>,
     /// Clear conversation history before each invocation
@@ -91,6 +89,12 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
+    /// Use an already-built, reusable model for this agent.
+    pub fn with_model(mut self, model: LlmModel) -> Self {
+        self.runtime_model = Some(model);
+        self
+    }
+
     /// Import generic client settings from a `ClientConfig`.
     /// Existing values already set on the builder are preserved unless overwritten by `conf`.
     /// Only fields present in `conf` are applied.
@@ -141,9 +145,6 @@ impl AgentBuilder {
         }
         if let Some(stopword) = conf.stopword {
             self = self.set_stopword(stopword);
-        }
-        if let Some(strip_thinking) = conf.strip_thinking {
-            self = self.strip_thinking(strip_thinking);
         }
         if let Some(max_iterations) = conf.max_iterations {
             self = self.set_max_iterations(max_iterations);
@@ -355,9 +356,8 @@ impl AgentBuilder {
     ) -> Result<Self, std::io::Error> {
         let path: PathBuf = prompt.into();
         let file_content = std::fs::read(path)?;
-        let contents = String::from_utf8(file_content).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let contents = String::from_utf8(file_content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         self.system_prompt = Some(contents);
         Ok(self)
     }
@@ -371,12 +371,6 @@ impl AgentBuilder {
     /// Optional stopword to detect end of generation.
     pub fn set_stopword<T: Into<String>>(mut self, stopword: T) -> Self {
         self.stopword = Some(stopword.into());
-        self
-    }
-
-    /// Whether to strip `<think>` blocks from model output.
-    pub fn strip_thinking(mut self, strip: bool) -> Self {
-        self.strip_thinking = Some(strip);
         self
     }
 
@@ -520,9 +514,11 @@ impl AgentBuilder {
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
     pub async fn build(self) -> Result<Agent, AgentBuildError> {
         let model_config = self.model_config;
-        let model = model_config
-            .model
-            .clone()
+        let model_id = self
+            .runtime_model
+            .as_ref()
+            .map(|model| model.id().to_owned())
+            .or_else(|| model_config.model.clone())
             .ok_or(AgentBuildError::ModelNotSet)?;
 
         let skill_template = Template::simple(SKILL_SYSTEM_PROMPT_TEMPLATE);
@@ -567,54 +563,45 @@ impl AgentBuilder {
             }
         }
 
-        let strip_thinking = self.strip_thinking.unwrap_or(true);
         let clear_histroy_on_invoke = self.clear_histroy_on_invoke.unwrap_or(false);
 
         let flow = self.flow.unwrap_or(Flow::Default);
 
         let name = match self.name {
             Some(n) => n,
-            None => format!("Agent-{model}"),
+            None => format!("Agent-{model_id}"),
         };
 
         let stream = self.stream.unwrap_or(false);
-
-        let inference_client = self.client_config.build()?;
 
         let response_format = self
             .response_format
             .resolve()
             .map_err(AgentBuildError::InvalidJsonSchema)?;
 
-        let response_format = match response_format {
-            Some(f) => Some(inference_client.structured_output_format(&f)?),
-            None => None,
+        let runtime_model = match self.runtime_model {
+            Some(model) => model,
+            None => {
+                let mut builder = LlmModelBuilder::default()
+                    .model(model_id)
+                    .client_config(self.client_config)
+                    .options((&model_config).into())
+                    .stream(stream);
+                if let Some(keep_alive) = self.keep_alive {
+                    builder = builder.keep_alive(keep_alive);
+                }
+                builder.build()?
+            }
         };
 
         Agent::try_new(
             name,
-            &model,
-            inference_client,
+            runtime_model,
             &system_prompt,
             tools,
             response_format,
             self.stop_prompt,
             self.stopword,
-            strip_thinking,
-            model_config.temperature,
-            model_config.top_p,
-            model_config.presence_penalty,
-            model_config.frequency_penalty,
-            model_config.num_ctx,
-            model_config.repeat_last_n,
-            model_config.repeat_penalty,
-            model_config.seed,
-            model_config.stop,
-            model_config.num_predict,
-            stream,
-            model_config.top_k,
-            model_config.min_p,
-            self.keep_alive,
             self.notification_channel,
             self.mcp_servers,
             flow,
@@ -651,13 +638,34 @@ mod tests {
             .build()
             .await
             .expect("build should succeed");
-        assert_eq!(agent.model, "test-model");
+        assert_eq!(agent.model.id(), "test-model");
         // history initialized with system prompt
         assert_eq!(
             agent.history.len(),
             1,
             "history should contain exactly the system prompt"
         );
+    }
+
+    #[tokio::test]
+    async fn agents_can_share_a_model_without_sharing_history() {
+        let model = LlmModel::llm("test-model").build().unwrap();
+        let mut first = AgentBuilder::default()
+            .with_model(model.clone())
+            .build()
+            .await
+            .unwrap();
+        let second = AgentBuilder::default()
+            .with_model(model)
+            .build()
+            .await
+            .unwrap();
+
+        first.history.push(Message::user("only in first"));
+
+        assert_eq!(first.model.id(), second.model.id());
+        assert_eq!(first.history.len(), 2);
+        assert_eq!(second.history.len(), 1);
     }
 
     #[tokio::test]
@@ -677,6 +685,7 @@ mod tests {
                 .response_format
                 .as_ref()
                 .unwrap()
+                .schema
                 .get("type")
                 .unwrap()
                 .as_str()

@@ -8,7 +8,7 @@ use crate::{
     prebuilds::{StatefullPrebuild, StatelessPrebuild},
     services::llm::{message::Message, ClientConfig},
     templates::Template,
-    Agent, AgentBuildError, AgentBuilder, AgentError, InvocationBuilder, ModelConfig, Notification,
+    Agent, AgentBuildError, AgentBuilder, AgentError, Invocation, ModelConfig, Notification,
     NotificationHandler, PromptConfig,
 };
 
@@ -369,10 +369,12 @@ async fn plan_and_execute_flow(agent: &mut Agent, prompt: String) -> Result<Mess
         // this is the only real invocation of the top-level agent
         // everything else is sub-agents
         agent.history.push(Message::user(prompt.to_string()));
-        let response = InvocationBuilder::default()
-            .use_tools(false)
-            .invoke_with(agent)
-            .await?;
+        let mut invocation = Invocation::chat().messages(agent.history.clone());
+        if let Some(format) = agent.response_format.clone() {
+            invocation = invocation.response_format(format);
+        }
+        let response = agent.invoke_model(invocation).await?;
+        agent.history.push(response.message.clone());
 
         agent
             .notify_done(true, response.message.content.clone())

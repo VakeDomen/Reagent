@@ -10,7 +10,7 @@ use crate::{
         models::chat::{ChatResponse, ChatStreamChunk},
         InferenceClientError,
     },
-    ChatRequest, InvocationError, InvocationRequest, NotificationHandler, ToolCall,
+    ChatRequest, InvocationError, NotificationHandler, NotificationOutputChannel, ToolCall,
 };
 
 #[derive(Debug, Serialize)]
@@ -20,16 +20,11 @@ struct UsageDetails {
     total_tokens: i64,
 }
 
-pub(super) async fn invoke_nonstreaming(
-    invocation_request: InvocationRequest,
+pub(crate) async fn invoke_nonstreaming(
+    request: ChatRequest,
+    client: &crate::services::llm::InferenceClient,
+    notification_channel: NotificationOutputChannel,
 ) -> Result<ChatResponse, InvocationError> {
-    let InvocationRequest {
-        strip_thinking,
-        request,
-        client,
-        notification_channel,
-    } = invocation_request;
-
     notification_channel
         .notify_prompt_request(request.clone())
         .await;
@@ -39,7 +34,7 @@ pub(super) async fn invoke_nonstreaming(
 
     let raw = client.chat(request).await;
 
-    let mut resp = match raw {
+    let resp = match raw {
         Ok(resp) => resp,
         Err(e) => {
             notification_channel
@@ -56,23 +51,14 @@ pub(super) async fn invoke_nonstreaming(
         .notify_prompt_success(resp.clone())
         .await;
 
-    if strip_thinking {
-        strip_thinking_from_response(&mut resp);
-    }
-
     Ok(resp)
 }
 
-pub(super) async fn invoke_streaming(
-    invocation_request: InvocationRequest,
+pub(crate) async fn invoke_streaming(
+    request: ChatRequest,
+    client: &crate::services::llm::InferenceClient,
+    notification_channel: NotificationOutputChannel,
 ) -> Result<ChatResponse, InvocationError> {
-    let InvocationRequest {
-        strip_thinking,
-        request,
-        client,
-        notification_channel,
-    } = invocation_request;
-
     notification_channel
         .notify_prompt_request(request.clone())
         .await;
@@ -149,7 +135,7 @@ pub(super) async fn invoke_streaming(
     final_msg.content = full_content;
     final_msg.tool_calls = tool_calls;
 
-    let mut response = ChatResponse {
+    let response = ChatResponse {
         model: chunk.model,
         created_at: chunk.created_at,
         message: final_msg,
@@ -169,20 +155,7 @@ pub(super) async fn invoke_streaming(
         .notify_prompt_success(response.clone())
         .await;
 
-    if strip_thinking {
-        strip_thinking_from_response(&mut response);
-    }
-
     Ok(response)
-}
-
-fn strip_thinking_from_response(response: &mut ChatResponse) {
-    if let Some(content) = response.message.content.clone() {
-        if let Some(after) = content.split("</think>").nth(1) {
-            response.message.content = Some(after.to_string());
-        }
-    }
-    response.message.thinking = None;
 }
 
 fn extract_error_telemetry(gen_span: &Span, error_message: &str) {

@@ -1,25 +1,16 @@
-use reagent_rs::{InvocationBuilder, Message};
+use reagent_rs::{Invocation, Message, Model};
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     reagent_rs::observability::init_default_tracing();
 
-    let req = InvocationBuilder::default()
-        .model("ministral-3:14b")
-        .set_message(Message::system("You are short and concise"))
-        .stream(true);
+    let model = Model::llm("qwen3:0.6b").stream(true).build()?;
+    let _ = model.invoke("Who is the owner of Nvidia?").await;
+    let _ = model.invoke("What's the meaning of life?").await;
 
-    let _ = req
-        .clone()
-        .add_message(Message::user("What's the meaning of life?"))
-        .invoke()
-        .await;
-
-    let _ = req
-        .add_message(Message::user("Who is the owner of Nvidia?"))
-        .invoke()
-        .await;
+    let request = Invocation::chat().message(Message::system("You are short and concise"));
+    let _ = model.invoke(request).await;
 
     Ok(())
 }

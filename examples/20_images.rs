@@ -1,31 +1,21 @@
-use reagent_rs::{InvocationBuilder, Message};
+use reagent_rs::{Message, Model, Provider};
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     reagent_rs::observability::init_default_tracing();
+    let model = Model::llm("qwen3:30b")
+        .provider(Provider::OpenAi)
+        .base_url("http://localhost:11434/v1")
+        .build()?;
 
     let message = Message::user("Describe the image").with_image(image);
-
-    let resp = InvocationBuilder::default()
-        .model("qwen3:30b")
-        .set_message(message)
-        .invoke()
-        .await;
-
+    let resp = model.invoke(message).await;
     println!("{:#?}", resp);
 
-    let message =
-        Message::user("Describe the image").with_image(format!("data:image/png;base64,{}", image));
-
-    let resp = InvocationBuilder::default()
-        .set_provider(reagent_rs::Provider::OpenAi)
-        .set_base_url("http://localhost:11434/v1")
-        .model("qwen3:30b")
-        .set_message(message)
-        .invoke()
-        .await;
-
+    let image_base64 = format!("data:image/png;base64,{}", image);
+    let message = Message::user("Describe the image").with_image(image_base64);
+    let resp = model.invoke(message).await;
     println!("{:#?}", resp);
 
     Ok(())

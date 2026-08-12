@@ -1,6 +1,6 @@
 use reagent_rs::{
-    prelude::*, InvocationBuilder, ModelConfig, NotificationHandler, PromptConfig,
-    StatefullPrebuild, StatelessPrebuild,
+    prelude::*, Invocation, ModelConfig, NotificationHandler, PromptConfig, StatefullPrebuild,
+    StatelessPrebuild,
 };
 use serde_json::Value;
 use std::{collections::HashMap, error::Error};
@@ -392,10 +392,12 @@ pub async fn plan_and_execute_flow(
         // everything else is sub-agents
         agent.history.push(Message::user(prompt.to_string()));
         // let response = invoke_without_tools(agent).await?;
-        let response = InvocationBuilder::default()
-            .use_tools(false)
-            .invoke_with(agent)
-            .await?;
+        let mut invocation = Invocation::chat().messages(agent.history.clone());
+        if let Some(format) = agent.response_format.clone() {
+            invocation = invocation.response_format(format);
+        }
+        let response = agent.invoke_model(invocation).await?;
+        agent.history.push(response.message.clone());
 
         agent
             .notify_done(true, response.message.content.clone())

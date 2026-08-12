@@ -1,5 +1,5 @@
 use crate::{
-    call_tools, services::llm::message::Message, Agent, AgentError, InvocationBuilder,
+    call_tools, services::llm::message::Message, Agent, AgentError, Invocation,
     NotificationHandler, ToolCall,
 };
 
@@ -15,10 +15,17 @@ pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, 
 
     for iteration in 0..max_iterations {
         let allow_tools = iteration + 1 < max_iterations;
-        let current = InvocationBuilder::default()
-            .use_tools(allow_tools)
-            .invoke_with(agent)
-            .await?;
+        let mut invocation = Invocation::chat().messages(agent.history.clone());
+        if allow_tools {
+            if let Some(tools) = agent.tools.clone().filter(|tools| !tools.is_empty()) {
+                invocation = invocation.tools(tools);
+            }
+        }
+        if let Some(format) = agent.response_format.clone() {
+            invocation = invocation.response_format(format);
+        }
+        let current = agent.invoke_model(invocation).await?;
+        agent.history.push(current.message.clone());
         let tool_calls = executable_tool_calls(&current.message, allow_tools);
         response = Some(current);
 

@@ -66,6 +66,8 @@
 
 pub mod agent;
 pub mod flows;
+pub mod invocation;
+pub mod model;
 pub mod notifications;
 pub mod observability;
 pub mod prebuilds;
@@ -77,6 +79,8 @@ mod services;
 
 pub use crate::agent::*;
 pub use crate::flows::*;
+pub use crate::invocation::{ChatInvocation, EmbeddingInvocation, Invocation, InvocationError};
+pub use crate::model::*;
 pub use crate::notifications::*;
 pub use crate::prebuilds::*;
 pub use crate::skills::*;
@@ -84,7 +88,7 @@ pub use crate::templates::*;
 pub use crate::tools::*;
 
 pub use crate::observability::init_default_tracing;
-pub use crate::services::llm::{ClientConfig, Provider};
+pub use crate::services::llm::{ClientConfig, InferenceOptions, Provider, SchemaSpec};
 
 pub use crate::services::llm::models::base::Role;
 pub use crate::services::llm::models::chat::{ChatRequest, ChatResponse};
@@ -96,11 +100,13 @@ pub use crate::services::mcp::mcp_tool_builder::McpServerType;
 
 pub mod prelude {
     pub use crate::{
-        flow, Agent, AgentBuildError, AgentBuilder, AgentError, ChatRequest, ChatResponse,
-        ClientConfig, EmbeddingInvocationBuilder, EmbeddingsResponse, Flow, InvocationBuilder,
-        LoadTemplateError, McpIntegrationError, McpServerType, Message, Notification,
-        NotificationContent, Provider, Role, Skill, SkillLoadError, SkillResource,
-        SkillResourceKind, Template, TemplateDataSource, Tool, ToolBuilder, ToolExecutionError,
+        flow, Agent, AgentBuildError, AgentBuilder, AgentError, ChatInvocation, ChatRequest,
+        ChatResponse, ClientConfig, Embedding, EmbeddingInvocation, EmbeddingModel,
+        EmbeddingModelBuilder, EmbeddingsResponse, Flow, InferenceOptions, Invocation, Llm,
+        LlmModel, LlmModelBuilder, LoadTemplateError, McpIntegrationError, McpServerType, Message,
+        Model, ModelBuilder, ModelConfig, Notification, NotificationContent, Provider, Role,
+        SchemaSpec, Skill, SkillLoadError, SkillResource, SkillResourceKind, Template,
+        TemplateDataSource, Tool, ToolBuilder, ToolExecutionError,
     };
 }
 

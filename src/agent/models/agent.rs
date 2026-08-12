@@ -1,9 +1,12 @@
-use crate::agent::models::configs::{ModelConfig, PromptConfig};
+use crate::agent::models::configs::PromptConfig;
 use crate::agent::models::error::{AgentBuildError, AgentError};
-use crate::services::llm::{ClientConfig, InferenceClient, InferenceOptions, SchemaSpec};
+use crate::services::llm::{ClientConfig, SchemaSpec};
 use crate::skills::Skill;
 use crate::templates::Template;
-use crate::{default_flow, Flow, NotificationHandler};
+use crate::{
+    default_flow, ChatInvocation, ChatResponse, Flow, InvocationError, LlmModel, ModelConfig,
+    NotificationHandler,
+};
 use core::fmt;
 use opentelemetry::trace::TraceContextExt;
 use serde::de::DeserializeOwned;
@@ -26,8 +29,8 @@ use crate::{
 pub struct Agent {
     /// Human-readable name of the agent.
     pub name: String,
-    /// Underlying model identifier.
-    pub model: String,
+    /// Reusable, sessionless model used for inference.
+    pub model: LlmModel,
     /// Conversation history with the model.
     pub history: Vec<Message>,
     /// Locally registered tools (before MCP merge).
@@ -36,46 +39,14 @@ pub struct Agent {
     pub mcp_servers: Option<Vec<McpServerType>>,
     /// Fully compiled tool set (local + MCP).
     pub tools: Option<Vec<Tool>>,
-    /// JSON schema format for responses, if any.
-    pub response_format: Option<Value>,
-    /// Backend model client.
-    pub(crate) inference_client: InferenceClient,
+    /// Provider-neutral JSON schema for responses, if any.
+    pub response_format: Option<SchemaSpec>,
     /// System prompt injected at the start of the conversation.
     pub system_prompt: String,
     /// Optional stop prompt inserted on tool branches.
     pub stop_prompt: Option<String>,
     /// Stopword to detect end of generation.
     pub stopword: Option<String>,
-    /// Whether `<think>` blocks should be stripped from outputs.
-    pub strip_thinking: bool,
-    /// Sampling temperature.
-    pub temperature: Option<f32>,
-    /// Nucleus sampling top-p parameter.
-    pub top_p: Option<f32>,
-    /// Presence penalty parameter.
-    pub presence_penalty: Option<f32>,
-    /// Frequency penalty parameter.
-    pub frequency_penalty: Option<f32>,
-    /// Maximum context window size.
-    pub num_ctx: Option<u32>,
-    /// Last-N window for repetition penalty.
-    pub repeat_last_n: Option<i32>,
-    /// Repetition penalty multiplier.
-    pub repeat_penalty: Option<f32>,
-    /// RNG seed for reproducibility.
-    pub seed: Option<i32>,
-    /// Hard stop sequence.
-    pub stop: Option<String>,
-    /// Maximum tokens to predict.
-    pub num_predict: Option<i32>,
-    /// Top-K sampling cutoff.
-    pub top_k: Option<u32>,
-    /// Minimum probability threshold.
-    pub min_p: Option<f32>,
-    /// Keep alive - keep model in memory
-    pub keep_alive: Option<String>,
-    /// Whether to stream token notifications.
-    pub stream: bool,
     /// Notification channel for emitting agent events.
     pub notification_channel: Option<Sender<Notification>>,
     /// Optional reusable template for prompt building.
@@ -95,28 +66,12 @@ pub struct Agent {
 impl Agent {
     pub(crate) async fn try_new(
         name: String,
-        model: &str,
-        inference_client: InferenceClient,
+        model: LlmModel,
         system_prompt: &str,
         local_tools: Option<Vec<Tool>>,
-        response_format: Option<Value>,
+        response_format: Option<SchemaSpec>,
         stop_prompt: Option<String>,
         stopword: Option<String>,
-        strip_thinking: bool,
-        temperature: Option<f32>,
-        top_p: Option<f32>,
-        presence_penalty: Option<f32>,
-        frequency_penalty: Option<f32>,
-        num_ctx: Option<u32>,
-        repeat_last_n: Option<i32>,
-        repeat_penalty: Option<f32>,
-        seed: Option<i32>,
-        stop: Option<String>,
-        num_predict: Option<i32>,
-        stream: bool,
-        top_k: Option<u32>,
-        min_p: Option<f32>,
-        keep_alive: Option<String>,
         notification_channel: Option<Sender<Notification>>,
         mcp_servers: Option<Vec<McpServerType>>,
         flow: Flow,
@@ -129,27 +84,12 @@ impl Agent {
 
         let mut agent = Self {
             name,
-            model: model.into(),
+            model,
             history,
-            inference_client,
             response_format,
             system_prompt: system_prompt.into(),
             stop_prompt,
             stopword,
-            strip_thinking,
-            temperature,
-            top_p,
-            presence_penalty,
-            frequency_penalty,
-            num_ctx,
-            repeat_last_n,
-            repeat_penalty,
-            seed,
-            stop,
-            num_predict,
-            top_k,
-            min_p,
-            keep_alive,
             notification_channel,
             mcp_servers,
             local_tools,
@@ -159,7 +99,6 @@ impl Agent {
             skills,
             max_iterations,
             clear_history_on_invoke,
-            stream,
             state: HashMap::new(),
         };
 
@@ -183,7 +122,7 @@ impl Agent {
             Level::INFO,
             "Invocation",
             "langfuse.observation.type" = "trace",
-            "agent.model" = self.model.as_str(),
+            "agent.model" = self.model.id(),
         );
         let parent_context = tracing::Span::current().context();
         let has_parent = parent_context.span().span_context().is_valid();
@@ -235,7 +174,7 @@ impl Agent {
             Level::INFO,
             "Invocation with structured output",
             "langfuse.observation.type" = "trace",
-            "agent.model" = self.model.as_str(),
+            "agent.model" = self.model.id(),
         );
         let parent_context = tracing::Span::current().context();
         let has_parent = parent_context.span().span_context().is_valid();
@@ -319,7 +258,7 @@ impl Agent {
             Level::INFO,
             "Invocation with template",
             "langfuse.observation.type" = "trace",
-            "agent.model" = self.model.as_str(),
+            "agent.model" = self.model.id(),
         );
         let parent_context = tracing::Span::current().context();
         let has_parent = parent_context.span().span_context().is_valid();
@@ -389,7 +328,7 @@ impl Agent {
             Level::INFO,
             "Invocation with template and structured output",
             "langfuse.observation.type" = "trace",
-            "agent.model" = self.model.as_str(),
+            "agent.model" = self.model.id(),
         );
         let parent_context = tracing::Span::current().context();
         let has_parent = parent_context.span().span_context().is_valid();
@@ -471,6 +410,23 @@ impl Agent {
     /// Reset conversation history to contain only the system prompt.
     pub fn clear_history(&mut self) {
         self.history = vec![Message::system(self.system_prompt.clone())];
+    }
+
+    /// Execute one model call using this agent's notification context.
+    ///
+    /// This method does not update history. Flows remain responsible for deciding
+    /// which request and response messages become agent state.
+    pub async fn invoke_model(
+        &self,
+        mut invocation: ChatInvocation,
+    ) -> Result<ChatResponse, InvocationError> {
+        if invocation.name.is_none() {
+            invocation.name = Some(self.name.clone());
+        }
+        if invocation.notification_channel.is_none() {
+            invocation.notification_channel = self.notification_channel.clone();
+        }
+        self.model.invoke(invocation).await
     }
 
     /// Persist the conversation history to disk in pretty-printed JSON.
@@ -563,44 +519,12 @@ impl Agent {
 
     /// Export current client configuration (provider, base URL, keys, etc.).
     pub fn export_client_config(&self) -> ClientConfig {
-        self.inference_client.get_config().clone()
+        self.model.client_config().clone()
     }
 
     /// Export current model configuration (temperature, top_p, penalties, etc.).
     pub fn export_model_config(&self) -> ModelConfig {
-        ModelConfig {
-            model: Some(self.model.clone()),
-            temperature: self.temperature,
-            top_p: self.top_p,
-            presence_penalty: self.presence_penalty,
-            frequency_penalty: self.frequency_penalty,
-            num_ctx: self.num_ctx,
-            repeat_last_n: self.repeat_last_n,
-            repeat_penalty: self.repeat_penalty,
-            seed: self.seed,
-            stop: self.stop.clone(),
-            num_predict: self.num_predict,
-            top_k: self.top_k,
-            min_p: self.min_p,
-        }
-    }
-
-    pub(crate) fn inference_options(&self) -> InferenceOptions {
-        InferenceOptions {
-            num_ctx: self.num_ctx,
-            repeat_last_n: self.repeat_last_n,
-            repeat_penalty: self.repeat_penalty,
-            temperature: self.temperature,
-            seed: self.seed,
-            stop: self.stop.clone(),
-            num_predict: self.num_predict,
-            max_tokens: None,
-            top_k: self.top_k,
-            top_p: self.top_p,
-            min_p: self.min_p,
-            presence_penalty: self.presence_penalty,
-            frequency_penalty: self.frequency_penalty,
-        }
+        self.model.export_config()
     }
 
     /// Export prompt-level configuration (system prompt, tools, template, etc.).
@@ -612,10 +536,7 @@ impl Agent {
         };
 
         let (response_format_raw, response_format) = if let Some(p) = self.response_format.clone() {
-            (
-                Some(serde_json::to_string(&p)?),
-                Some(SchemaSpec::from_value(p)),
-            )
+            (Some(serde_json::to_string(&p.schema)?), Some(p))
         } else {
             (None, None)
         };
@@ -628,10 +549,9 @@ impl Agent {
             mcp_servers: self.mcp_servers.clone(),
             stop_prompt: self.stop_prompt.clone(),
             stopword: self.stopword.clone(),
-            strip_thinking: Some(self.strip_thinking),
             max_iterations: self.max_iterations,
             clear_histroy_on_invoke: Some(self.clear_history_on_invoke),
-            stream: self.stream,
+            stream: self.model.stream_by_default(),
             pending_name: None,
             pending_strict: None,
         })
@@ -645,23 +565,9 @@ impl fmt::Debug for Agent {
             .field("history", &self.history)
             .field("local_tools", &self.local_tools)
             .field("response_format", &self.response_format)
-            .field("inference_client", &self.inference_client)
             .field("system_prompt", &self.system_prompt)
             .field("stop_prompt", &self.stop_prompt)
             .field("stopword", &self.stopword)
-            .field("strip_thinking", &self.strip_thinking)
-            .field("temperature", &self.temperature)
-            .field("top_p", &self.top_p)
-            .field("presence_penalty", &self.presence_penalty)
-            .field("frequency_penalty", &self.frequency_penalty)
-            .field("num_ctx", &self.num_ctx)
-            .field("repeat_last_n", &self.repeat_last_n)
-            .field("repeat_penalty", &self.repeat_penalty)
-            .field("seed", &self.seed)
-            .field("stop", &self.stop)
-            .field("num_predict", &self.num_predict)
-            .field("top_k", &self.top_k)
-            .field("min_p", &self.min_p)
             .field("notification_channel", &self.notification_channel)
             .field("mcp_servers", &self.mcp_servers)
             .field("skills", &self.skills)

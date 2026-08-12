@@ -1,5 +1,5 @@
 use reagent_rs::{
-    observability::langfuse::LangfuseOptions, AgentBuilder, InvocationBuilder, Message,
+    observability::langfuse::LangfuseOptions, AgentBuilder, Invocation, Message, Model,
 };
 use std::error::Error;
 
@@ -12,18 +12,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         host: Some("http://localhost:3000"),
     });
 
-    let req = InvocationBuilder::default()
-        .model("ministral-3:14b")
-        .set_message(Message::system("You are short and creative"))
-        .stream(true);
+    let model = Model::llm("ministral-3:14b").stream(true).build()?;
+    let request = Invocation::chat().message(Message::system("You are short and creative"));
 
-    let resp = req
-        .clone()
-        .add_message(Message::user("Ask me a question"))
-        .temperature(1.0)
-        .top_k(30)
-        .top_p(0.8)
-        .invoke()
+    let resp = model
+        .invoke(
+            request
+                .message(Message::user("Ask me a question"))
+                .temperature(1.0)
+                .top_k(30)
+                .top_p(0.8),
+        )
         .await;
 
     let mut agent = AgentBuilder::default()

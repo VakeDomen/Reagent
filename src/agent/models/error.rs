@@ -155,6 +155,19 @@ impl From<InferenceClientError> for AgentBuildError {
     }
 }
 
+impl From<InvocationError> for AgentBuildError {
+    fn from(err: InvocationError) -> Self {
+        match err {
+            InvocationError::ModelNotDefined => AgentBuildError::ModelNotSet,
+            InvocationError::InferenceError(err) => AgentBuildError::InferenceClient(err),
+            InvocationError::InvalidJsonSchema(err) => AgentBuildError::InvalidJsonSchema(err),
+            InvocationError::InputNotDefined => {
+                AgentBuildError::Unsupported("model builder received invocation input".into())
+            }
+        }
+    }
+}
+
 impl From<McpIntegrationError> for AgentBuildError {
     fn from(err: McpIntegrationError) -> Self {
         AgentBuildError::McpError(err)
