@@ -65,7 +65,6 @@
 #![forbid(unsafe_code)]
 
 pub mod agent;
-pub mod flows;
 pub mod invocation;
 pub mod model;
 pub mod notifications;
@@ -78,7 +77,6 @@ pub mod tools;
 mod services;
 
 pub use crate::agent::*;
-pub use crate::flows::*;
 pub use crate::invocation::{ChatInvocation, EmbeddingInvocation, Invocation, InvocationError};
 pub use crate::model::*;
 pub use crate::notifications::*;

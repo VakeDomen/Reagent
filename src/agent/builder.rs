@@ -1,5 +1,5 @@
 use crate::{
-    agent::models::{configs::PromptConfig, error::AgentBuildError},
+    agent::{config::PromptConfig, error::AgentBuildError},
     notifications::Notification,
     services::{
         llm::{ClientBuilder, ClientConfig, Provider, ResponseFormatConfig, SchemaSpec},

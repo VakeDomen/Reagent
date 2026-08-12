@@ -1,12 +1,9 @@
-use crate::agent::models::configs::PromptConfig;
-use crate::agent::models::error::{AgentBuildError, AgentError};
+use crate::agent::config::PromptConfig;
+use crate::agent::error::{AgentBuildError, AgentError};
 use crate::services::llm::{ClientConfig, SchemaSpec};
 use crate::skills::Skill;
 use crate::templates::Template;
-use crate::{
-    default_flow, ChatInvocation, ChatResponse, Flow, InvocationError, LlmModel, ModelConfig,
-    NotificationHandler,
-};
+use crate::{default_flow, Flow, LlmModel, ModelConfig, NotificationHandler};
 use core::fmt;
 use opentelemetry::trace::TraceContextExt;
 use serde::de::DeserializeOwned;
@@ -410,23 +407,6 @@ impl Agent {
     /// Reset conversation history to contain only the system prompt.
     pub fn clear_history(&mut self) {
         self.history = vec![Message::system(self.system_prompt.clone())];
-    }
-
-    /// Execute one model call using this agent's notification context.
-    ///
-    /// This method does not update history. Flows remain responsible for deciding
-    /// which request and response messages become agent state.
-    pub async fn invoke_model(
-        &self,
-        mut invocation: ChatInvocation,
-    ) -> Result<ChatResponse, InvocationError> {
-        if invocation.name.is_none() {
-            invocation.name = Some(self.name.clone());
-        }
-        if invocation.notification_channel.is_none() {
-            invocation.notification_channel = self.notification_channel.clone();
-        }
-        self.model.invoke(invocation).await
     }
 
     /// Persist the conversation history to disk in pretty-printed JSON.
