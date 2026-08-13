@@ -4,12 +4,13 @@ use uuid::Uuid;
 use crate::{Role, ToolCall};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Message {
+#[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
+pub struct Message<T = String> {
     #[serde(default = "new_uuid", skip_serializing)]
     pub id: String,
     pub role: Role,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
+    pub content: Option<T>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

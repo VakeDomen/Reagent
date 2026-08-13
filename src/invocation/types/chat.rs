@@ -1,4 +1,5 @@
 use rmcp::schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::model::execution;
@@ -8,9 +9,10 @@ use crate::{
     ChatResponse, InferenceOptions, Invocation, InvocationError, Message,
     NotificationOutputChannel, SchemaSpec, Tool,
 };
+use crate::{Standard, Structured};
 
 /// Provider-neutral input for one chat/completion call.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Chat {
     pub(crate) messages: Vec<Message>,
     pub(crate) tools: Option<Vec<Tool>>,
@@ -21,6 +23,22 @@ pub struct Chat {
     pub(crate) keep_alive: Option<String>,
 }
 
+impl Default for Chat {
+    fn default() -> Self {
+        Self {
+            messages: Vec::new(),
+            tools: None,
+            options: InferenceOptions::default(),
+            response_format: ResponseFormatConfig::default(),
+            provider_format: None,
+            // Providers do not agree on the default when this field is omitted.
+            // Keep invocation execution and the request sent on the wire aligned.
+            stream: Some(false),
+            keep_alive: None,
+        }
+    }
+}
+
 pub type ChatInvocation = Invocation<Chat>;
 
 impl Default for Invocation<Chat> {
@@ -29,11 +47,13 @@ impl Default for Invocation<Chat> {
     }
 }
 
-impl Invocation<Chat> {
+impl Invocation<Chat, Standard> {
     pub fn chat() -> Self {
         Self::new(Chat::default())
     }
+}
 
+impl<O> Invocation<Chat, O> {
     pub fn keep_alive(mut self, value: impl Into<String>) -> Self {
         self.request.keep_alive = Some(value.into());
         self
@@ -129,25 +149,24 @@ impl Invocation<Chat> {
         self
     }
 
-    /// Set a provider-neutral structured-output schema.
-    pub fn response_format(mut self, schema: SchemaSpec) -> Self {
+    pub(crate) fn set_response_format(mut self, schema: SchemaSpec) -> Self {
         self.request.response_format.set_spec(schema);
         self
     }
 
-    pub fn response_format_str(mut self, schema: &str) -> Self {
+    pub(crate) fn set_response_format_str(mut self, schema: &str) -> Self {
         self.request.response_format.set_raw(schema);
         self
     }
 
-    pub fn response_format_value(mut self, schema: Value) -> Self {
+    pub(crate) fn set_response_format_value(mut self, schema: Value) -> Self {
         self.request.response_format.set_value(schema);
         self
     }
 
-    pub fn response_format_from<T: JsonSchema>(mut self) -> Self {
+    pub fn response_format_from<T: JsonSchema>(mut self) -> Invocation<Chat, Structured<T>> {
         self.request.response_format.set_type::<T>();
-        self
+        self.with_output()
     }
 
     pub fn schema_name(mut self, name: impl Into<String>) -> Self {
@@ -166,8 +185,7 @@ impl Invocation<Chat> {
         self
     }
 
-    /// Execute this fully configured invocation once.
-    pub async fn invoke(self) -> Result<ChatResponse, InvocationError> {
+    async fn invoke_raw(self) -> Result<ChatResponse, InvocationError> {
         let model = self.model.ok_or(InvocationError::ModelNotDefined)?;
         let client = self.client_config.build()?;
         let schema = self
@@ -196,5 +214,53 @@ impl Invocation<Chat> {
         } else {
             execution::invoke_nonstreaming(request, &client, notifications).await
         }
+    }
+}
+
+impl Invocation<Chat, Standard> {
+    /// Set a provider-neutral structured-output schema and decode its JSON response as a value.
+    pub fn response_format(self, schema: SchemaSpec) -> Invocation<Chat, Structured<Value>> {
+        self.set_response_format(schema).with_output()
+    }
+
+    /// Set a JSON schema and decode its response as a JSON value.
+    pub fn response_format_str(self, schema: &str) -> Invocation<Chat, Structured<Value>> {
+        self.set_response_format_str(schema).with_output()
+    }
+
+    /// Set a JSON schema and decode its response as a JSON value.
+    pub fn response_format_value(self, schema: Value) -> Invocation<Chat, Structured<Value>> {
+        self.set_response_format_value(schema).with_output()
+    }
+}
+
+impl<T> Invocation<Chat, Structured<T>> {
+    /// Replace the provider-neutral schema while retaining this invocation's output type.
+    pub fn response_format(self, schema: SchemaSpec) -> Self {
+        self.set_response_format(schema)
+    }
+
+    /// Replace the JSON schema while retaining this invocation's output type.
+    pub fn response_format_str(self, schema: &str) -> Self {
+        self.set_response_format_str(schema)
+    }
+
+    /// Replace the JSON schema while retaining this invocation's output type.
+    pub fn response_format_value(self, schema: Value) -> Self {
+        self.set_response_format_value(schema)
+    }
+}
+
+impl Invocation<Chat, Standard> {
+    /// Execute this fully configured invocation once.
+    pub async fn invoke(self) -> Result<ChatResponse, InvocationError> {
+        self.invoke_raw().await
+    }
+}
+
+impl<T: DeserializeOwned> Invocation<Chat, Structured<T>> {
+    /// Execute this invocation and parse the assistant message content.
+    pub async fn invoke(self) -> Result<ChatResponse<T>, InvocationError> {
+        self.invoke_raw().await?.parse_content()
     }
 }

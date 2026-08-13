@@ -3,9 +3,7 @@ pub(crate) mod execution;
 mod model;
 
 pub use builder::*;
-pub use model::{
-    Embedding, EmbeddingModel, IntoModelInput, Llm, LlmModel, Model, Standard, Structured,
-};
+pub use model::{Embedding, EmbeddingModel, IntoModelInput, Llm, LlmModel, Model};
 
 #[test]
 fn model_requires_an_identifier() {
@@ -48,6 +46,8 @@ fn configured_history_is_copied_into_each_call_without_mutating_the_model() {
 
 #[test]
 fn structured_output_is_encoded_in_the_model_type() {
+    use crate::Structured;
+
     #[derive(serde::Deserialize, rmcp::schemars::JsonSchema)]
     struct Entity {
         name: String,

@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use serde::de::DeserializeOwned;
 
+use crate::invocation::{Standard, Structured};
 use crate::{
     ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, Invocation, InvocationError,
     Message, ModelBuilder, Notification, SchemaSpec, Tool,
@@ -47,14 +48,6 @@ pub struct Llm;
 
 #[derive(Debug, Clone, Default)]
 pub struct Embedding;
-
-/// The default LLM output: the provider response is returned unchanged.
-#[derive(Debug, Clone, Default)]
-pub struct Standard;
-
-/// A schema-backed LLM output parsed directly into `T`.
-#[derive(Debug, Clone, Default)]
-pub struct Structured<T>(PhantomData<T>);
 
 pub type LlmModel = Model<Llm, Standard>;
 pub type EmbeddingModel = Model<Embedding>;
@@ -106,7 +99,7 @@ impl Model<Llm, Standard> {
             invocation = invocation.tools(tools.clone());
         }
         if let Some(format) = &self.response_format {
-            invocation = invocation.response_format(format.clone());
+            invocation = invocation.set_response_format(format.clone());
         }
         if let Some(keep_alive) = &self.keep_alive {
             invocation = invocation.keep_alive(keep_alive.clone());
@@ -140,7 +133,10 @@ impl Model<Embedding> {
 }
 
 impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
-    pub async fn invoke(&self, input: impl IntoModelInput) -> Result<T, InvocationError> {
+    pub async fn invoke(
+        &self,
+        input: impl IntoModelInput,
+    ) -> Result<ChatResponse<T>, InvocationError> {
         let messages = self
             .history
             .iter()
@@ -158,7 +154,7 @@ impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
             invocation = invocation.tools(tools.clone());
         }
         if let Some(format) = &self.response_format {
-            invocation = invocation.response_format(format.clone());
+            invocation = invocation.set_response_format(format.clone());
         }
         if let Some(keep_alive) = &self.keep_alive {
             invocation = invocation.keep_alive(keep_alive.clone());
@@ -166,12 +162,7 @@ impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
         if let Some(name) = &self.name {
             invocation = invocation.name(name.clone());
         }
-        let response = invocation.invoke().await?;
-        let content = response.message.content.ok_or_else(|| {
-            InvocationError::InvalidStructuredOutput("model did not return content".into())
-        })?;
-        serde_json::from_str(&content)
-            .map_err(|error| InvocationError::InvalidStructuredOutput(error.to_string()))
+        invocation.structured_output::<T>().invoke().await
     }
 }
 

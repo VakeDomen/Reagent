@@ -77,7 +77,9 @@ pub mod tools;
 mod services;
 
 pub use crate::agent::*;
-pub use crate::invocation::{ChatInvocation, EmbeddingInvocation, Invocation, InvocationError};
+pub use crate::invocation::{
+    ChatInvocation, EmbeddingInvocation, Invocation, InvocationError, Standard, Structured,
+};
 pub use crate::model::*;
 pub use crate::notifications::*;
 pub use crate::prebuilds::*;

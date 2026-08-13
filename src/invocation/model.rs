@@ -1,14 +1,25 @@
 //! Per-call model metadata and context.
 
+use std::marker::PhantomData;
+
 use crate::{services::llm::ClientBuilder, ClientConfig, Notification, Provider};
 use tokio::sync::mpsc::Sender;
+
+/// The default invocation output: provider message content remains text.
+#[derive(Debug, Clone, Default)]
+pub struct Standard;
+
+/// A structured invocation output parsed from assistant message content.
+#[derive(Debug, Clone, Default)]
+pub struct Structured<T>(pub(crate) PhantomData<T>);
 
 /// One passive, provider-neutral request to a [`crate::Model`].
 ///
 /// An invocation contains only data for a single call. It does not own a client,
 /// model identifier, conversation history, or any state that can survive the call.
 #[derive(Debug, Clone)]
-pub struct Invocation<R> {
+pub struct Invocation<R, O = Standard> {
+    _output: PhantomData<O>,
     pub(crate) request: R,
     pub(crate) model: Option<String>,
     pub(crate) client_config: ClientConfig,
@@ -16,15 +27,32 @@ pub struct Invocation<R> {
     pub(crate) notification_channel: Option<Sender<Notification>>,
 }
 
-impl<R> Invocation<R> {
+impl<R, O> Invocation<R, O> {
     pub(crate) fn new(request: R) -> Self {
         Self {
+            _output: PhantomData,
             request,
             model: None,
             client_config: ClientConfig::default(),
             name: None,
             notification_channel: None,
         }
+    }
+
+    pub(crate) fn with_output<T>(self) -> Invocation<R, T> {
+        Invocation {
+            _output: PhantomData,
+            request: self.request,
+            model: self.model,
+            client_config: self.client_config,
+            name: self.name,
+            notification_channel: self.notification_channel,
+        }
+    }
+
+    /// Mark a schema-configured invocation as returning a parsed structured response.
+    pub(crate) fn structured_output<T>(self) -> Invocation<R, Structured<T>> {
+        self.with_output()
     }
 
     /// Select the model used by this one-off invocation.
