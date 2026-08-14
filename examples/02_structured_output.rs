@@ -16,47 +16,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
-        // If you need structured output you can set
-        // the response format schema of the agent
-        .set_response_format_str(
-            r#"
-            {
-              "type":"object",
-              "properties":{
-                "windy":{"type":"boolean"},
-                "temperature":{"type":"integer"},
-                "description":{"type":"string"}
-              },
-              "required":["windy","temperature","description"]
-            }
-            "#,
-        )
+        .structured_output::<MyWeatherOuput>()
         .build()
         .await?;
 
-    // however the "invoke_flow" still returns a general Message
-    // struct and you have to parse the message.content Option<string> to
-    // own struct
-
-    // If you call `invoke_flow_structured_output` the agent will return your
-    // deserialized object
-    let resp: MyWeatherOuput = agent
-        .invoke_flow_structured_output("What is the current weather in Koper?")
+    let resp = agent
+        .invoke("What is the current weather in Koper?")
         .await?;
-    println!("Agent: {resp:#?}");
+    println!("Agent: {:#?}", resp.content);
 
     let mut agent = AgentBuilder::default()
         .set_model("qwen3:0.6b")
         .set_system_prompt("You make up weather info in JSON. You always say it's sowing")
         // you can also use the schemars with serde to construct schema from struct
-        .set_response_format_from::<MyWeatherOuput>()
+        .structured_output::<MyWeatherOuput>()
         .build()
         .await?;
 
-    let resp: MyWeatherOuput = agent
-        .invoke_flow_structured_output("What is the current weather in Koper?")
+    let resp = agent
+        .invoke("What is the current weather in Koper?")
         .await?;
-    println!("Agent: {resp:#?}");
+    println!("Agent: {:#?}", resp.content);
 
     Ok(())
 }

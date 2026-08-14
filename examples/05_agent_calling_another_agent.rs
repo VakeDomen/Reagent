@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 // invoke it
                 let resp = agent
-                    .invoke_flow(prompt)
+                    .invoke(prompt)
                     .await
                     .map_err(|e| ToolExecutionError::ExecutionFailed(e.to_string()))?;
 
@@ -83,15 +83,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let resp = agent.invoke_flow("Say hello").await?;
+    let resp = agent.invoke("Say hello").await?;
     println!("Agent: {}", resp.content.unwrap());
 
     let resp = agent
-        .invoke_flow("What is the current weather in Koper?")
+        .invoke("What is the current weather in Koper?")
         .await?;
     println!("Agent: {}", resp.content.unwrap());
 
-    let resp = agent.invoke_flow("What do you remember?").await?;
+    let resp = agent.invoke("What do you remember?").await?;
     println!("Agent: {}", resp.content.unwrap());
 
     Ok(())

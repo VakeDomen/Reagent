@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     let _ = plan_and_execute_agent
-        .invoke_flow("Does this university offer any sholarships for PhD students?")
+        .invoke("Does this university offer any sholarships for PhD students?")
         .await;
     println!("histroy: {:#?}", plan_and_execute_agent.history);
 

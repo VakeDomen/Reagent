@@ -51,12 +51,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     let resp = agent
-        .invoke_flow("call any tool 5 times with different inputs")
+        .invoke("call any tool 5 times with different inputs")
         .await?;
     println!("Agent: {}", resp.content.unwrap_or_default());
 
     let resp = agent
-        .invoke_flow("What is the current weather in Koper?")
+        .invoke("What is the current weather in Koper?")
         .await?;
     println!("Agent: {}", resp.content.unwrap_or_default());
 

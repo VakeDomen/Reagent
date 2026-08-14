@@ -1,7 +1,7 @@
 use crate::{services::llm::message::Message, Agent, AgentError, NotificationHandler};
 
-pub async fn reply_without_tools_flow(
-    agent: &mut Agent,
+pub async fn reply_without_tools_flow<I, O>(
+    agent: &mut Agent<I, O>,
     prompt: String,
 ) -> Result<Message, AgentError> {
     let input = Message::user(prompt);

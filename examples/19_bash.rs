@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         println!("\n\n Agent: ");
-        let _ = agent.invoke_flow(prompt).await?;
+        let _ = agent.invoke(prompt).await?;
     }
 
     // println!("{}", resp.content.unwrap());

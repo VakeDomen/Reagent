@@ -7,8 +7,8 @@ use crate::{
     },
     skills::{build_read_skill_tool, load_skill_sources},
     templates::Template,
-    Agent, Flow, FlowFuture, InferenceOptions, LlmModel, LlmModelBuilder, Skill, Tool,
-    ToolBuilderError, SKILL_SYSTEM_PROMPT_TEMPLATE,
+    Agent, Flow, FlowFuture, InferenceOptions, LlmModel, LlmModelBuilder, Prompt, Skill, Standard,
+    Structured, TemplateInput, Tool, ToolBuilderError, SKILL_SYSTEM_PROMPT_TEMPLATE,
 };
 use futures::future::join_all;
 use rmcp::schemars::JsonSchema;
@@ -40,8 +40,8 @@ use tokio::sync::{mpsc, Mutex};
 ///
 /// ```
 ///
-#[derive(Debug, Default)]
-pub struct AgentBuilder {
+#[derive(Debug)]
+pub struct AgentBuilder<I = Prompt, O = Standard> {
     /// Name used for logging and defaults
     name: Option<String>,
 
@@ -88,10 +88,38 @@ pub struct AgentBuilder {
     /// Optional mpsc sender for notifications
     notification_channel: Option<mpsc::Sender<Notification>>,
     /// High-level control flow policy
-    flow: Option<Flow>,
+    flow: Option<Flow<I, O>>,
 }
 
-impl AgentBuilder {
+impl Default for AgentBuilder<Prompt, Standard> {
+    fn default() -> Self {
+        Self {
+            name: None,
+            model: None,
+            client_config: ClientConfig::default(),
+            inference_options: InferenceOptions::default(),
+            runtime_model: None,
+            template: None,
+            system_prompt: None,
+            tools: None,
+            response_format: ResponseFormatConfig::default(),
+            mcp_servers: None,
+            skill_paths: Vec::new(),
+            skill_collection_paths: Vec::new(),
+            builtin_skills: Vec::new(),
+            stop_prompt: None,
+            stopword: None,
+            max_iterations: None,
+            clear_histroy_on_invoke: None,
+            stream: None,
+            keep_alive: None,
+            notification_channel: None,
+            flow: None,
+        }
+    }
+}
+
+impl<I, O> AgentBuilder<I, O> {
     /// Use an already-built, reusable model for this agent.
     pub fn with_model(mut self, model: LlmModel) -> Self {
         self.runtime_model = Some(model);
@@ -125,7 +153,7 @@ impl AgentBuilder {
     /// Only fields present in `conf` are applied.
     pub fn import_prompt_config(mut self, conf: PromptConfig) -> Self {
         if let Some(template) = conf.template {
-            self = self.set_template(template);
+            self.template = Some(Arc::new(Mutex::new(template)));
         }
         if let Some(system_prompt) = conf.system_prompt {
             self = self.set_system_prompt(system_prompt);
@@ -374,14 +402,14 @@ impl AgentBuilder {
         self
     }
 
-    pub fn set_flow_fn(mut self, flow: Flow) -> Self {
+    pub fn set_flow_fn(mut self, flow: Flow<I, O>) -> Self {
         self.flow = Some(flow);
         self
     }
 
     pub fn set_flow<F>(self, f: F) -> Self
     where
-        F: for<'a> Fn(&'a mut Agent, String) -> FlowFuture<'a> + Send + Sync + 'static,
+        F: for<'a> Fn(&'a mut Agent<I, O>, String) -> FlowFuture<'a> + Send + Sync + 'static,
     {
         self.set_flow_fn(Flow::from_fn(f))
     }
@@ -444,12 +472,6 @@ impl AgentBuilder {
         self
     }
 
-    /// Set a template for the agent's first prompt
-    pub fn set_template(mut self, template: Template) -> Self {
-        self.template = Some(Arc::new(Mutex::new(template)));
-        self
-    }
-
     /// Set max_iterations. This controlls maximum amount of times the agent
     /// may perform a "conversation iteration". Also serves as a breakpoint
     /// if the agent is stuck in a loop
@@ -504,7 +526,7 @@ impl AgentBuilder {
     /// Creates an internal mpsc channel of size 100.
     pub async fn build_with_notification(
         mut self,
-    ) -> Result<(Agent, mpsc::Receiver<Notification>), AgentBuildError> {
+    ) -> Result<(Agent<I, O>, mpsc::Receiver<Notification>), AgentBuildError> {
         let (sender, receiver) = mpsc::channel(100);
         self.notification_channel = Some(sender);
         let agent = self.build().await?;
@@ -512,7 +534,7 @@ impl AgentBuilder {
     }
 
     /// Finalize all settings and produce an [`Agent`], or an error if required fields missing or invalid.
-    pub async fn build(self) -> Result<Agent, AgentBuildError> {
+    pub async fn build(self) -> Result<Agent<I, O>, AgentBuildError> {
         let model_config = self.inference_options;
         let mut model_id = self
             .runtime_model
@@ -611,6 +633,70 @@ impl AgentBuilder {
             clear_histroy_on_invoke,
         )
         .await
+    }
+}
+
+impl<I> AgentBuilder<I, Standard> {
+    pub fn structured_output<T: JsonSchema>(mut self) -> AgentBuilder<I, Structured<T>> {
+        self.response_format.set_type::<T>();
+        AgentBuilder {
+            name: self.name,
+            model: self.model,
+            client_config: self.client_config,
+            inference_options: self.inference_options,
+            runtime_model: self.runtime_model,
+            template: self.template,
+            system_prompt: self.system_prompt,
+            tools: self.tools,
+            response_format: self.response_format,
+            mcp_servers: self.mcp_servers,
+            skill_paths: self.skill_paths,
+            skill_collection_paths: self.skill_collection_paths,
+            builtin_skills: self.builtin_skills,
+            stop_prompt: self.stop_prompt,
+            stopword: self.stopword,
+            max_iterations: self.max_iterations,
+            clear_histroy_on_invoke: self.clear_histroy_on_invoke,
+            stream: self.stream,
+            keep_alive: self.keep_alive,
+            notification_channel: self.notification_channel,
+            flow: self.flow.map(|flow| match flow {
+                Flow::Default => Flow::Default,
+                Flow::Func(_) => panic!("set the flow after selecting structured output"),
+            }),
+        }
+    }
+}
+
+impl<O> AgentBuilder<Prompt, O> {
+    pub fn set_template(mut self, template: Template) -> AgentBuilder<TemplateInput, O> {
+        self.template = Some(Arc::new(Mutex::new(template)));
+        AgentBuilder {
+            name: self.name,
+            model: self.model,
+            client_config: self.client_config,
+            inference_options: self.inference_options,
+            runtime_model: self.runtime_model,
+            template: self.template,
+            system_prompt: self.system_prompt,
+            tools: self.tools,
+            response_format: self.response_format,
+            mcp_servers: self.mcp_servers,
+            skill_paths: self.skill_paths,
+            skill_collection_paths: self.skill_collection_paths,
+            builtin_skills: self.builtin_skills,
+            stop_prompt: self.stop_prompt,
+            stopword: self.stopword,
+            max_iterations: self.max_iterations,
+            clear_histroy_on_invoke: self.clear_histroy_on_invoke,
+            stream: self.stream,
+            keep_alive: self.keep_alive,
+            notification_channel: self.notification_channel,
+            flow: self.flow.map(|flow| match flow {
+                Flow::Default => Flow::Default,
+                Flow::Func(_) => panic!("set the flow after selecting a template"),
+            }),
+        }
     }
 }
 
@@ -782,7 +868,7 @@ mod tests {
             .await
             .unwrap();
         let mut a = agent.clone();
-        let resp = a.invoke_flow("abc").await.unwrap();
+        let resp = a.invoke("abc").await.unwrap();
         assert_eq!(resp.content.unwrap(), "ECHO: abc");
     }
 }

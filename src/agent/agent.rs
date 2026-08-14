@@ -3,14 +3,14 @@ use crate::agent::error::{AgentBuildError, AgentError};
 use crate::services::llm::{ClientConfig, SchemaSpec};
 use crate::skills::Skill;
 use crate::templates::Template;
-use crate::{default_flow, Flow, InferenceOptions, LlmModel, NotificationHandler};
+use crate::{default_flow, Flow, InferenceOptions, LlmModel, NotificationHandler, Standard};
 use core::fmt;
 use opentelemetry::trace::TraceContextExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{Error, Value};
-use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
+use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use tracing::{span, Instrument, Level};
@@ -22,8 +22,14 @@ use crate::{
     McpServerType, Tool,
 };
 
+#[derive(Debug, Clone, Default)]
+pub struct Prompt;
+
+#[derive(Debug, Clone, Default)]
+pub struct TemplateInput;
+
 #[derive(Clone)]
-pub struct Agent {
+pub struct Agent<I = Prompt, O = Standard> {
     /// Human-readable name of the agent.
     pub name: String,
     /// Reusable, sessionless model used for inference.
@@ -57,10 +63,11 @@ pub struct Agent {
     /// State for custom data
     pub state: HashMap<String, Value>,
 
-    flow: Flow,
+    flow: Flow<I, O>,
+    kind: PhantomData<(I, O)>,
 }
 
-impl Agent {
+impl<I, O> Agent<I, O> {
     pub(crate) async fn try_new(
         name: String,
         model: LlmModel,
@@ -71,7 +78,7 @@ impl Agent {
         stopword: Option<String>,
         notification_channel: Option<Sender<Notification>>,
         mcp_servers: Option<Vec<McpServerType>>,
-        flow: Flow,
+        flow: Flow<I, O>,
         template: Option<Arc<Mutex<Template>>>,
         skills: Vec<Skill>,
         max_iterations: Option<usize>,
@@ -97,6 +104,7 @@ impl Agent {
             max_iterations,
             clear_history_on_invoke,
             state: HashMap::new(),
+            kind: PhantomData,
         };
 
         agent.tools = agent.get_compiled_tools().await?;
@@ -112,13 +120,27 @@ impl Agent {
 
     /// Invoke the agent with a raw string prompt.
     ///
+    /// This is the primary Agent entry point. The agent appends the prompt to
+    /// its persistent history, executes its configured flow, and returns that
+    /// flow's final assistant message.
+    async fn invoke_text(&mut self, prompt: impl Into<String>) -> Result<Message, AgentError> {
+        self.legacy_invoke_flow(prompt).await
+    }
+
+    /// Invoke the agent with a raw string prompt.
+    ///
+    /// Deprecated compatibility name for [`Agent::invoke`].
+    ///
     /// This is the most direct way to ask the agent something:
     /// the given prompt string it is conveterd to a user message and
     /// appended to history. It is passed through
     /// the configured [`Flow`] (either `Default` or `Custom`).
     ///
     /// Returns the raw [`Message`] produced by the flow.
-    pub async fn invoke_flow(&mut self, prompt: impl Into<String>) -> Result<Message, AgentError> {
+    async fn legacy_invoke_flow(
+        &mut self,
+        prompt: impl Into<String>,
+    ) -> Result<Message, AgentError> {
         let prompt_str = prompt.into();
 
         let trace_span = span!(
@@ -166,10 +188,13 @@ impl Agent {
     ///
     /// Use this when you constrain the response with a JSON schema
     /// (`response_format`) and want the result to be typed.
-    pub async fn invoke_flow_structured_output<T, O>(&mut self, prompt: T) -> Result<O, AgentError>
+    async fn legacy_invoke_flow_structured_output<T, U>(
+        &mut self,
+        prompt: T,
+    ) -> Result<U, AgentError>
     where
         T: Into<String>,
-        O: DeserializeOwned + Serialize,
+        U: DeserializeOwned + Serialize,
     {
         let prompt_str = prompt.into();
 
@@ -204,7 +229,7 @@ impl Agent {
                 };
 
                 // Deserialize to O
-                match serde_json::from_str::<O>(&json).map_err(AgentError::Deserialization) {
+                match serde_json::from_str::<U>(&json).map_err(AgentError::Deserialization) {
                     Ok(out) => {
                         // Serialize O back to string to record it as the Trace Output
                         if let Ok(dump) = serde_json::to_string_pretty(&out) {
@@ -237,7 +262,7 @@ impl Agent {
     /// from reusable templates instead of raw strings.
     ///
     /// Returns the raw [`Message`] produced by the flow.
-    pub async fn invoke_flow_with_template<K, V>(
+    async fn legacy_invoke_flow_with_template<K, V>(
         &mut self,
         template_data: HashMap<K, V>,
     ) -> Result<Message, AgentError>
@@ -311,14 +336,14 @@ impl Agent {
     ///
     /// Use this when you constrain the response with a JSON schema
     /// (`response_format`) and want the result to be typed.
-    pub async fn invoke_flow_with_template_structured_output<K, V, O>(
+    async fn legacy_invoke_flow_with_template_structured_output<K, V, U>(
         &mut self,
         template_data: HashMap<K, V>,
-    ) -> Result<O, AgentError>
+    ) -> Result<U, AgentError>
     where
         K: Into<String> + serde::Serialize,
         V: Into<String> + serde::Serialize,
-        O: DeserializeOwned + serde::Serialize,
+        U: DeserializeOwned + serde::Serialize,
     {
         let trace_input = serde_json::to_string_pretty(&template_data).unwrap_or_default();
 
@@ -359,7 +384,7 @@ impl Agent {
                     });
                     return Err(e);
                 };
-                match serde_json::from_str::<O>(&json).map_err(AgentError::Deserialization) {
+                match serde_json::from_str::<U>(&json).map_err(AgentError::Deserialization) {
                     Ok(out) => {
                         if let Ok(dump) = serde_json::to_string_pretty(&out) {
                             trace_span.set_attribute("langfuse.observation.output", dump);
@@ -547,7 +572,78 @@ impl Agent {
     }
 }
 
-impl fmt::Debug for Agent {
+impl Agent<Prompt, Standard> {
+    pub async fn invoke(&mut self, prompt: impl Into<String>) -> Result<Message, AgentError> {
+        self.invoke_text(prompt).await
+    }
+}
+
+impl<T> Agent<Prompt, crate::Structured<T>>
+where
+    T: DeserializeOwned,
+{
+    pub async fn invoke(&mut self, prompt: impl Into<String>) -> Result<Message<T>, AgentError> {
+        let message = self.invoke_text(prompt).await?;
+        let id = message.id.clone();
+        let encoded = serde_json::to_value(message)
+            .map_err(|error| AgentError::Runtime(error.to_string()))?;
+        let mut message: Message<T> =
+            serde_json::from_value(encoded).map_err(AgentError::Deserialization)?;
+        message.id = id;
+        Ok(message)
+    }
+}
+
+impl Agent<TemplateInput, Standard> {
+    pub async fn invoke<K, V>(&mut self, data: HashMap<K, V>) -> Result<Message, AgentError>
+    where
+        K: Into<String> + Eq + std::hash::Hash,
+        V: Into<String>,
+    {
+        let prompt = self.compile_template(data).await?;
+        self.invoke_text(prompt).await
+    }
+}
+
+impl<T> Agent<TemplateInput, crate::Structured<T>>
+where
+    T: DeserializeOwned,
+{
+    pub async fn invoke<K, V>(&mut self, data: HashMap<K, V>) -> Result<Message<T>, AgentError>
+    where
+        K: Into<String> + Eq + std::hash::Hash,
+        V: Into<String>,
+    {
+        let prompt = self.compile_template(data).await?;
+        let message = self.invoke_text(prompt).await?;
+        let id = message.id.clone();
+        let encoded = serde_json::to_value(message)
+            .map_err(|error| AgentError::Runtime(error.to_string()))?;
+        let mut message: Message<T> =
+            serde_json::from_value(encoded).map_err(AgentError::Deserialization)?;
+        message.id = id;
+        Ok(message)
+    }
+}
+
+impl<O> Agent<TemplateInput, O> {
+    async fn compile_template<K, V>(&self, data: HashMap<K, V>) -> Result<String, AgentError>
+    where
+        K: Into<String> + Eq + std::hash::Hash,
+        V: Into<String>,
+    {
+        let Some(template) = &self.template else {
+            return Err(AgentError::Runtime("No template defined".into()));
+        };
+        let data = data
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect::<HashMap<String, String>>();
+        Ok(template.lock().await.compile(&data).await)
+    }
+}
+
+impl<I, O> fmt::Debug for Agent<I, O> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Agent")
             .field("model", &self.model)
@@ -564,7 +660,7 @@ impl fmt::Debug for Agent {
     }
 }
 
-impl NotificationHandler for Agent {
+impl<I, O> NotificationHandler for Agent<I, O> {
     fn get_outgoing_channel(&self) -> &Option<Sender<Notification>> {
         &self.notification_channel
     }

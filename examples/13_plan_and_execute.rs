@@ -242,11 +242,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     // use it
-    let _resp = agent.invoke_flow("Say hello").await?;
+    let _resp = agent.invoke("Say hello").await?;
     let _resp = agent
-        .invoke_flow("What is the current weather in Koper?")
+        .invoke("What is the current weather in Koper?")
         .await?;
-    let _resp = agent.invoke_flow("What do you remember?").await?;
+    let _resp = agent.invoke("What do you remember?").await?;
 
     Ok(())
 }
@@ -303,7 +303,7 @@ pub async fn plan_and_execute_flow(
     // fist we build the draft (blueprint) of how to tackle the user problem
     // we do this by invoking the blueprint sub-agent
     let blueprint = blueprint_agent
-        .invoke_flow_with_template(HashMap::from([
+        .invoke(HashMap::from([
             ("tools", format!("{:#?}", agent.tools)),
             ("prompt", prompt.clone()),
         ]))
@@ -319,7 +319,7 @@ pub async fn plan_and_execute_flow(
     // from the blueprint we attempt to create the step-by-step plan of the
     // how to solve the user task
     let plan_content = planner_agent
-        .invoke_flow_with_template(HashMap::from([
+        .invoke(HashMap::from([
             ("tools", format!("{:#?}", agent.tools)),
             ("prompt", blueprint),
         ]))
@@ -351,7 +351,7 @@ pub async fn plan_and_execute_flow(
 
         // execute the step
         // for this we use the executor sub-agent with clean history every iteration
-        let response = executor_agent.invoke_flow(current_step.clone()).await?;
+        let response = executor_agent.invoke(current_step.clone()).await?;
 
         // top-level agent remembers the response (result of step)
         agent.history.push(response.clone());
@@ -371,7 +371,7 @@ pub async fn plan_and_execute_flow(
         // the replanner also resets history on each iteration, so we pass the
         // "past_steps" to show histroical progress
         let new_plan_content = replanner_agent
-            .invoke_flow_with_template(HashMap::from([
+            .invoke(HashMap::from([
                 ("tools", format!("{:#?}", agent.tools)),
                 ("prompt", prompt.clone()),
                 ("plan", format!("{plan:#?}")),
@@ -435,7 +435,7 @@ fn get_plan_from_response(plan_response: &Message) -> Result<Vec<String>, AgentE
 
 pub async fn create_planner_agent(
     ref_agent: &Agent,
-) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+) -> Result<(Agent<reagent_rs::TemplateInput>, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
     let (client_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
 
@@ -490,7 +490,7 @@ pub async fn create_planner_agent(
 
 pub async fn create_blueprint_agent(
     ref_agent: &Agent,
-) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+) -> Result<(Agent<reagent_rs::TemplateInput>, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
     let (client_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
 
@@ -527,7 +527,7 @@ pub async fn create_blueprint_agent(
 
 pub async fn create_replanner_agent(
     ref_agent: &Agent,
-) -> Result<(Agent, Receiver<Notification>), AgentBuildError> {
+) -> Result<(Agent<reagent_rs::TemplateInput>, Receiver<Notification>), AgentBuildError> {
     // extract configurations of the top-level agent
     let (client_config, model_config, prompt_config) = extract_configurations(ref_agent).await;
 

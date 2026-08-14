@@ -29,15 +29,15 @@
 //!     let mut agent = AgentBuilder::default()
 //!         .set_model("qwen3:0.6b")
 //!         .set_system_prompt("You make up weather info in JSON")
-//!         .set_response_format_from::<MyWeatherOuput>()
+//!         .structured_output::<MyWeatherOuput>()
 //!         .set_temperature(0.6)
 //!         .set_top_k(20)
 //!         .set_stream(true)
 //!         .build()
 //!         .await?;
 //!
-//!     let resp: MyWeatherOuput = agent
-//!         .invoke_flow_structured_output("What is the current weather in Koper?")
+//!     let resp = agent
+//!         .invoke("What is the current weather in Koper?")
 //!         .await?;
 //!
 //!     Ok(())
@@ -106,7 +106,7 @@ pub mod prelude {
         LlmModel, LlmModelBuilder, LoadTemplateError, McpIntegrationError, McpServerType, Message,
         Model, ModelBuilder, Notification, NotificationContent, Provider, Role, SchemaSpec, Skill,
         SkillLoadError, SkillResource, SkillResourceKind, Template, TemplateDataSource, Tool,
-        ToolBuilder, ToolExecutionError,
+        Prompt, Standard, Structured, TemplateInput, ToolBuilder, ToolExecutionError,
     };
 }
 

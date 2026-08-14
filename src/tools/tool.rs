@@ -145,7 +145,7 @@ pub struct ToolCallFunction {
 ///
 /// Returns a `Vec<Message>` containing all tool responses (including
 /// error placeholders when a tool cannot be found or fails).
-pub async fn call_tools(agent: &Agent, tool_calls: &[ToolCall]) -> Vec<Message> {
+pub async fn call_tools<I, O>(agent: &Agent<I, O>, tool_calls: &[ToolCall]) -> Vec<Message> {
     let mut results = Vec::new();
 
     let Some(avail) = &agent.tools else {

@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    let resp = agent.invoke_flow(PROMPT).await?;
+    let resp = agent.invoke(PROMPT).await?;
 
     println!("{}", resp.content.unwrap());
 

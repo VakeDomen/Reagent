@@ -40,9 +40,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let prompt_data = HashMap::from([("name", "Gregor"), ("question", "What's your name?")]);
 
     // if you are using a template invoke the agent using
-    // invoke_flow_with_template instead invoke_flow
+    // Template agents receive data through the same `invoke` method.
     // you pass it the HashMap of values
-    let resp = agent.invoke_flow_with_template(prompt_data).await?;
+    let resp = agent.invoke(prompt_data).await?;
     println!("Agent: {}", resp.content.unwrap());
 
     // ...custom structs that implement Into<String>
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let prompt_data = HashMap::from([("name", name), ("question", question)]);
 
-    let resp = agent.invoke_flow_with_template(prompt_data).await?;
+    let resp = agent.invoke(prompt_data).await?;
     println!("Agent: {}", resp.content.unwrap());
 
     Ok(())

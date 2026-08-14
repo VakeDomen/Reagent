@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let prompt_data = HashMap::from([("question", "What's the date today?")]);
 
     // invoke
-    let resp = agent.invoke_flow_with_template(prompt_data).await?;
+    let resp = agent.invoke(prompt_data).await?;
     println!("\t-> Agent: {resp:#?}");
 
     Ok(())

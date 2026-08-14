@@ -4,7 +4,10 @@ use crate::{
 
 const DEFAULT_MAX_ITERATIONS: usize = 50;
 
-pub async fn default_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {
+pub async fn default_flow<I, O>(
+    agent: &mut Agent<I, O>,
+    prompt: String,
+) -> Result<Message, AgentError> {
     agent.history.push(Message::user(prompt));
     let max_iterations = agent
         .max_iterations

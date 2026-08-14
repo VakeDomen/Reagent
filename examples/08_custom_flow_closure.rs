@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    println!("{:#?}", agent.invoke_flow("What's the key?").await?);
+    println!("{:#?}", agent.invoke("What's the key?").await?);
 
     Ok(())
 }

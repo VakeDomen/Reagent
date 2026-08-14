@@ -70,11 +70,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("--------------------------\n");
     });
 
-    let _resp = agent.invoke_flow("Say hello").await?;
+    let _resp = agent.invoke("Say hello").await?;
     let _resp = agent
-        .invoke_flow("What is the current weather in Koper?")
+        .invoke("What is the current weather in Koper?")
         .await?;
-    let _resp = agent.invoke_flow("What do you remember?").await?;
+    let _resp = agent.invoke("What do you remember?").await?;
 
     let my_notification = MyCustomNotification {
         message: "This is a custom notification".to_string(),

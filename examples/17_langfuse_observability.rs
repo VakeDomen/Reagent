@@ -28,9 +28,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let resp = agent
-        .invoke_flow(resp.unwrap().message.content.unwrap())
-        .await?;
+    let resp = agent.invoke(resp.unwrap().message.content.unwrap()).await?;
     println!("Agent: {}", resp.content.unwrap());
 
     // shutdown will flush any unsent buffered traces

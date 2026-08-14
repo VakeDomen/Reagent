@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let resp = agent.invoke_flow("What is the meaning of life?").await?;
+    let resp = agent.invoke("What is the meaning of life?").await?;
     println!("{resp:#?}");
 
     Ok(())
