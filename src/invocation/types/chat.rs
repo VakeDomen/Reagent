@@ -266,6 +266,13 @@ impl Invocation<Chat, Standard> {
 impl<T: DeserializeOwned> Invocation<Chat, Structured<T>> {
     /// Execute this invocation and parse the assistant message content.
     pub async fn invoke(self) -> Result<ChatResponse<T>, InvocationError> {
-        self.invoke_raw().await?.parse_content()
+        let response = self.invoke_raw().await?;
+        let message_id = response.message.id.clone();
+        let encoded = serde_json::to_value(response)
+            .map_err(|error| InvocationError::InvalidStructuredOutput(error.to_string()))?;
+        let mut response = serde_json::from_value::<ChatResponse<T>>(encoded)
+            .map_err(|error| InvocationError::InvalidStructuredOutput(error.to_string()))?;
+        response.message.id = message_id;
+        Ok(response)
     }
 }

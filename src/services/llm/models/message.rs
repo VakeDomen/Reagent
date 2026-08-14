@@ -1,15 +1,23 @@
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{Role, ToolCall};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
+#[serde(bound(
+    serialize = "T: Serialize",
+    deserialize = "T: serde::de::DeserializeOwned"
+))]
 pub struct Message<T = String> {
     #[serde(default = "new_uuid", skip_serializing)]
     pub id: String,
     pub role: Role,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_content"
+    )]
     pub content: Option<T>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking: Option<String>,
@@ -19,6 +27,28 @@ pub struct Message<T = String> {
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+}
+
+/// Provider APIs encode assistant content as a string, including when that
+/// string itself contains structured JSON. Decode both representations through
+/// serde so `Message<T>` owns the output type.
+fn deserialize_content<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let content = Option::<Value>::deserialize(deserializer)?;
+    let Some(content) = content else {
+        return Ok(None);
+    };
+
+    let decoded = match content {
+        Value::String(content) => serde_json::from_value(Value::String(content.clone()))
+            .or_else(|_| serde_json::from_str(&content)),
+        content => serde_json::from_value(content),
+    };
+
+    decoded.map(Some).map_err(D::Error::custom)
 }
 
 impl Message {
@@ -72,4 +102,30 @@ impl Message {
 
 fn new_uuid() -> String {
     Uuid::new_v4().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Entity {
+        name: String,
+    }
+
+    #[test]
+    fn serde_decodes_json_string_content_into_the_message_type() {
+        let message: Message<Entity> =
+            serde_json::from_str(r#"{"role":"assistant","content":"{\"name\":\"Ada\"}"}"#).unwrap();
+
+        assert_eq!(message.content, Some(Entity { name: "Ada".into() }));
+    }
+
+    #[test]
+    fn serde_keeps_regular_content_as_text() {
+        let message: Message =
+            serde_json::from_str(r#"{"role":"assistant","content":"hello"}"#).unwrap();
+
+        assert_eq!(message.content.as_deref(), Some("hello"));
+    }
 }
