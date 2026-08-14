@@ -69,7 +69,6 @@ pub mod invocation;
 pub mod model;
 pub mod notifications;
 pub mod observability;
-pub mod prebuilds;
 pub mod skills;
 pub mod templates;
 pub mod tools;
@@ -82,7 +81,6 @@ pub use crate::invocation::{
 };
 pub use crate::model::*;
 pub use crate::notifications::*;
-pub use crate::prebuilds::*;
 pub use crate::skills::*;
 pub use crate::templates::*;
 pub use crate::tools::*;

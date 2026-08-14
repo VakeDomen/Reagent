@@ -1,6 +1,6 @@
 # Reagent
 
-Reagent is a Rust library for building and running AI agents that interact with LLMs. It abstracts away provider-specific details (currently supports [Ollama](https://ollama.com) and [OpenRouter](https://openrouter.ai)), provides a consistent API for prompting, structured outputs, and tool use, and allows you to define fully custom invocation flows.
+Reagent is a Rust library for building and running AI agents that interact with LLMs. It abstracts away provider-specific details for [Ollama](https://ollama.com), [OpenRouter](https://openrouter.ai), and OpenAI-compatible endpoints; provides a consistent API for prompting, structured outputs, and tool use; and allows you to define custom agent flows.
 
 You can add the library to your project by pulling from crates:
 
@@ -12,7 +12,7 @@ or directly from github:
 
 ```toml
 [dependencies]
-reagent = { git = "https://github.com/VakeDomen/Reagent" }
+reagent-rs = { git = "https://github.com/VakeDomen/Reagent" }
 ```
 ---
 
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let resp = agent.invoke_flow("Hello!").await?;
+    let resp = agent.invoke("Hello!").await?;
     println!("Agent response: {}", resp.content.unwrap_or_default());
 
     Ok(())
@@ -115,55 +115,56 @@ Note: some providers require provider-specific response format settings.
 
 You can ask the model to return JSON that matches a schema.
 
-Manual schema:
+For a typed response, define the shape with `schemars` and select it on the
+builder. The agent's `invoke` method then returns `Message<T>`.
 
 ```rust
-let agent = AgentBuilder::default()
-    .set_model("qwen3:0.6b")
-    .set_response_format(r#"{
-        "type":"object",
-        "properties":{
-            "windy":{"type":"boolean"},
-            "temperature":{"type":"integer"},
-            "description":{"type":"string"}
-        },
-        "required":["windy","temperature","description"]
-    }"#)
-    .build()
-    .await?;
-```
+use reagent_rs::{AgentBuilder, JsonSchema, Message};
+use serde::Deserialize;
 
-From struct via `schemars`:
-
-```rust
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 struct Weather {
     windy: bool,
     temperature: i32,
     description: String
 }
 
-let agent = AgentBuilder::default()
+let mut agent = AgentBuilder::default()
     .set_model("qwen3:0.6b")
-    .set_response_format_from::<Weather>()
+    .structured_output::<Weather>()
     .build()
     .await?;
+
+let response: Message<Weather> = agent.invoke("What's the weather?").await?;
 ```
 
-To get parsed output directly:
+When you provide a schema directly without an infered type (same on `Model`
+builder). The response content is then `serde_json::Value`:
 
 ```rust
-let resp: Weather = agent.invoke_flow_structured_output("What's the weather?").await?;
+use reagent_rs::{ChatResponse, Invocation, Message, Value};
+
+let response: ChatResponse<Value> = Invocation::chat()
+    .model("qwen3:0.6b")
+    .message(Message::user("What's the weather?"))
+    .response_format_str(r#"{
+        "type":"object",
+        "properties":{"temperature":{"type":"integer"}}
+    }"#)
+    .invoke()
+    .await?;
 ```
 
 ---
 
 ## Models and Invocations
 
-`Invocation` is the fully configured, one-off API. `Model` is the easier,
-reusable API: it owns defaults and optional configured history, but never keeps
+`Invocation` is the fully configured, one-off API call. `Model` is the easier,
+reusable API. it owns defaults and optional configured history, but never keeps
 the prompt or response from an individual call. Models are typed by capability:
 use `Model::llm(...)` for chat and `Model::embedding(...)` for embeddings.
+The same model can be called repeatedly without accumulating any state.
+Agents can reuse that model while keeping independent histories:
 
 ```rust
 use reagent_rs::Model;
@@ -172,8 +173,23 @@ let model = Model::llm("qwen3:0.6b").build()?;
 let chat = model.invoke("Hello").await?;
 ```
 
-The same model can be called repeatedly without accumulating conversation state.
-Agents can reuse that model while keeping independent histories:
+Models can use the same typed structured-output path as agents:
+
+```rust
+use reagent_rs::{ChatResponse, JsonSchema, Model};
+use serde::Deserialize;
+
+#[derive(Deserialize, JsonSchema)]
+struct Entities {
+    people: Vec<String>,
+}
+
+let extractor = Model::llm("qwen3:0.6b")
+    .structured_output::<Entities>()
+    .build()?;
+let response: ChatResponse<Entities> = extractor.invoke("Ada visited London.").await?;
+```
+
 
 ```rust
 use reagent_rs::AgentBuilder;
@@ -256,7 +272,6 @@ let agent = AgentBuilder::default()
 Flows control how the agent is invoked.
 
 * **Default flow**: prompt -> LLM -> (maybe tool call -> LLM) -> result
-* **Prebuilt flows**: e.g., `reply`, `reply_without_tools`, `call_tools`, `plan_and_execute`
 * **Custom flow functions**:
 
 ```rust
@@ -267,7 +282,7 @@ async fn my_custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, Ag
 
 let agent = AgentBuilder::default()
     .set_model("qwen3:0.6b")
-    .set_flow(flow!(my_flow))
+    .set_flow(flow!(my_custom_flow))
     .build()
     .await?;
 ```
@@ -281,7 +296,7 @@ Define prompts with placeholders:
 ```rust
 let template = Template::simple("Hello {{name}}!");
 
-let agent = AgentBuilder::default()
+let mut agent = AgentBuilder::default()
     .set_model("qwen3:0.6b")
     .set_template(template)
     .build()
@@ -291,10 +306,11 @@ let prompt_data = HashMap::from([
     ("name", "Peter"),
 ]);
 
-let resp = agent.invoke_flow_with_template(prompt_data).await?;
+let resp = agent.invoke(prompt_data).await?;
 ```
 
-Pass a `HashMap` of values to `invoke_flow_with_template`.
+Pass a `HashMap` of values to `invoke`. Calling `set_template` changes the
+agent's invocation input from a prompt string to template data.
 
 You can also provide a `TemplateDataSource` that injects dynamic values at invocation time.
 
@@ -312,25 +328,6 @@ let (agent, mut rx) = AgentBuilder::default()
     .await?;
 ```
 
-
----
-
-## Prebuilds
-
-For quick experiments, `StatelessPrebuild` and `StatefullPrebuild` offer presets some simple flow patterns. Stateful versions keep conversation history; stateless ones reset each call.
-
-Examples:
-
-```rust
-let agent = StatelessPrebuild::reply()
-    .set_model("qwen3:0.6b")
-    .build()
-    .await?;
-let agent = StatefullPrebuild::call_tools()
-    .set_model("qwen3:0.6b")
-    .build()
-    .await?;
-```
 
 ---
 
