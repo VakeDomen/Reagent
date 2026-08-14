@@ -58,3 +58,28 @@ fn structured_output_is_encoded_in_the_model_type() {
         .build()
         .unwrap();
 }
+
+#[test]
+fn structured_model_builders_keep_fluent_llm_configuration() {
+    use crate::Structured;
+
+    #[derive(serde::Deserialize, rmcp::schemars::JsonSchema)]
+    struct Entity {
+        name: String,
+    }
+
+    let _: Model<Llm, Structured<Entity>> = Model::llm("extractor")
+        .structured_output::<Entity>()
+        .temperature(0.0)
+        .stream(true)
+        .schema_name("entities")
+        .schema_strict(true)
+        .build()
+        .unwrap();
+
+    let _: Model<Llm, Structured<serde_json::Value>> = Model::llm("extractor")
+        .schema_name("entities")
+        .response_format_value(serde_json::json!({"type": "object"}))
+        .build()
+        .unwrap();
+}

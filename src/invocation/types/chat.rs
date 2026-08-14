@@ -164,6 +164,11 @@ impl<O> Invocation<Chat, O> {
         self
     }
 
+    pub(crate) fn set_response_format_config(mut self, config: ResponseFormatConfig) -> Self {
+        self.request.response_format = config;
+        self
+    }
+
     pub fn response_format_from<T: JsonSchema>(mut self) -> Invocation<Chat, Structured<T>> {
         self.request.response_format.set_type::<T>();
         self.with_output()

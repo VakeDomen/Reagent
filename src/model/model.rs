@@ -3,10 +3,12 @@ use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
 
 use crate::invocation::{Standard, Structured};
+use crate::services::llm::ResponseFormatConfig;
 use crate::{
     ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, Invocation, InvocationError,
     Message, ModelBuilder, Notification, SchemaSpec, Tool,
 };
+use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 pub trait IntoModelInput {
@@ -61,7 +63,8 @@ pub struct Model<M = Llm, O = Standard> {
     keep_alive: Option<String>,
     history: Vec<Message>,
     tools: Option<Vec<Tool>>,
-    response_format: Option<SchemaSpec>,
+    response_format: ResponseFormatConfig,
+    provider_format: Option<Value>,
     name: Option<String>,
     notification_channel: Option<Sender<Notification>>,
     kind: PhantomData<(M, O)>,
@@ -98,8 +101,9 @@ impl Model<Llm, Standard> {
         if let Some(tools) = &self.tools {
             invocation = invocation.tools(tools.clone());
         }
-        if let Some(format) = &self.response_format {
-            invocation = invocation.set_response_format(format.clone());
+        invocation = invocation.set_response_format_config(self.response_format.clone());
+        if let Some(format) = &self.provider_format {
+            invocation = invocation.provider_format(format.clone());
         }
         if let Some(keep_alive) = &self.keep_alive {
             invocation = invocation.keep_alive(keep_alive.clone());
@@ -153,8 +157,9 @@ impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
         if let Some(tools) = &self.tools {
             invocation = invocation.tools(tools.clone());
         }
-        if let Some(format) = &self.response_format {
-            invocation = invocation.set_response_format(format.clone());
+        invocation = invocation.set_response_format_config(self.response_format.clone());
+        if let Some(format) = &self.provider_format {
+            invocation = invocation.provider_format(format.clone());
         }
         if let Some(keep_alive) = &self.keep_alive {
             invocation = invocation.keep_alive(keep_alive.clone());
@@ -183,7 +188,10 @@ impl<O> Model<Llm, O> {
         self
     }
     pub fn set_response_format(&mut self, response_format: Option<SchemaSpec>) -> &mut Self {
-        self.response_format = response_format;
+        self.response_format = ResponseFormatConfig::default();
+        if let Some(response_format) = response_format {
+            self.response_format.set_spec(response_format);
+        }
         self
     }
     pub fn set_name(&mut self, name: Option<String>) -> &mut Self {
@@ -241,7 +249,8 @@ impl<M, O> Model<M, O> {
         keep_alive: Option<String>,
         history: Vec<Message>,
         tools: Option<Vec<Tool>>,
-        response_format: Option<SchemaSpec>,
+        response_format: ResponseFormatConfig,
+        provider_format: Option<Value>,
         name: Option<String>,
         notification_channel: Option<Sender<Notification>>,
         kind: PhantomData<(M, O)>,
@@ -255,6 +264,7 @@ impl<M, O> Model<M, O> {
             history,
             tools,
             response_format,
+            provider_format,
             name,
             notification_channel,
             kind,

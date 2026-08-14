@@ -1,9 +1,12 @@
 use std::{collections::HashMap, marker::PhantomData};
 
 use crate::{
-    services::llm::ClientBuilder, ClientConfig, Embedding, InferenceOptions, InvocationError, Llm,
-    Message, Model, Provider, SchemaSpec, Standard, Structured,
+    services::llm::{ClientBuilder, ResponseFormatConfig},
+    ClientConfig, Embedding, InferenceOptions, InvocationError, Llm, Message, Model, Notification,
+    Provider, SchemaSpec, Standard, Structured, Tool,
 };
+use serde_json::Value;
+use tokio::sync::mpsc::Sender;
 
 pub type LlmModelBuilder = ModelBuilder<Llm, Standard>;
 pub type EmbeddingModelBuilder = ModelBuilder<Embedding>;
@@ -18,7 +21,11 @@ pub struct ModelBuilder<M = Llm, O = Standard> {
     stream: bool,
     keep_alive: Option<String>,
     history: Vec<Message>,
-    response_format: Option<SchemaSpec>,
+    tools: Option<Vec<Tool>>,
+    response_format: ResponseFormatConfig,
+    provider_format: Option<Value>,
+    name: Option<String>,
+    notification_channel: Option<Sender<Notification>>,
     kind: PhantomData<(M, O)>,
 }
 
@@ -31,7 +38,11 @@ impl<M, O> Default for ModelBuilder<M, O> {
             stream: false,
             keep_alive: None,
             history: Vec::new(),
-            response_format: None,
+            tools: None,
+            response_format: ResponseFormatConfig::default(),
+            provider_format: None,
+            name: None,
+            notification_channel: None,
             kind: PhantomData,
         }
     }
@@ -96,35 +107,53 @@ impl<M, O> ModelBuilder<M, O> {
             self.stream,
             self.keep_alive,
             self.history,
-            None,
+            self.tools,
             self.response_format,
-            None,
-            None,
+            self.provider_format,
+            self.name,
+            self.notification_channel,
             self.kind,
         ))
     }
 }
 
-impl ModelBuilder<Llm, Standard> {
+impl<O> ModelBuilder<Llm, O> {
     pub fn set_history(mut self, history: impl Into<Vec<Message>>) -> Self {
         self.history = history.into();
         self
     }
 
-    pub fn structured_output<T: rmcp::schemars::JsonSchema>(
-        self,
-    ) -> ModelBuilder<Llm, Structured<T>> {
-        ModelBuilder {
-            id: self.id,
-            client_config: self.client_config,
-            options: self.options,
-            stream: self.stream,
-            keep_alive: self.keep_alive,
-            history: self.history,
-            response_format: Some(SchemaSpec::from_type::<T>()),
-            kind: PhantomData,
-        }
+    pub fn tools(mut self, tools: Vec<Tool>) -> Self {
+        self.tools = Some(tools);
+        self
     }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    pub fn notification_channel(mut self, channel: Option<Sender<Notification>>) -> Self {
+        self.notification_channel = channel;
+        self
+    }
+
+    /// Escape hatch for an already provider-formatted response format.
+    pub fn provider_format(mut self, format: Value) -> Self {
+        self.provider_format = Some(format);
+        self
+    }
+
+    pub fn schema_name(mut self, name: impl Into<String>) -> Self {
+        self.response_format.set_name(name);
+        self
+    }
+
+    pub fn schema_strict(mut self, strict: bool) -> Self {
+        self.response_format.set_strict(strict);
+        self
+    }
+
     pub fn options(mut self, options: InferenceOptions) -> Self {
         self.options = options;
         self
@@ -197,6 +226,86 @@ impl ModelBuilder<Llm, Standard> {
 
     pub fn min_p(mut self, value: f32) -> Self {
         self.options.min_p = Some(value);
+        self
+    }
+}
+
+impl ModelBuilder<Llm, Standard> {
+    pub fn structured_output<T: rmcp::schemars::JsonSchema>(
+        self,
+    ) -> ModelBuilder<Llm, Structured<T>> {
+        ModelBuilder {
+            id: self.id,
+            client_config: self.client_config,
+            options: self.options,
+            stream: self.stream,
+            keep_alive: self.keep_alive,
+            history: self.history,
+            tools: self.tools,
+            response_format: {
+                let mut format = self.response_format;
+                format.set_type::<T>();
+                format
+            },
+            provider_format: self.provider_format,
+            name: self.name,
+            notification_channel: self.notification_channel,
+            kind: PhantomData,
+        }
+    }
+
+    pub fn response_format(mut self, schema: SchemaSpec) -> ModelBuilder<Llm, Structured<Value>> {
+        self.response_format.set_spec(schema);
+        self.with_structured_value()
+    }
+
+    pub fn response_format_str(mut self, schema: &str) -> ModelBuilder<Llm, Structured<Value>> {
+        self.response_format.set_raw(schema);
+        self.with_structured_value()
+    }
+
+    pub fn response_format_value(mut self, schema: Value) -> ModelBuilder<Llm, Structured<Value>> {
+        self.response_format.set_value(schema);
+        self.with_structured_value()
+    }
+
+    pub fn response_format_from<T: rmcp::schemars::JsonSchema>(
+        self,
+    ) -> ModelBuilder<Llm, Structured<T>> {
+        self.structured_output()
+    }
+
+    fn with_structured_value(self) -> ModelBuilder<Llm, Structured<Value>> {
+        ModelBuilder {
+            id: self.id,
+            client_config: self.client_config,
+            options: self.options,
+            stream: self.stream,
+            keep_alive: self.keep_alive,
+            history: self.history,
+            tools: self.tools,
+            response_format: self.response_format,
+            provider_format: self.provider_format,
+            name: self.name,
+            notification_channel: self.notification_channel,
+            kind: PhantomData,
+        }
+    }
+}
+
+impl<O> ModelBuilder<Llm, Structured<O>> {
+    pub fn response_format(mut self, schema: SchemaSpec) -> Self {
+        self.response_format.set_spec(schema);
+        self
+    }
+
+    pub fn response_format_str(mut self, schema: &str) -> Self {
+        self.response_format.set_raw(schema);
+        self
+    }
+
+    pub fn response_format_value(mut self, schema: Value) -> Self {
+        self.response_format.set_value(schema);
         self
     }
 }
