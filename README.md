@@ -190,6 +190,26 @@ let extractor = Model::llm("qwen3:0.6b")
 let response: ChatResponse<Entities> = extractor.invoke("Ada visited London.").await?;
 ```
 
+Models can also render a template for each invocation. A templated model accepts
+template data instead of a prompt string, while still retaining neither the
+rendered prompt nor the response:
+
+```rust
+use std::collections::HashMap;
+use reagent_rs::Model;
+
+let extractor = Model::llm("qwen3:0.6b")
+    .set_template_simple("Extract entities from: {{text}}")
+    .build()?;
+
+let response = extractor
+    .invoke(HashMap::from([("text", "Ada visited London.")]))
+    .await?;
+```
+
+Use `set_template`, `set_template_simple`, `set_template_with_source`,
+`set_template_from_file`, or `set_template_from_file_with_source` to configure
+the template.
 
 ```rust
 use reagent_rs::AgentBuilder;

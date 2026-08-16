@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{collections::HashMap, marker::PhantomData};
 
 use serde::de::DeserializeOwned;
 
@@ -6,7 +6,7 @@ use crate::invocation::{Standard, Structured};
 use crate::services::llm::ResponseFormatConfig;
 use crate::{
     ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, Invocation, InvocationError,
-    Message, ModelBuilder, Notification, SchemaSpec, Tool,
+    Message, ModelBuilder, Notification, Prompt, SchemaSpec, Template, TemplateInput, Tool,
 };
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
@@ -51,11 +51,11 @@ pub struct Llm;
 #[derive(Debug, Clone, Default)]
 pub struct Embedding;
 
-pub type LlmModel = Model<Llm, Standard>;
+pub type LlmModel = Model<Llm, Standard, Prompt>;
 pub type EmbeddingModel = Model<Embedding>;
 
 #[derive(Clone, Debug)]
-pub struct Model<M = Llm, O = Standard> {
+pub struct Model<M = Llm, O = Standard, I = Prompt> {
     id: String,
     client_config: ClientConfig,
     options: InferenceOptions,
@@ -67,10 +67,11 @@ pub struct Model<M = Llm, O = Standard> {
     provider_format: Option<Value>,
     name: Option<String>,
     notification_channel: Option<Sender<Notification>>,
-    kind: PhantomData<(M, O)>,
+    template: Option<Template>,
+    kind: PhantomData<(M, O, I)>,
 }
 
-impl Model<Llm, Standard> {
+impl Model<Llm, Standard, Prompt> {
     pub fn llm(id: impl Into<String>) -> ModelBuilder<Llm> {
         ModelBuilder::new(id)
     }
@@ -115,7 +116,7 @@ impl Model<Llm, Standard> {
     }
 }
 
-impl Model<Embedding> {
+impl Model<Embedding, Standard, Prompt> {
     pub fn embedding(id: impl Into<String>) -> ModelBuilder<Embedding> {
         ModelBuilder::new(id)
     }
@@ -136,7 +137,7 @@ impl Model<Embedding> {
     }
 }
 
-impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
+impl<T: DeserializeOwned> Model<Llm, Structured<T>, Prompt> {
     pub async fn invoke(
         &self,
         input: impl IntoModelInput,
@@ -171,7 +172,104 @@ impl<T: DeserializeOwned> Model<Llm, Structured<T>> {
     }
 }
 
-impl<O> Model<Llm, O> {
+impl<O> Model<Llm, O, TemplateInput> {
+    async fn compile_template<K, V>(&self, data: HashMap<K, V>) -> String
+    where
+        K: Clone + Into<String>,
+        V: Clone + Into<String>,
+    {
+        self.template
+            .as_ref()
+            .expect("templated models always contain a template")
+            .compile(&data)
+            .await
+    }
+}
+
+impl Model<Llm, Standard, TemplateInput> {
+    /// Render the configured template using `data` and invoke the model.
+    ///
+    /// The rendered prompt and response are not retained by the model.
+    pub async fn invoke<K, V>(&self, data: HashMap<K, V>) -> Result<ChatResponse, InvocationError>
+    where
+        K: Clone + Into<String>,
+        V: Clone + Into<String>,
+    {
+        let prompt = self.compile_template(data).await;
+        let messages = self
+            .history
+            .iter()
+            .cloned()
+            .chain([Message::user(prompt)])
+            .collect();
+        let mut invocation = Invocation::chat()
+            .model(self.id.clone())
+            .client_config(self.client_config.clone())
+            .messages(messages)
+            .options(self.options.clone())
+            .stream(self.stream)
+            .notification_channel(self.notification_channel.clone());
+        if let Some(tools) = &self.tools {
+            invocation = invocation.tools(tools.clone());
+        }
+        invocation = invocation.set_response_format_config(self.response_format.clone());
+        if let Some(format) = &self.provider_format {
+            invocation = invocation.provider_format(format.clone());
+        }
+        if let Some(keep_alive) = &self.keep_alive {
+            invocation = invocation.keep_alive(keep_alive.clone());
+        }
+        if let Some(name) = &self.name {
+            invocation = invocation.name(name.clone());
+        }
+        invocation.invoke().await
+    }
+}
+
+impl<T: DeserializeOwned> Model<Llm, Structured<T>, TemplateInput> {
+    /// Render the configured template using `data` and invoke the model.
+    ///
+    /// The rendered prompt and response are not retained by the model.
+    pub async fn invoke<K, V>(
+        &self,
+        data: HashMap<K, V>,
+    ) -> Result<ChatResponse<T>, InvocationError>
+    where
+        K: Clone + Into<String>,
+        V: Clone + Into<String>,
+    {
+        let prompt = self.compile_template(data).await;
+        let messages = self
+            .history
+            .iter()
+            .cloned()
+            .chain([Message::user(prompt)])
+            .collect();
+        let mut invocation = Invocation::chat()
+            .model(self.id.clone())
+            .client_config(self.client_config.clone())
+            .messages(messages)
+            .options(self.options.clone())
+            .stream(self.stream)
+            .notification_channel(self.notification_channel.clone());
+        if let Some(tools) = &self.tools {
+            invocation = invocation.tools(tools.clone());
+        }
+        invocation = invocation.set_response_format_config(self.response_format.clone());
+        if let Some(format) = &self.provider_format {
+            invocation = invocation.provider_format(format.clone());
+        }
+        if let Some(keep_alive) = &self.keep_alive {
+            invocation = invocation.keep_alive(keep_alive.clone());
+        }
+        if let Some(name) = &self.name {
+            invocation = invocation.name(name.clone());
+        }
+        invocation.structured_output::<T>().invoke().await
+    }
+}
+
+impl<O, I> Model<Llm, O, I> {
     pub fn history(&self) -> &[Message] {
         &self.history
     }
@@ -216,7 +314,7 @@ impl<O> Model<Llm, O> {
     }
 }
 
-impl<M, O> Model<M, O> {
+impl<M, O, I> Model<M, O, I> {
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -253,7 +351,8 @@ impl<M, O> Model<M, O> {
         provider_format: Option<Value>,
         name: Option<String>,
         notification_channel: Option<Sender<Notification>>,
-        kind: PhantomData<(M, O)>,
+        template: Option<Template>,
+        kind: PhantomData<(M, O, I)>,
     ) -> Self {
         Self {
             id,
@@ -267,7 +366,28 @@ impl<M, O> Model<M, O> {
             provider_format,
             name,
             notification_channel,
+            template,
             kind,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn templated_model_renders_data_without_storing_it() {
+        let model = Model::llm("extractor")
+            .set_template(Template::simple("Extract from {{text}}."))
+            .build()
+            .unwrap();
+
+        let prompt = model
+            .compile_template(HashMap::from([("text", "Ada")]))
+            .await;
+
+        assert_eq!(prompt, "Extract from Ada.");
+        assert!(model.history().is_empty());
     }
 }

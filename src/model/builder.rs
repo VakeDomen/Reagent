@@ -1,9 +1,10 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData, path::PathBuf};
 
 use crate::{
     services::llm::{ClientBuilder, ResponseFormatConfig},
-    ClientConfig, Embedding, InferenceOptions, InvocationError, Llm, Message, Model, Notification,
-    Provider, SchemaSpec, Standard, Structured, Tool,
+    ClientConfig, Embedding, InferenceOptions, InvocationError, Llm, LoadTemplateError, Message,
+    Model, Notification, Prompt, Provider, SchemaSpec, Standard, Structured, Template,
+    TemplateDataSource, TemplateInput, Tool,
 };
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
@@ -14,7 +15,7 @@ pub type EmbeddingModelBuilder = ModelBuilder<Embedding>;
 /// Builds a reusable [`Model`]. Invocation inputs intentionally do not belong
 /// here; they are supplied to [`Model::invoke`] for each call.
 #[derive(Debug, Clone)]
-pub struct ModelBuilder<M = Llm, O = Standard> {
+pub struct ModelBuilder<M = Llm, O = Standard, I = Prompt> {
     id: Option<String>,
     client_config: ClientConfig,
     options: InferenceOptions,
@@ -26,10 +27,11 @@ pub struct ModelBuilder<M = Llm, O = Standard> {
     provider_format: Option<Value>,
     name: Option<String>,
     notification_channel: Option<Sender<Notification>>,
-    kind: PhantomData<(M, O)>,
+    template: Option<Template>,
+    kind: PhantomData<(M, O, I)>,
 }
 
-impl<M, O> Default for ModelBuilder<M, O> {
+impl<M, O, I> Default for ModelBuilder<M, O, I> {
     fn default() -> Self {
         Self {
             id: None,
@@ -43,12 +45,13 @@ impl<M, O> Default for ModelBuilder<M, O> {
             provider_format: None,
             name: None,
             notification_channel: None,
+            template: None,
             kind: PhantomData,
         }
     }
 }
 
-impl<M, O> ModelBuilder<M, O> {
+impl<M, O, I> ModelBuilder<M, O, I> {
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             id: Some(id.into()),
@@ -96,7 +99,7 @@ impl<M, O> ModelBuilder<M, O> {
         self
     }
 
-    pub fn build(self) -> Result<Model<M, O>, InvocationError> {
+    pub fn build(self) -> Result<Model<M, O, I>, InvocationError> {
         let id = self.id.ok_or(InvocationError::ModelNotDefined)?;
         self.client_config.clone().build()?;
 
@@ -112,12 +115,13 @@ impl<M, O> ModelBuilder<M, O> {
             self.provider_format,
             self.name,
             self.notification_channel,
+            self.template,
             self.kind,
         ))
     }
 }
 
-impl<O> ModelBuilder<Llm, O> {
+impl<O, I> ModelBuilder<Llm, O, I> {
     pub fn set_history(mut self, history: impl Into<Vec<Message>>) -> Self {
         self.history = history.into();
         self
@@ -230,10 +234,10 @@ impl<O> ModelBuilder<Llm, O> {
     }
 }
 
-impl ModelBuilder<Llm, Standard> {
+impl<I> ModelBuilder<Llm, Standard, I> {
     pub fn structured_output<T: rmcp::schemars::JsonSchema>(
         self,
-    ) -> ModelBuilder<Llm, Structured<T>> {
+    ) -> ModelBuilder<Llm, Structured<T>, I> {
         ModelBuilder {
             id: self.id,
             client_config: self.client_config,
@@ -250,32 +254,39 @@ impl ModelBuilder<Llm, Standard> {
             provider_format: self.provider_format,
             name: self.name,
             notification_channel: self.notification_channel,
+            template: self.template,
             kind: PhantomData,
         }
     }
 
-    pub fn response_format(mut self, schema: SchemaSpec) -> ModelBuilder<Llm, Structured<Value>> {
+    pub fn response_format(
+        mut self,
+        schema: SchemaSpec,
+    ) -> ModelBuilder<Llm, Structured<Value>, I> {
         self.response_format.set_spec(schema);
         self.with_structured_value()
     }
 
-    pub fn response_format_str(mut self, schema: &str) -> ModelBuilder<Llm, Structured<Value>> {
+    pub fn response_format_str(mut self, schema: &str) -> ModelBuilder<Llm, Structured<Value>, I> {
         self.response_format.set_raw(schema);
         self.with_structured_value()
     }
 
-    pub fn response_format_value(mut self, schema: Value) -> ModelBuilder<Llm, Structured<Value>> {
+    pub fn response_format_value(
+        mut self,
+        schema: Value,
+    ) -> ModelBuilder<Llm, Structured<Value>, I> {
         self.response_format.set_value(schema);
         self.with_structured_value()
     }
 
     pub fn response_format_from<T: rmcp::schemars::JsonSchema>(
         self,
-    ) -> ModelBuilder<Llm, Structured<T>> {
+    ) -> ModelBuilder<Llm, Structured<T>, I> {
         self.structured_output()
     }
 
-    fn with_structured_value(self) -> ModelBuilder<Llm, Structured<Value>> {
+    fn with_structured_value(self) -> ModelBuilder<Llm, Structured<Value>, I> {
         ModelBuilder {
             id: self.id,
             client_config: self.client_config,
@@ -288,12 +299,13 @@ impl ModelBuilder<Llm, Standard> {
             provider_format: self.provider_format,
             name: self.name,
             notification_channel: self.notification_channel,
+            template: self.template,
             kind: PhantomData,
         }
     }
 }
 
-impl<O> ModelBuilder<Llm, Structured<O>> {
+impl<I, O> ModelBuilder<Llm, Structured<O>, I> {
     pub fn response_format(mut self, schema: SchemaSpec) -> Self {
         self.response_format.set_spec(schema);
         self
@@ -307,5 +319,70 @@ impl<O> ModelBuilder<Llm, Structured<O>> {
     pub fn response_format_value(mut self, schema: Value) -> Self {
         self.response_format.set_value(schema);
         self
+    }
+}
+
+impl<O> ModelBuilder<Llm, O, Prompt> {
+    /// Configure this model to render a template for each invocation.
+    ///
+    /// The resulting model accepts a `HashMap` of template data in
+    /// [`Model::invoke`]. Rendering is ephemeral and does not alter model
+    /// history between calls.
+    pub fn set_template(self, template: Template) -> ModelBuilder<Llm, O, TemplateInput> {
+        ModelBuilder {
+            id: self.id,
+            client_config: self.client_config,
+            options: self.options,
+            stream: self.stream,
+            keep_alive: self.keep_alive,
+            history: self.history,
+            tools: self.tools,
+            response_format: self.response_format,
+            provider_format: self.provider_format,
+            name: self.name,
+            notification_channel: self.notification_channel,
+            template: Some(template),
+            kind: PhantomData,
+        }
+    }
+
+    pub fn set_template_simple(
+        self,
+        content: impl Into<String>,
+    ) -> ModelBuilder<Llm, O, TemplateInput> {
+        self.set_template(Template::simple(content))
+    }
+
+    pub fn set_template_with_source<D>(
+        self,
+        content: &str,
+        data_source: D,
+    ) -> ModelBuilder<Llm, O, TemplateInput>
+    where
+        D: TemplateDataSource + 'static,
+    {
+        self.set_template(Template::new(content, data_source))
+    }
+
+    pub fn set_template_from_file<P>(
+        self,
+        path: P,
+    ) -> Result<ModelBuilder<Llm, O, TemplateInput>, LoadTemplateError>
+    where
+        P: Into<PathBuf>,
+    {
+        Ok(self.set_template(Template::from_file(path)?))
+    }
+
+    pub fn set_template_from_file_with_source<P, D>(
+        self,
+        path: P,
+        data_source: D,
+    ) -> Result<ModelBuilder<Llm, O, TemplateInput>, LoadTemplateError>
+    where
+        P: Into<PathBuf>,
+        D: TemplateDataSource + 'static,
+    {
+        Ok(self.set_template(Template::from_file_with_source(path, data_source)?))
     }
 }

@@ -83,3 +83,24 @@ fn structured_model_builders_keep_fluent_llm_configuration() {
         .build()
         .unwrap();
 }
+
+#[test]
+fn templated_models_encode_template_input_at_build_time() {
+    use crate::{Standard, Structured, Template, TemplateInput};
+
+    let _: Model<Llm, Standard, TemplateInput> = Model::llm("extractor")
+        .set_template(Template::simple("Extract entities from {{text}}."))
+        .build()
+        .unwrap();
+
+    #[derive(serde::Deserialize, rmcp::schemars::JsonSchema)]
+    struct Entity {
+        name: String,
+    }
+
+    let _: Model<Llm, Structured<Entity>, TemplateInput> = Model::llm("extractor")
+        .structured_output::<Entity>()
+        .set_template_simple("Extract entities from {{text}}.")
+        .build()
+        .unwrap();
+}
