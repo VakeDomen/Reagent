@@ -7,7 +7,7 @@ use crate::{
     TemplateDataSource, TemplateInput, Tool,
 };
 use serde_json::Value;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{self, Sender};
 
 pub type LlmModelBuilder = ModelBuilder<Llm, Standard>;
 pub type EmbeddingModelBuilder = ModelBuilder<Embedding>;
@@ -118,6 +118,19 @@ impl<M, O, I> ModelBuilder<M, O, I> {
             self.template,
             self.kind,
         ))
+    }
+
+    /// Build a model with a channel for inference notifications.
+    ///
+    /// The channel receives events emitted while invoking the model, including
+    /// streaming token notifications when streaming is enabled.
+    pub fn build_with_notification(
+        mut self,
+    ) -> Result<(Model<M, O, I>, mpsc::Receiver<Notification>), InvocationError> {
+        let (sender, receiver) = mpsc::channel(100);
+        self.notification_channel = Some(sender);
+        let model = self.build()?;
+        Ok((model, receiver))
     }
 }
 

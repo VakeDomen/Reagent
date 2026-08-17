@@ -104,3 +104,10 @@ fn templated_models_encode_template_input_at_build_time() {
         .build()
         .unwrap();
 }
+
+#[test]
+fn model_builder_can_create_a_notification_receiver() {
+    let (_model, receiver) = Model::llm("test-model").build_with_notification().unwrap();
+
+    assert_eq!(receiver.capacity(), 100);
+}
