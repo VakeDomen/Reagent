@@ -292,6 +292,10 @@ impl<O, I> Model<Llm, O, I> {
         }
         self
     }
+    pub fn set_provider_format(&mut self, format: Option<Value>) -> &mut Self {
+        self.provider_format = format;
+        self
+    }
     pub fn set_name(&mut self, name: Option<String>) -> &mut Self {
         self.name = name;
         self

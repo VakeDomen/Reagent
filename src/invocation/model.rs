@@ -1,5 +1,6 @@
 //! Per-call model metadata and context.
 
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use crate::{services::llm::ClientBuilder, ClientConfig, Notification, Provider};
@@ -78,6 +79,16 @@ impl<R, O> Invocation<R, O> {
 
     pub fn api_key(mut self, api_key: impl Into<String>) -> Self {
         self.client_config = self.client_config.api_key(Some(api_key));
+        self
+    }
+
+    pub fn organization(mut self, organization: impl Into<String>) -> Self {
+        self.client_config = self.client_config.organization(Some(organization));
+        self
+    }
+
+    pub fn extra_headers(mut self, headers: HashMap<String, String>) -> Self {
+        self.client_config = self.client_config.extra_headers(Some(headers));
         self
     }
 

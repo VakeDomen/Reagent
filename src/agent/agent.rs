@@ -7,7 +7,6 @@ use crate::{default_flow, Flow, InferenceOptions, LlmModel, NotificationHandler,
 use core::fmt;
 use opentelemetry::trace::TraceContextExt;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_json::{Error, Value};
 use std::{collections::HashMap, fs, path::Path};
 use std::{marker::PhantomData, sync::Arc};
@@ -77,6 +76,7 @@ impl<I, O> Agent<I, O> {
         stop_prompt: Option<String>,
         stopword: Option<String>,
         notification_channel: Option<Sender<Notification>>,
+        provider_format: Option<Value>,
         mcp_servers: Option<Vec<McpServerType>>,
         flow: Flow<I, O>,
         template: Option<Arc<Mutex<Template>>>,
@@ -112,35 +112,14 @@ impl<I, O> Agent<I, O> {
             .model
             .set_tools(agent.tools.clone())
             .set_response_format(agent.response_format.clone())
+            .set_provider_format(provider_format)
             .set_name(Some(agent.name.clone()))
             .set_notification_channel(agent.notification_channel.clone());
 
         Ok(agent)
     }
 
-    /// Invoke the agent with a raw string prompt.
-    ///
-    /// This is the primary Agent entry point. The agent appends the prompt to
-    /// its persistent history, executes its configured flow, and returns that
-    /// flow's final assistant message.
     async fn invoke_text(&mut self, prompt: impl Into<String>) -> Result<Message, AgentError> {
-        self.legacy_invoke_flow(prompt).await
-    }
-
-    /// Invoke the agent with a raw string prompt.
-    ///
-    /// Deprecated compatibility name for [`Agent::invoke`].
-    ///
-    /// This is the most direct way to ask the agent something:
-    /// the given prompt string it is conveterd to a user message and
-    /// appended to history. It is passed through
-    /// the configured [`Flow`] (either `Default` or `Custom`).
-    ///
-    /// Returns the raw [`Message`] produced by the flow.
-    async fn legacy_invoke_flow(
-        &mut self,
-        prompt: impl Into<String>,
-    ) -> Result<Message, AgentError> {
         let prompt_str = prompt.into();
 
         let trace_span = span!(
@@ -179,234 +158,6 @@ impl<I, O> Agent<I, O> {
         }
 
         result
-    }
-
-    /// Invoke the agent expecting structured JSON output.
-    ///
-    /// Works like [`invoke_flow`], but attempts to deserialize the
-    /// model’s response into type `O` which must be deserializable.
-    ///
-    /// Use this when you constrain the response with a JSON schema
-    /// (`response_format`) and want the result to be typed.
-    async fn legacy_invoke_flow_structured_output<T, U>(
-        &mut self,
-        prompt: T,
-    ) -> Result<U, AgentError>
-    where
-        T: Into<String>,
-        U: DeserializeOwned + Serialize,
-    {
-        let prompt_str = prompt.into();
-
-        let trace_span = span!(
-            Level::INFO,
-            "Invocation with structured output",
-            "langfuse.observation.type" = "trace",
-            "agent.model" = self.model.id(),
-        );
-        let parent_context = tracing::Span::current().context();
-        let has_parent = parent_context.span().span_context().is_valid();
-        if !has_parent {
-            let name = self.name.clone();
-            trace_span.set_attribute("langfuse.trace.name", name);
-        }
-        let _guard = trace_span.enter();
-
-        trace_span.set_attribute("langfuse.observation.input", prompt_str.clone());
-
-        // Logic (inlined slightly to capture intermediate steps if needed,
-        // but calling execute_invocation is cleaner)
-        let response_result = self.execute_invocation(prompt_str).await;
-
-        match response_result {
-            Ok(response) => {
-                let Some(json) = response.content else {
-                    let e = AgentError::Runtime("Agent did not produce content".into());
-                    trace_span.set_status(opentelemetry::trace::Status::Error {
-                        description: e.to_string().into(),
-                    });
-                    return Err(e);
-                };
-
-                // Deserialize to O
-                match serde_json::from_str::<U>(&json).map_err(AgentError::Deserialization) {
-                    Ok(out) => {
-                        // Serialize O back to string to record it as the Trace Output
-                        if let Ok(dump) = serde_json::to_string_pretty(&out) {
-                            trace_span.set_attribute("langfuse.observation.output", dump);
-                        }
-                        trace_span.set_status(opentelemetry::trace::Status::Ok);
-                        Ok(out)
-                    }
-                    Err(e) => {
-                        trace_span.set_status(opentelemetry::trace::Status::Error {
-                            description: e.to_string().into(),
-                        });
-                        Err(e)
-                    }
-                }
-            }
-            Err(e) => {
-                trace_span.set_status(opentelemetry::trace::Status::Error {
-                    description: e.to_string().into(),
-                });
-                Err(e)
-            }
-        }
-    }
-
-    /// Invoke the agent using a prompt compiled from a template.
-    ///
-    /// The provided `template_data` is substituted into the configured
-    /// [`Template`] before invoking the flow. This allows building prompts
-    /// from reusable templates instead of raw strings.
-    ///
-    /// Returns the raw [`Message`] produced by the flow.
-    async fn legacy_invoke_flow_with_template<K, V>(
-        &mut self,
-        template_data: HashMap<K, V>,
-    ) -> Result<Message, AgentError>
-    where
-        K: Into<String> + serde::Serialize, // Added Serialize for trace input
-        V: Into<String> + serde::Serialize,
-    {
-        // We need to convert the generic HashMap to the specific map required by the template engine
-        // AND keep a copy for the Trace input.
-
-        // 1. Prepare data for Tracing
-        let trace_input = serde_json::to_string_pretty(&template_data).unwrap_or_default();
-
-        // 2. Prepare data for Compilation
-        let string_map: HashMap<String, String> = template_data
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect();
-
-        let trace_span = span!(
-            Level::INFO,
-            "Invocation with template",
-            "langfuse.observation.type" = "trace",
-            "agent.model" = self.model.id(),
-        );
-        let parent_context = tracing::Span::current().context();
-        let has_parent = parent_context.span().span_context().is_valid();
-        if !has_parent {
-            let name = self.name.clone();
-            trace_span.set_attribute("langfuse.trace.name", name);
-        }
-        trace_span.set_attribute("langfuse.observation.input", trace_input);
-        let _guard = trace_span.enter();
-
-        let Some(template) = &self.template else {
-            let e = AgentError::Runtime("No template defined".into());
-            trace_span.set_status(opentelemetry::trace::Status::Error {
-                description: e.to_string().into(),
-            });
-            return Err(e);
-        };
-
-        // Compile prompt (This could be its own span if compilation is complex)
-        let prompt = { template.lock().await.compile(&string_map).await };
-
-        // Execute
-        let result = self.execute_invocation(prompt).await;
-
-        match &result {
-            Ok(msg) => {
-                if let Ok(out) = serde_json::to_string_pretty(msg) {
-                    trace_span.set_attribute("langfuse.observation.output", out);
-                }
-                trace_span.set_status(opentelemetry::trace::Status::Ok);
-            }
-            Err(e) => {
-                trace_span.set_status(opentelemetry::trace::Status::Error {
-                    description: e.to_string().into(),
-                });
-            }
-        }
-
-        result
-    }
-
-    /// Invoke the agent with a template and parse structured output.
-    ///
-    /// Combines [`invoke_flow_with_template`] with [`invoke_flow_structured_output`]:
-    /// first compiles the prompt from the agent’s [`Template`] and `template_data`,
-    /// then invokes the flow and tries to deserialize the result into type `O`.
-    ///
-    /// Use this when you constrain the response with a JSON schema
-    /// (`response_format`) and want the result to be typed.
-    async fn legacy_invoke_flow_with_template_structured_output<K, V, U>(
-        &mut self,
-        template_data: HashMap<K, V>,
-    ) -> Result<U, AgentError>
-    where
-        K: Into<String> + serde::Serialize,
-        V: Into<String> + serde::Serialize,
-        U: DeserializeOwned + serde::Serialize,
-    {
-        let trace_input = serde_json::to_string_pretty(&template_data).unwrap_or_default();
-
-        let string_map: HashMap<String, String> = template_data
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect();
-
-        let trace_span = span!(
-            Level::INFO,
-            "Invocation with template and structured output",
-            "langfuse.observation.type" = "trace",
-            "agent.model" = self.model.id(),
-        );
-        let parent_context = tracing::Span::current().context();
-        let has_parent = parent_context.span().span_context().is_valid();
-        if !has_parent {
-            let name = self.name.clone();
-            trace_span.set_attribute("langfuse.trace.name", name);
-        }
-        trace_span.set_attribute("langfuse.observation.input", trace_input);
-        let _guard = trace_span.enter();
-
-        let Some(template) = &self.template else {
-            return Err(AgentError::Runtime("No template defined".into()));
-        };
-
-        let prompt = { template.lock().await.compile(&string_map).await };
-
-        let response_result = self.execute_invocation(prompt).await;
-
-        match response_result {
-            Ok(response) => {
-                let Some(json) = response.content else {
-                    let e = AgentError::Runtime("Agent did not produce content".into());
-                    trace_span.set_status(opentelemetry::trace::Status::Error {
-                        description: e.to_string().into(),
-                    });
-                    return Err(e);
-                };
-                match serde_json::from_str::<U>(&json).map_err(AgentError::Deserialization) {
-                    Ok(out) => {
-                        if let Ok(dump) = serde_json::to_string_pretty(&out) {
-                            trace_span.set_attribute("langfuse.observation.output", dump);
-                        }
-                        trace_span.set_status(opentelemetry::trace::Status::Ok);
-                        Ok(out)
-                    }
-                    Err(e) => {
-                        trace_span.set_status(opentelemetry::trace::Status::Error {
-                            description: e.to_string().into(),
-                        });
-                        Err(e)
-                    }
-                }
-            }
-            Err(e) => {
-                trace_span.set_status(opentelemetry::trace::Status::Error {
-                    description: e.to_string().into(),
-                });
-                Err(e)
-            }
-        }
     }
 
     async fn execute_invocation(&mut self, prompt: String) -> Result<Message, AgentError> {

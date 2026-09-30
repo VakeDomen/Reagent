@@ -6,14 +6,14 @@ use std::{collections::HashMap, error::Error, future::Future};
 
 // sometimes you want to template values that should be generated on
 // invocation, but don't want to pass it as a parameter to the
-// invoke_flow_with_template every time. You can define a custom
+// invoke every time. You can define a custom
 // TemplateDataSource that will generate for the template at invocation
 // can will be called in the background and you don't have to pass it every
 // time. Usually this is things like current date...
 struct MyCustomDataSource;
 
 impl TemplateDataSource for MyCustomDataSource {
-    // will get called to generate the values when invoke_flow_with_template is called
+    // will get called to generate the values when invoke is called
     // used to genrate values on-the-fly
     fn get_values(
         &self,

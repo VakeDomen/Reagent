@@ -6,9 +6,10 @@ use crate::{
         mcp::mcp_tool_builder::McpServerType,
     },
     skills::{build_read_skill_tool, load_skill_sources},
-    templates::Template,
-    Agent, Flow, FlowFuture, InferenceOptions, LlmModel, LlmModelBuilder, Prompt, Skill, Standard,
-    Structured, TemplateInput, Tool, ToolBuilderError, SKILL_SYSTEM_PROMPT_TEMPLATE,
+    templates::{Template, TemplateDataSource},
+    Agent, Flow, FlowFuture, InferenceOptions, LlmModel, LlmModelBuilder, LoadTemplateError,
+    Prompt, Skill, Standard, Structured, TemplateInput, Tool, ToolBuilderError,
+    SKILL_SYSTEM_PROMPT_TEMPLATE,
 };
 use futures::future::join_all;
 use rmcp::schemars::JsonSchema;
@@ -52,7 +53,7 @@ pub struct AgentBuilder<I = Prompt, O = Standard> {
     client_config: ClientConfig,
     /// Model name plus sampling/decoding options.
     inference_options: InferenceOptions,
-    /// An already-built model to reuse instead of constructing one from legacy setters.
+    /// An already-built model to reuse instead of constructing one from builder configuration.
     runtime_model: Option<LlmModel>,
 
     /// Optional first-message template used to build the system prompt
@@ -63,6 +64,8 @@ pub struct AgentBuilder<I = Prompt, O = Standard> {
     tools: Option<Vec<Tool>>,
     /// Response schema input plus optional provider hints.
     response_format: ResponseFormatConfig,
+    /// Escape hatch for an already provider-formatted response schema.
+    provider_format: Option<serde_json::Value>,
     /// MCP tool servers the agent can reach
     mcp_servers: Option<Vec<McpServerType>>,
     /// Individual skill roots or SKILL.md files to load.
@@ -103,6 +106,7 @@ impl Default for AgentBuilder<Prompt, Standard> {
             system_prompt: None,
             tools: None,
             response_format: ResponseFormatConfig::default(),
+            provider_format: None,
             mcp_servers: None,
             skill_paths: Vec::new(),
             skill_collection_paths: Vec::new(),
@@ -123,6 +127,12 @@ impl<I, O> AgentBuilder<I, O> {
     /// Use an already-built, reusable model for this agent.
     pub fn with_model(mut self, model: LlmModel) -> Self {
         self.runtime_model = Some(model);
+        self
+    }
+
+    /// Replace the complete provider client configuration.
+    pub fn set_client_config(mut self, config: ClientConfig) -> Self {
+        self.client_config = config;
         self
     }
 
@@ -228,6 +238,9 @@ impl<I, O> AgentBuilder<I, O> {
         if let Some(min_p) = conf.min_p {
             self = self.set_min_p(min_p)
         }
+        if let Some(max_tokens) = conf.max_tokens {
+            self = self.set_max_tokens(max_tokens)
+        }
 
         self
     }
@@ -284,6 +297,18 @@ impl<I, O> AgentBuilder<I, O> {
     /// Will enable Token Notifications
     pub fn set_stream(mut self, set: bool) -> Self {
         self.stream = Some(set);
+        self
+    }
+
+    /// Route notifications to a caller-provided channel.
+    pub fn set_notification_channel(mut self, channel: Option<mpsc::Sender<Notification>>) -> Self {
+        self.notification_channel = channel;
+        self
+    }
+
+    /// Replace all inference options at once.
+    pub fn set_inference_options(mut self, options: InferenceOptions) -> Self {
+        self.inference_options = options;
         self
     }
 
@@ -350,6 +375,12 @@ impl<I, O> AgentBuilder<I, O> {
     /// Number of tokens to predict.
     pub fn set_num_predict(mut self, v: i32) -> Self {
         self.inference_options.num_predict = Some(v);
+        self
+    }
+
+    /// Maximum number of generated tokens for providers that support it.
+    pub fn set_max_tokens(mut self, v: i32) -> Self {
+        self.inference_options.max_tokens = Some(v);
         self
     }
 
@@ -521,6 +552,12 @@ impl<I, O> AgentBuilder<I, O> {
         self
     }
 
+    /// Escape hatch for an already provider-formatted response schema.
+    pub fn set_provider_format(mut self, format: serde_json::Value) -> Self {
+        self.provider_format = Some(format);
+        self
+    }
+
     /// Build an [`Agent`] and return also the notification receiver.
     ///
     /// Creates an internal mpsc channel of size 100.
@@ -600,6 +637,7 @@ impl<I, O> AgentBuilder<I, O> {
             .response_format
             .resolve()
             .map_err(AgentBuildError::InvalidJsonSchema)?;
+        let provider_format = self.provider_format;
 
         let runtime_model = match self.runtime_model {
             Some(model) => model,
@@ -611,6 +649,9 @@ impl<I, O> AgentBuilder<I, O> {
                     .stream(stream);
                 if let Some(keep_alive) = self.keep_alive {
                     builder = builder.keep_alive(keep_alive);
+                }
+                if let Some(provider_format) = provider_format.clone() {
+                    builder = builder.provider_format(provider_format);
                 }
                 builder.build()?
             }
@@ -625,6 +666,7 @@ impl<I, O> AgentBuilder<I, O> {
             self.stop_prompt,
             self.stopword,
             self.notification_channel,
+            provider_format,
             self.mcp_servers,
             flow,
             self.template,
@@ -649,6 +691,7 @@ impl<I> AgentBuilder<I, Standard> {
             system_prompt: self.system_prompt,
             tools: self.tools,
             response_format: self.response_format,
+            provider_format: self.provider_format,
             mcp_servers: self.mcp_servers,
             skill_paths: self.skill_paths,
             skill_collection_paths: self.skill_collection_paths,
@@ -681,6 +724,7 @@ impl<O> AgentBuilder<Prompt, O> {
             system_prompt: self.system_prompt,
             tools: self.tools,
             response_format: self.response_format,
+            provider_format: self.provider_format,
             mcp_servers: self.mcp_servers,
             skill_paths: self.skill_paths,
             skill_collection_paths: self.skill_collection_paths,
@@ -697,6 +741,43 @@ impl<O> AgentBuilder<Prompt, O> {
                 Flow::Func(_) => panic!("set the flow after selecting a template"),
             }),
         }
+    }
+
+    pub fn set_template_simple(self, content: impl Into<String>) -> AgentBuilder<TemplateInput, O> {
+        self.set_template(Template::simple(content))
+    }
+
+    pub fn set_template_with_source<D>(
+        self,
+        content: &str,
+        data_source: D,
+    ) -> AgentBuilder<TemplateInput, O>
+    where
+        D: TemplateDataSource + 'static,
+    {
+        self.set_template(Template::new(content, data_source))
+    }
+
+    pub fn set_template_from_file<P>(
+        self,
+        path: P,
+    ) -> Result<AgentBuilder<TemplateInput, O>, LoadTemplateError>
+    where
+        P: Into<PathBuf>,
+    {
+        Ok(self.set_template(Template::from_file(path)?))
+    }
+
+    pub fn set_template_from_file_with_source<P, D>(
+        self,
+        path: P,
+        data_source: D,
+    ) -> Result<AgentBuilder<TemplateInput, O>, LoadTemplateError>
+    where
+        P: Into<PathBuf>,
+        D: TemplateDataSource + 'static,
+    {
+        Ok(self.set_template(Template::from_file_with_source(path, data_source)?))
     }
 }
 
@@ -731,6 +812,18 @@ mod tests {
             1,
             "history should contain exactly the system prompt"
         );
+    }
+
+    #[tokio::test]
+    async fn agent_builder_forwards_max_tokens_to_its_model() {
+        let agent = AgentBuilder::default()
+            .set_model("test-model")
+            .set_max_tokens(256)
+            .build()
+            .await
+            .unwrap();
+
+        assert_eq!(agent.model.options().max_tokens, Some(256));
     }
 
     #[tokio::test]

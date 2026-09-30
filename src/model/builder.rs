@@ -145,6 +145,16 @@ impl<O, I> ModelBuilder<Llm, O, I> {
         self
     }
 
+    pub fn add_tool(mut self, tool: Tool) -> Self {
+        self.tools.get_or_insert_with(Vec::new).push(tool);
+        self
+    }
+
+    pub fn remove_tools(mut self) -> Self {
+        self.tools = None;
+        self
+    }
+
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
         self

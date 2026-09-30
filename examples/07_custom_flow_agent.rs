@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 // you can create own functions as the flows for invoking an agent
-// when invoke_flow or invoke_flow_with_template is called,
+// when invoke is called,
 // this is the function that will override the default flow if the
 // agent
 async fn custom_flow(agent: &mut Agent, prompt: String) -> Result<Message, AgentError> {

@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // creation can fail (sever unreachable?)
         .await?;
 
-    // call agents by calling the "invoke_flow" method
+    // call agents with the "invoke" method
     let resp = agent
         .invoke("How do i increase context size in Ollama?")
         .await?;
