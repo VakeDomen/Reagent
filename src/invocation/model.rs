@@ -51,6 +51,17 @@ impl<R, O> Invocation<R, O> {
         }
     }
 
+    pub(crate) fn map_request<T>(self, f: impl FnOnce(R) -> T) -> Invocation<T, O> {
+        Invocation {
+            _output: PhantomData,
+            request: f(self.request),
+            model: self.model,
+            client_config: self.client_config,
+            name: self.name,
+            notification_channel: self.notification_channel,
+        }
+    }
+
     /// Mark a schema-configured invocation as returning a parsed structured response.
     pub(crate) fn structured_output<T>(self) -> Invocation<R, Structured<T>> {
         self.with_output()

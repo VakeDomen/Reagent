@@ -78,9 +78,14 @@ mod services;
 pub use crate::agent::*;
 pub use crate::invocation::{
     ChatInvocation, EmbeddingInvocation, Invocation, InvocationError, Standard, Structured,
+    SystemOneInvocation,
 };
 pub use crate::model::*;
 pub use crate::notifications::*;
+pub use crate::services::systemone::{
+    ChoiceAnswer, HasQuestions, NoQuestions, NoulAnswer, NoulCriteria, Question, ScoreAnswer,
+    SystemOneAnswer, SystemOneQuestion, SystemOneRequest, SystemOneResponse, SystemOneUsage,
+};
 pub use crate::skills::*;
 pub use crate::templates::*;
 pub use crate::tools::*;
@@ -99,11 +104,13 @@ pub use crate::services::mcp::mcp_tool_builder::McpServerType;
 pub mod prelude {
     pub use crate::{
         flow, Agent, AgentBuildError, AgentBuilder, AgentError, ChatInvocation, ChatRequest,
-        ChatResponse, ClientConfig, Embedding, EmbeddingInvocation, EmbeddingModel,
+        ChatResponse, ChoiceAnswer, ClientConfig, Embedding, EmbeddingInvocation, EmbeddingModel,
         EmbeddingModelBuilder, EmbeddingsResponse, Flow, InferenceOptions, Invocation, Llm,
         LlmModel, LlmModelBuilder, LoadTemplateError, McpIntegrationError, McpServerType, Message,
-        Model, ModelBuilder, Notification, NotificationContent, Prompt, Provider, Role, SchemaSpec,
-        Skill, SkillLoadError, SkillResource, SkillResourceKind, Standard, Structured, Template,
+        Model, ModelBuilder, Notification, NotificationContent, NoulAnswer, NoulCriteria, Prompt,
+        Provider, Question, Role, SchemaSpec, ScoreAnswer, Skill, SkillLoadError, SkillResource,
+        SkillResourceKind, Standard, Structured, SystemOne, SystemOneAnswer, SystemOneInvocation,
+        SystemOneModel, SystemOneModelBuilder, SystemOneQuestion, SystemOneResponse, Template,
         TemplateDataSource, TemplateInput, Tool, ToolBuilder, ToolExecutionError,
     };
 }

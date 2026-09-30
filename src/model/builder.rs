@@ -2,15 +2,68 @@ use std::{collections::HashMap, marker::PhantomData, path::PathBuf};
 
 use crate::{
     services::llm::{ClientBuilder, ResponseFormatConfig},
+    services::systemone::{HasQuestions, NoQuestions, SystemOneClient},
     ClientConfig, Embedding, InferenceOptions, InvocationError, Llm, LoadTemplateError, Message,
-    Model, Notification, Prompt, Provider, SchemaSpec, Standard, Structured, Template,
-    TemplateDataSource, TemplateInput, Tool,
+    Model, Notification, NoulCriteria, Prompt, Provider, Question, SchemaSpec, Standard,
+    Structured, SystemOne, SystemOneQuestion, Template, TemplateDataSource, TemplateInput, Tool,
 };
 use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 
 pub type LlmModelBuilder = ModelBuilder<Llm, Standard>;
 pub type EmbeddingModelBuilder = ModelBuilder<Embedding>;
+pub type SystemOneModelBuilder<Q = NoQuestions> = ModelBuilder<SystemOne, Standard, Q>;
+
+/// Kinds and input states for which a model is ready to build.
+#[doc(hidden)]
+pub trait BuildableModel<M> {
+    fn validate(kind: &M, id: Option<&str>, config: &ClientConfig) -> Result<(), InvocationError>;
+}
+
+/// Model kinds that emit inference notifications.
+#[doc(hidden)]
+pub trait NotificationCapableModel {}
+
+impl<I> NotificationCapableModel for (Llm, I) {}
+impl<I> NotificationCapableModel for (Embedding, I) {}
+
+impl<I> BuildableModel<Llm> for (Llm, I) {
+    fn validate(_: &Llm, id: Option<&str>, config: &ClientConfig) -> Result<(), InvocationError> {
+        if id.is_none() {
+            return Err(InvocationError::ModelNotDefined);
+        }
+        config.clone().build()?;
+        Ok(())
+    }
+}
+
+impl<I> BuildableModel<Embedding> for (Embedding, I) {
+    fn validate(
+        _: &Embedding,
+        id: Option<&str>,
+        config: &ClientConfig,
+    ) -> Result<(), InvocationError> {
+        if id.is_none() {
+            return Err(InvocationError::ModelNotDefined);
+        }
+        config.clone().build()?;
+        Ok(())
+    }
+}
+
+impl BuildableModel<SystemOne> for (SystemOne, HasQuestions) {
+    fn validate(
+        kind: &SystemOne,
+        _: Option<&str>,
+        config: &ClientConfig,
+    ) -> Result<(), InvocationError> {
+        kind.questions
+            .validate()
+            .map_err(InvocationError::InvalidSystemOneQuestion)?;
+        SystemOneClient::new(config.clone())?;
+        Ok(())
+    }
+}
 
 /// Builds a reusable [`Model`]. Invocation inputs intentionally do not belong
 /// here; they are supplied to [`Model::invoke`] for each call.
@@ -28,10 +81,11 @@ pub struct ModelBuilder<M = Llm, O = Standard, I = Prompt> {
     name: Option<String>,
     notification_channel: Option<Sender<Notification>>,
     template: Option<Template>,
-    kind: PhantomData<(M, O, I)>,
+    kind: M,
+    markers: PhantomData<(O, I)>,
 }
 
-impl<M, O, I> Default for ModelBuilder<M, O, I> {
+impl<M: Default, O, I> Default for ModelBuilder<M, O, I> {
     fn default() -> Self {
         Self {
             id: None,
@@ -46,13 +100,17 @@ impl<M, O, I> Default for ModelBuilder<M, O, I> {
             name: None,
             notification_channel: None,
             template: None,
-            kind: PhantomData,
+            kind: M::default(),
+            markers: PhantomData,
         }
     }
 }
 
 impl<M, O, I> ModelBuilder<M, O, I> {
-    pub fn new(id: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<String>) -> Self
+    where
+        M: Default,
+    {
         Self {
             id: Some(id.into()),
             ..Self::default()
@@ -94,17 +152,18 @@ impl<M, O, I> ModelBuilder<M, O, I> {
         self
     }
 
-    pub fn keep_alive(mut self, keep_alive: impl Into<String>) -> Self {
-        self.keep_alive = Some(keep_alive.into());
-        self
-    }
-
-    pub fn build(self) -> Result<Model<M, O, I>, InvocationError> {
-        let id = self.id.ok_or(InvocationError::ModelNotDefined)?;
-        self.client_config.clone().build()?;
+    pub fn build(self) -> Result<Model<M, O, I>, InvocationError>
+    where
+        (M, I): BuildableModel<M>,
+    {
+        <(M, I) as BuildableModel<M>>::validate(
+            &self.kind,
+            self.id.as_deref(),
+            &self.client_config,
+        )?;
 
         Ok(Model::new(
-            id,
+            self.id,
             self.client_config,
             self.options,
             self.stream,
@@ -126,7 +185,10 @@ impl<M, O, I> ModelBuilder<M, O, I> {
     /// streaming token notifications when streaming is enabled.
     pub fn build_with_notification(
         mut self,
-    ) -> Result<(Model<M, O, I>, mpsc::Receiver<Notification>), InvocationError> {
+    ) -> Result<(Model<M, O, I>, mpsc::Receiver<Notification>), InvocationError>
+    where
+        (M, I): BuildableModel<M> + NotificationCapableModel,
+    {
         let (sender, receiver) = mpsc::channel(100);
         self.notification_channel = Some(sender);
         let model = self.build()?;
@@ -134,7 +196,94 @@ impl<M, O, I> ModelBuilder<M, O, I> {
     }
 }
 
+impl ModelBuilder<SystemOne, Standard, NoQuestions> {
+    pub fn systemone() -> Self {
+        let mut builder = Self::default();
+        builder.client_config.provider = Some(Provider::SystemOne);
+        builder
+    }
+}
+
+impl<Q> ModelBuilder<SystemOne, Standard, Q> {
+    /// Add a named question, including an advanced structured question.
+    pub fn question(
+        mut self,
+        key: impl Into<String>,
+        question: SystemOneQuestion,
+    ) -> ModelBuilder<SystemOne, Standard, HasQuestions> {
+        self.kind.questions.insert(key.into(), question);
+        ModelBuilder {
+            id: self.id,
+            client_config: self.client_config,
+            options: self.options,
+            stream: self.stream,
+            keep_alive: self.keep_alive,
+            history: self.history,
+            tools: self.tools,
+            response_format: self.response_format,
+            provider_format: self.provider_format,
+            name: self.name,
+            notification_channel: self.notification_channel,
+            template: self.template,
+            kind: self.kind,
+            markers: PhantomData,
+        }
+    }
+
+    pub fn noul(
+        self,
+        key: impl Into<String>,
+        instructions: impl Into<Question>,
+    ) -> ModelBuilder<SystemOne, Standard, HasQuestions> {
+        self.question(key, SystemOneQuestion::noul(instructions))
+    }
+
+    pub fn noul_with_criteria(
+        self,
+        key: impl Into<String>,
+        instructions: impl Into<Question>,
+        criteria: NoulCriteria,
+    ) -> ModelBuilder<SystemOne, Standard, HasQuestions> {
+        self.question(
+            key,
+            SystemOneQuestion::noul_with_criteria(instructions, criteria),
+        )
+    }
+
+    pub fn choice<K, V, C>(
+        self,
+        key: impl Into<String>,
+        instructions: impl Into<Question>,
+        criteria: C,
+    ) -> ModelBuilder<SystemOne, Standard, HasQuestions>
+    where
+        K: Into<String>,
+        V: Into<String>,
+        C: IntoIterator<Item = (K, V)>,
+    {
+        self.question(key, SystemOneQuestion::choice(instructions, criteria))
+    }
+
+    pub fn score<V, C>(
+        self,
+        key: impl Into<String>,
+        instructions: impl Into<Question>,
+        criteria: C,
+    ) -> ModelBuilder<SystemOne, Standard, HasQuestions>
+    where
+        V: Into<String>,
+        C: IntoIterator<Item = V>,
+    {
+        self.question(key, SystemOneQuestion::score(instructions, criteria))
+    }
+}
+
 impl<O, I> ModelBuilder<Llm, O, I> {
+    pub fn keep_alive(mut self, keep_alive: impl Into<String>) -> Self {
+        self.keep_alive = Some(keep_alive.into());
+        self
+    }
+
     pub fn set_history(mut self, history: impl Into<Vec<Message>>) -> Self {
         self.history = history.into();
         self
@@ -257,6 +406,13 @@ impl<O, I> ModelBuilder<Llm, O, I> {
     }
 }
 
+impl<O, I> ModelBuilder<Embedding, O, I> {
+    pub fn keep_alive(mut self, keep_alive: impl Into<String>) -> Self {
+        self.keep_alive = Some(keep_alive.into());
+        self
+    }
+}
+
 impl<I> ModelBuilder<Llm, Standard, I> {
     pub fn structured_output<T: rmcp::schemars::JsonSchema>(
         self,
@@ -278,7 +434,8 @@ impl<I> ModelBuilder<Llm, Standard, I> {
             name: self.name,
             notification_channel: self.notification_channel,
             template: self.template,
-            kind: PhantomData,
+            kind: self.kind,
+            markers: PhantomData,
         }
     }
 
@@ -323,7 +480,8 @@ impl<I> ModelBuilder<Llm, Standard, I> {
             name: self.name,
             notification_channel: self.notification_channel,
             template: self.template,
-            kind: PhantomData,
+            kind: self.kind,
+            markers: PhantomData,
         }
     }
 }
@@ -365,7 +523,8 @@ impl<O> ModelBuilder<Llm, O, Prompt> {
             name: self.name,
             notification_channel: self.notification_channel,
             template: Some(template),
-            kind: PhantomData,
+            kind: self.kind,
+            markers: PhantomData,
         }
     }
 

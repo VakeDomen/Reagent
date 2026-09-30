@@ -162,7 +162,8 @@ let response: ChatResponse<Value> = Invocation::chat()
 `Invocation` is the fully configured, one-off API call. `Model` is the easier,
 reusable API. it owns defaults and optional configured history, but never keeps
 the prompt or response from an individual call. Models are typed by capability:
-use `Model::llm(...)` for chat and `Model::embedding(...)` for embeddings.
+use `Model::llm(...)` for chat, `Model::embedding(...)` for embeddings, and
+`Model::systemone()` for structured evaluations.
 The same model can be called repeatedly without accumulating any state.
 Agents can reuse that model while keeping independent histories:
 
@@ -245,6 +246,52 @@ let chat = Invocation::chat()
     .invoke()
     .await?;
 ```
+
+### System One evaluations
+
+System One evaluates named questions against one shared state. Questions can be
+mixed in a single call. Each answer is returned under its question key:
+
+```rust
+use reagent_rs::{Invocation, SystemOneAnswer};
+
+let response = Invocation::systemone("I ordered size 10 shoes but received size 8.")
+    .base_url("http://localhost:8080")
+    .noul("refund", "Is the customer asking for a refund?")
+    .choice(
+        "department",
+        "Which department handles this?",
+        [("returns", "Returns and exchanges"), ("shipping", "Delivery issues")],
+    )
+    .score("severity", "How severe is this?", ["Minor", "Moderate", "Major"])
+    .invoke()
+    .await?;
+
+if let Some(SystemOneAnswer::Noul(answer)) = response.answers.get("refund") {
+    println!("Refund probability: {}", answer.noul);
+}
+```
+
+For repeated evaluations, configure the questions once on a model and supply
+new state to each call:
+
+```rust
+use reagent_rs::Model;
+
+let model = Model::systemone()
+    .base_url("http://localhost:8080")
+    .noul("refund", "Is the customer asking for a refund?")
+    .noul("exchange", "Is the customer asking for an exchange?")
+    .build()?;
+
+let first = model.invoke("Please refund the wrong shoes.").await?;
+let second = model.invoke("Can I exchange these shoes?").await?;
+```
+
+The model identifier is optional for the local `/v1/systemone` API; use
+`.model("systemone/...")` when selecting a specific model. The default endpoint
+is `http://localhost:8080/v1/systemone`. Advanced structured question content
+is available through `.question(key, SystemOneQuestion::...)`.
 
 Images are attached to messages directly:
 

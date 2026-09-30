@@ -3,7 +3,9 @@ pub(crate) mod execution;
 mod model;
 
 pub use builder::*;
-pub use model::{Embedding, EmbeddingModel, IntoModelInput, Llm, LlmModel, Model};
+pub use model::{
+    Embedding, EmbeddingModel, IntoModelInput, Llm, LlmModel, Model, SystemOne, SystemOneModel,
+};
 
 #[test]
 fn model_requires_an_identifier() {
@@ -110,4 +112,16 @@ fn model_builder_can_create_a_notification_receiver() {
     let (_model, receiver) = Model::llm("test-model").build_with_notification().unwrap();
 
     assert_eq!(receiver.capacity(), 100);
+}
+
+#[test]
+fn systemone_model_can_reuse_multiple_questions_without_a_model_id() {
+    let model = Model::systemone()
+        .noul("refund", "Is a refund requested?")
+        .score("severity", "How severe?", ["Low", "Medium", "High"])
+        .build()
+        .unwrap();
+
+    assert_eq!(model.id(), None);
+    assert_eq!(model.questions().len(), 2);
 }

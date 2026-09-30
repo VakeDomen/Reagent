@@ -4,9 +4,11 @@ use serde::de::DeserializeOwned;
 
 use crate::invocation::{Standard, Structured};
 use crate::services::llm::ResponseFormatConfig;
+use crate::services::systemone::{HasQuestions, NoQuestions, QuestionSet};
 use crate::{
     ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, Invocation, InvocationError,
-    Message, ModelBuilder, Notification, Prompt, SchemaSpec, Template, TemplateInput, Tool,
+    Message, ModelBuilder, Notification, Prompt, SchemaSpec, SystemOneResponse, Template,
+    TemplateInput, Tool,
 };
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
@@ -42,21 +44,26 @@ impl IntoModelInput for () {
 
 /// A reusable, sessionless inference model.
 ///
-/// `Model` owns reusable endpoint, inference, and optional history defaults.
-/// Calling it never records its prompt or response, though its configuration can
-/// be changed explicitly through mutable setters.
+/// `Model` owns reusable endpoint and capability-specific configuration.
+/// Calling it never records its input or response.
 #[derive(Debug, Clone, Default)]
 pub struct Llm;
 
 #[derive(Debug, Clone, Default)]
 pub struct Embedding;
 
+#[derive(Debug, Clone, Default)]
+pub struct SystemOne {
+    pub(crate) questions: QuestionSet,
+}
+
 pub type LlmModel = Model<Llm, Standard, Prompt>;
 pub type EmbeddingModel = Model<Embedding>;
+pub type SystemOneModel = Model<SystemOne, Standard, HasQuestions>;
 
 #[derive(Clone, Debug)]
 pub struct Model<M = Llm, O = Standard, I = Prompt> {
-    id: String,
+    id: Option<String>,
     client_config: ClientConfig,
     options: InferenceOptions,
     stream: bool,
@@ -68,7 +75,8 @@ pub struct Model<M = Llm, O = Standard, I = Prompt> {
     name: Option<String>,
     notification_channel: Option<Sender<Notification>>,
     template: Option<Template>,
-    kind: PhantomData<(M, O, I)>,
+    kind: M,
+    markers: PhantomData<(O, I)>,
 }
 
 impl Model<Llm, Standard, Prompt> {
@@ -93,7 +101,7 @@ impl Model<Llm, Standard, Prompt> {
             .chain(input.into_messages())
             .collect();
         let mut invocation = Invocation::chat()
-            .model(self.id.clone())
+            .model(self.id().to_owned())
             .client_config(self.client_config.clone())
             .messages(messages)
             .options(self.options.clone())
@@ -116,6 +124,37 @@ impl Model<Llm, Standard, Prompt> {
     }
 }
 
+impl Model<SystemOne, Standard, NoQuestions> {
+    /// Start a reusable System One model without requiring a model identifier.
+    pub fn systemone() -> ModelBuilder<SystemOne, Standard, NoQuestions> {
+        ModelBuilder::systemone()
+    }
+}
+
+impl Model<SystemOne, Standard, HasQuestions> {
+    /// Evaluate a new state using the configured questions without retaining it.
+    pub async fn invoke(
+        &self,
+        state: impl Into<Value>,
+    ) -> Result<SystemOneResponse, InvocationError> {
+        let mut invocation = Invocation::systemone(state)
+            .with_questions(self.kind.questions.clone())
+            .client_config(self.client_config.clone());
+        if let Some(id) = &self.id {
+            invocation = invocation.model(id.clone());
+        }
+        invocation.invoke().await
+    }
+
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    pub fn questions(&self) -> &std::collections::BTreeMap<String, crate::SystemOneQuestion> {
+        &self.kind.questions.questions
+    }
+}
+
 impl Model<Embedding, Standard, Prompt> {
     pub fn embedding(id: impl Into<String>) -> ModelBuilder<Embedding> {
         ModelBuilder::new(id)
@@ -128,7 +167,7 @@ impl Model<Embedding, Standard, Prompt> {
     ) -> Result<EmbeddingsResponse, InvocationError> {
         let mut invocation = input
             .into()
-            .model(self.id.clone())
+            .model(self.id().to_owned())
             .client_config(self.client_config.clone());
         if let Some(keep_alive) = &self.keep_alive {
             invocation = invocation.keep_alive(keep_alive.clone());
@@ -149,7 +188,7 @@ impl<T: DeserializeOwned> Model<Llm, Structured<T>, Prompt> {
             .chain(input.into_messages())
             .collect();
         let mut invocation = Invocation::chat()
-            .model(self.id.clone())
+            .model(self.id().to_owned())
             .client_config(self.client_config.clone())
             .messages(messages)
             .options(self.options.clone())
@@ -203,7 +242,7 @@ impl Model<Llm, Standard, TemplateInput> {
             .chain([Message::user(prompt)])
             .collect();
         let mut invocation = Invocation::chat()
-            .model(self.id.clone())
+            .model(self.id().to_owned())
             .client_config(self.client_config.clone())
             .messages(messages)
             .options(self.options.clone())
@@ -246,7 +285,7 @@ impl<T: DeserializeOwned> Model<Llm, Structured<T>, TemplateInput> {
             .chain([Message::user(prompt)])
             .collect();
         let mut invocation = Invocation::chat()
-            .model(self.id.clone())
+            .model(self.id().to_owned())
             .client_config(self.client_config.clone())
             .messages(messages)
             .options(self.options.clone())
@@ -270,6 +309,28 @@ impl<T: DeserializeOwned> Model<Llm, Structured<T>, TemplateInput> {
 }
 
 impl<O, I> Model<Llm, O, I> {
+    pub fn id(&self) -> &str {
+        self.id
+            .as_deref()
+            .expect("LLM models require an identifier")
+    }
+
+    pub fn options(&self) -> &InferenceOptions {
+        &self.options
+    }
+
+    pub fn stream_by_default(&self) -> bool {
+        self.stream
+    }
+
+    pub fn keep_alive(&self) -> Option<&str> {
+        self.keep_alive.as_deref()
+    }
+
+    pub fn export_config(&self) -> InferenceOptions {
+        self.options.clone()
+    }
+
     pub fn history(&self) -> &[Message] {
         &self.history
     }
@@ -318,33 +379,25 @@ impl<O, I> Model<Llm, O, I> {
     }
 }
 
-impl<M, O, I> Model<M, O, I> {
+impl<O, I> Model<Embedding, O, I> {
     pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn client_config(&self) -> &ClientConfig {
-        &self.client_config
-    }
-
-    pub fn options(&self) -> &InferenceOptions {
-        &self.options
-    }
-
-    pub fn stream_by_default(&self) -> bool {
-        self.stream
+        self.id
+            .as_deref()
+            .expect("embedding models require an identifier")
     }
 
     pub fn keep_alive(&self) -> Option<&str> {
         self.keep_alive.as_deref()
     }
+}
 
-    pub fn export_config(&self) -> InferenceOptions {
-        self.options.clone()
+impl<M, O, I> Model<M, O, I> {
+    pub fn client_config(&self) -> &ClientConfig {
+        &self.client_config
     }
 
     pub(crate) fn new(
-        id: String,
+        id: Option<String>,
         client_config: ClientConfig,
         options: InferenceOptions,
         stream: bool,
@@ -356,7 +409,7 @@ impl<M, O, I> Model<M, O, I> {
         name: Option<String>,
         notification_channel: Option<Sender<Notification>>,
         template: Option<Template>,
-        kind: PhantomData<(M, O, I)>,
+        kind: M,
     ) -> Self {
         Self {
             id,
@@ -372,6 +425,7 @@ impl<M, O, I> Model<M, O, I> {
             notification_channel,
             template,
             kind,
+            markers: PhantomData,
         }
     }
 }

@@ -162,6 +162,7 @@ impl From<InvocationError> for AgentBuildError {
             InvocationError::InferenceError(err) => AgentBuildError::InferenceClient(err),
             InvocationError::InvalidJsonSchema(err) => AgentBuildError::InvalidJsonSchema(err),
             InvocationError::InvalidStructuredOutput(err) => AgentBuildError::Unsupported(err),
+            InvocationError::InvalidSystemOneQuestion(err) => AgentBuildError::Unsupported(err),
             InvocationError::InputNotDefined => {
                 AgentBuildError::Unsupported("model builder received invocation input".into())
             }

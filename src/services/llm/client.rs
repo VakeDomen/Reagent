@@ -27,6 +27,7 @@ pub enum Provider {
     Mistral,
     Anthropic,
     OpenRouter,
+    SystemOne,
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +118,11 @@ impl TryFrom<ClientConfig> for InferenceClient {
             Provider::Mistral => ClientInner::Mistral(MistralClient::new(cfg)?),
             Provider::Anthropic => ClientInner::Anthropic(AnthropicClient::new(cfg)?),
             Provider::OpenRouter => ClientInner::OpenRouter(OpenRouterClient::new(cfg)?),
+            Provider::SystemOne => {
+                return Err(InferenceClientError::Unsupported(
+                    "System One uses structured evaluation, not chat or embeddings".into(),
+                ))
+            }
         };
         Ok(Self {
             config,
