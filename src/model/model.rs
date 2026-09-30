@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 
 use crate::invocation::{Standard, Structured};
 use crate::services::llm::ResponseFormatConfig;
-use crate::services::systemone::{HasQuestions, NoQuestions, QuestionSet};
+use crate::services::systemone::{HasOperations, NoOperations, OperationSet};
 use crate::{
     ChatResponse, ClientConfig, EmbeddingsResponse, InferenceOptions, Invocation, InvocationError,
     Message, ModelBuilder, Notification, Prompt, SchemaSpec, SystemOneResponse, Template,
@@ -54,12 +54,12 @@ pub struct Embedding;
 
 #[derive(Debug, Clone, Default)]
 pub struct SystemOne {
-    pub(crate) questions: QuestionSet,
+    pub(crate) operations: OperationSet,
 }
 
 pub type LlmModel = Model<Llm, Standard, Prompt>;
 pub type EmbeddingModel = Model<Embedding>;
-pub type SystemOneModel = Model<SystemOne, Standard, HasQuestions>;
+pub type SystemOneModel = Model<SystemOne, Standard, HasOperations>;
 
 #[derive(Clone, Debug)]
 pub struct Model<M = Llm, O = Standard, I = Prompt> {
@@ -124,21 +124,21 @@ impl Model<Llm, Standard, Prompt> {
     }
 }
 
-impl Model<SystemOne, Standard, NoQuestions> {
+impl Model<SystemOne, Standard, NoOperations> {
     /// Start a reusable System One model without requiring a model identifier.
-    pub fn systemone() -> ModelBuilder<SystemOne, Standard, NoQuestions> {
+    pub fn systemone() -> ModelBuilder<SystemOne, Standard, NoOperations> {
         ModelBuilder::systemone()
     }
 }
 
-impl Model<SystemOne, Standard, HasQuestions> {
-    /// Evaluate a new state using the configured questions without retaining it.
+impl Model<SystemOne, Standard, HasOperations> {
+    /// Evaluate a new state using the configured operations without retaining it.
     pub async fn invoke(
         &self,
         state: impl Into<Value>,
     ) -> Result<SystemOneResponse, InvocationError> {
         let mut invocation = Invocation::systemone(state)
-            .with_questions(self.kind.questions.clone())
+            .with_operations(self.kind.operations.clone())
             .client_config(self.client_config.clone());
         if let Some(id) = &self.id {
             invocation = invocation.model(id.clone());
@@ -150,8 +150,8 @@ impl Model<SystemOne, Standard, HasQuestions> {
         self.id.as_deref()
     }
 
-    pub fn questions(&self) -> &std::collections::BTreeMap<String, crate::SystemOneQuestion> {
-        &self.kind.questions.questions
+    pub fn operations(&self) -> &std::collections::BTreeMap<String, crate::SystemOneOperation> {
+        &self.kind.operations.operations
     }
 }
 

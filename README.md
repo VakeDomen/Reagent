@@ -291,7 +291,7 @@ let second = model.invoke("Can I exchange these shoes?").await?;
 The model identifier is optional for the local `/v1/systemone` API; use
 `.model("systemone/...")` when selecting a specific model. The default endpoint
 is `http://localhost:8080/v1/systemone`. Advanced structured question content
-is available through `.question(key, SystemOneQuestion::...)`.
+is available through `.operation(key, SystemOneOperation::...)`.
 
 Images are attached to messages directly:
 

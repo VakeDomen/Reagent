@@ -3,44 +3,44 @@ use std::marker::PhantomData;
 use serde_json::Value;
 
 use crate::{
-    services::systemone::{HasQuestions, NoQuestions, QuestionSet, SystemOneClient},
-    Invocation, InvocationError, NoulCriteria, Question, SystemOneQuestion, SystemOneRequest,
-    SystemOneResponse,
+    services::systemone::{HasOperations, NoOperations, OperationSet, SystemOneClient},
+    ChoiceDescription, ChoiceLabel, Criterion, Invocation, InvocationError, NoulCriteria, Question,
+    SystemOneOperation, SystemOneRequest, SystemOneResponse,
 };
 
-/// State and named questions for a single System One evaluation.
+/// State and named operations for a single System One evaluation.
 #[derive(Debug, Clone)]
-pub struct SystemOneCall<Q = NoQuestions> {
+pub struct SystemOneCall<O = NoOperations> {
     state: Value,
-    questions: QuestionSet,
-    marker: PhantomData<Q>,
+    operations: OperationSet,
+    marker: PhantomData<O>,
 }
 
-pub type SystemOneInvocation<Q = NoQuestions> = Invocation<SystemOneCall<Q>>;
+pub type SystemOneInvocation<O = NoOperations> = Invocation<SystemOneCall<O>>;
 
-impl Invocation<SystemOneCall<NoQuestions>> {
+impl Invocation<SystemOneCall<NoOperations>> {
     pub fn systemone(state: impl Into<Value>) -> Self {
         Self::new(SystemOneCall {
             state: state.into(),
-            questions: QuestionSet::default(),
+            operations: OperationSet::default(),
             marker: PhantomData,
         })
     }
 }
 
-impl<Q> Invocation<SystemOneCall<Q>> {
-    /// Add a named question. This also accepts advanced structured questions.
-    pub fn question(
+impl<O> Invocation<SystemOneCall<O>> {
+    /// Add a named operation, including one with structured instructions or criteria.
+    pub fn operation(
         self,
         key: impl Into<String>,
-        question: SystemOneQuestion,
-    ) -> Invocation<SystemOneCall<HasQuestions>> {
+        operation: SystemOneOperation,
+    ) -> Invocation<SystemOneCall<HasOperations>> {
         let key = key.into();
         self.map_request(|mut call| {
-            call.questions.insert(key, question);
+            call.operations.insert(key, operation);
             SystemOneCall {
                 state: call.state,
-                questions: call.questions,
+                operations: call.operations,
                 marker: PhantomData,
             }
         })
@@ -50,8 +50,8 @@ impl<Q> Invocation<SystemOneCall<Q>> {
         self,
         key: impl Into<String>,
         instructions: impl Into<Question>,
-    ) -> Invocation<SystemOneCall<HasQuestions>> {
-        self.question(key, SystemOneQuestion::noul(instructions))
+    ) -> Invocation<SystemOneCall<HasOperations>> {
+        self.operation(key, SystemOneOperation::noul(instructions))
     }
 
     pub fn noul_with_criteria(
@@ -59,10 +59,10 @@ impl<Q> Invocation<SystemOneCall<Q>> {
         key: impl Into<String>,
         instructions: impl Into<Question>,
         criteria: NoulCriteria,
-    ) -> Invocation<SystemOneCall<HasQuestions>> {
-        self.question(
+    ) -> Invocation<SystemOneCall<HasOperations>> {
+        self.operation(
             key,
-            SystemOneQuestion::noul_with_criteria(instructions, criteria),
+            SystemOneOperation::noul_with_criteria(instructions, criteria),
         )
     }
 
@@ -71,13 +71,13 @@ impl<Q> Invocation<SystemOneCall<Q>> {
         key: impl Into<String>,
         instructions: impl Into<Question>,
         criteria: C,
-    ) -> Invocation<SystemOneCall<HasQuestions>>
+    ) -> Invocation<SystemOneCall<HasOperations>>
     where
-        K: Into<String>,
-        V: Into<String>,
+        K: Into<ChoiceLabel>,
+        V: Into<ChoiceDescription>,
         C: IntoIterator<Item = (K, V)>,
     {
-        self.question(key, SystemOneQuestion::choice(instructions, criteria))
+        self.operation(key, SystemOneOperation::choice(instructions, criteria))
     }
 
     pub fn score<V, C>(
@@ -85,27 +85,27 @@ impl<Q> Invocation<SystemOneCall<Q>> {
         key: impl Into<String>,
         instructions: impl Into<Question>,
         criteria: C,
-    ) -> Invocation<SystemOneCall<HasQuestions>>
+    ) -> Invocation<SystemOneCall<HasOperations>>
     where
-        V: Into<String>,
+        V: Into<Criterion>,
         C: IntoIterator<Item = V>,
     {
-        self.question(key, SystemOneQuestion::score(instructions, criteria))
+        self.operation(key, SystemOneOperation::score(instructions, criteria))
     }
 }
 
-impl Invocation<SystemOneCall<HasQuestions>> {
+impl Invocation<SystemOneCall<HasOperations>> {
     pub async fn invoke(self) -> Result<SystemOneResponse, InvocationError> {
         self.request
-            .questions
+            .operations
             .validate()
-            .map_err(InvocationError::InvalidSystemOneQuestion)?;
+            .map_err(InvocationError::InvalidSystemOneOperation)?;
         let client = SystemOneClient::new(self.client_config)?;
         Ok(client
             .evaluate(SystemOneRequest {
                 state: self.request.state,
                 model: self.model,
-                questions: self.request.questions.questions,
+                questions: self.request.operations.operations,
             })
             .await?)
     }
@@ -119,24 +119,84 @@ mod tests {
     use std::net::TcpListener;
 
     #[test]
-    fn multiple_questions_keep_their_keys_and_model_is_optional() {
+    fn multiple_operations_keep_their_keys_and_model_is_optional() {
         let invocation = Invocation::systemone("wrong size")
             .noul("refund", "Does the customer ask for a refund?")
             .noul(
                 "exchange",
                 Question::from("Does the customer ask for an exchange?"),
             );
-        assert_eq!(invocation.request.questions.questions.len(), 2);
+        assert_eq!(invocation.request.operations.operations.len(), 2);
         assert!(invocation.model.is_none());
         let request = SystemOneRequest {
             state: invocation.request.state,
             model: invocation.model,
-            questions: invocation.request.questions.questions,
+            questions: invocation.request.operations.operations,
         };
         let body = serde_json::to_value(request).unwrap();
         assert!(body.get("model").is_none());
         assert_eq!(body["questions"]["refund"]["type"], "noul");
         assert_eq!(body["questions"]["exchange"]["type"], "noul");
+    }
+
+    #[test]
+    fn an_operation_accepts_structured_instructions() {
+        let invocation = Invocation::systemone("wrong size").operation(
+            "refund",
+            SystemOneOperation::Noul {
+                instructions: serde_json::json!({
+                    "question": "Is a refund requested?",
+                    "exclude": "A request for exchange only"
+                }),
+                criteria: None,
+            },
+        );
+        invocation.request.operations.validate().unwrap();
+        let request = SystemOneRequest {
+            state: invocation.request.state,
+            model: invocation.model,
+            questions: invocation.request.operations.operations,
+        };
+        let body = serde_json::to_value(request).unwrap();
+        assert_eq!(
+            body["questions"]["refund"]["instructions"]["exclude"],
+            "A request for exchange only"
+        );
+    }
+
+    #[test]
+    fn semantic_string_types_serialize_to_the_simple_api_shape() {
+        let invocation = Invocation::systemone("wrong size")
+            .choice(
+                "department",
+                Question::from("Which department handles this?"),
+                [
+                    (
+                        ChoiceLabel::from("returns"),
+                        ChoiceDescription::from("Returns and exchanges"),
+                    ),
+                    (
+                        ChoiceLabel::from("shipping"),
+                        ChoiceDescription::from("Delivery issues"),
+                    ),
+                ],
+            )
+            .score(
+                "severity",
+                Question::from("How severe is the problem?"),
+                [Criterion::from("Minor"), Criterion::from("Major")],
+            );
+        let body = serde_json::to_value(SystemOneRequest {
+            state: invocation.request.state,
+            model: invocation.model,
+            questions: invocation.request.operations.operations,
+        })
+        .unwrap();
+        assert_eq!(
+            body["questions"]["department"]["criteria"]["returns"],
+            "Returns and exchanges"
+        );
+        assert_eq!(body["questions"]["severity"]["criteria"][0], "Minor");
     }
 
     #[tokio::test]
@@ -148,7 +208,7 @@ mod tests {
             .await;
         assert!(matches!(
             duplicate,
-            Err(InvocationError::InvalidSystemOneQuestion(message)) if message.contains("duplicate")
+            Err(InvocationError::InvalidSystemOneOperation(message)) if message.contains("duplicate")
         ));
 
         let invalid = Invocation::systemone("state")
@@ -157,7 +217,7 @@ mod tests {
             .await;
         assert!(matches!(
             invalid,
-            Err(InvocationError::InvalidSystemOneQuestion(message)) if message.contains("2 to 255")
+            Err(InvocationError::InvalidSystemOneOperation(message)) if message.contains("2 to 255")
         ));
     }
 
@@ -230,14 +290,14 @@ mod tests {
     }
 }
 
-impl Invocation<SystemOneCall<NoQuestions>> {
-    pub(crate) fn with_questions(
+impl Invocation<SystemOneCall<NoOperations>> {
+    pub(crate) fn with_operations(
         self,
-        questions: QuestionSet,
-    ) -> Invocation<SystemOneCall<HasQuestions>> {
+        operations: OperationSet,
+    ) -> Invocation<SystemOneCall<HasOperations>> {
         self.map_request(|call| SystemOneCall {
             state: call.state,
-            questions,
+            operations,
             marker: PhantomData,
         })
     }

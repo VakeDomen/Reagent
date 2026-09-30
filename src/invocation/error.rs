@@ -8,7 +8,7 @@ pub enum InvocationError {
     /// Provided JSON schema for response format could not be parsed.
     InvalidJsonSchema(String),
     InvalidStructuredOutput(String),
-    InvalidSystemOneQuestion(String),
+    InvalidSystemOneOperation(String),
 }
 
 impl From<InferenceClientError> for InvocationError {
@@ -31,8 +31,8 @@ impl std::fmt::Display for InvocationError {
             InvocationError::InvalidStructuredOutput(e) => {
                 write!(f, "Invalid structured output: {e}")
             }
-            InvocationError::InvalidSystemOneQuestion(e) => {
-                write!(f, "Invalid System One question: {e}")
+            InvocationError::InvalidSystemOneOperation(e) => {
+                write!(f, "Invalid System One operation: {e}")
             }
         }
     }

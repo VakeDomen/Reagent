@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use reqwest::{
@@ -9,7 +10,7 @@ use serde_json::Value;
 
 use crate::{services::llm::InferenceClientError, ClientConfig, Provider};
 
-/// Instruction text used by the common System One question methods.
+/// The text of a System One question/instruction.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Question(pub String);
@@ -20,34 +21,73 @@ impl<T: Into<String>> From<T> for Question {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct NoQuestions;
+/// A choice's caller-defined answer label.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ChoiceLabel(pub String);
+
+impl<T: Into<String>> From<T> for ChoiceLabel {
+    fn from(value: T) -> Self {
+        Self(value.into())
+    }
+}
+
+impl Borrow<str> for ChoiceLabel {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A description associated with a choice label.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ChoiceDescription(pub String);
+
+impl<T: Into<String>> From<T> for ChoiceDescription {
+    fn from(value: T) -> Self {
+        Self(value.into())
+    }
+}
+
+/// One level in a score operation's ordered criteria.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Criterion(pub String);
+
+impl<T: Into<String>> From<T> for Criterion {
+    fn from(value: T) -> Self {
+        Self(value.into())
+    }
+}
 
 #[derive(Debug, Clone, Default)]
-pub struct HasQuestions;
+pub struct NoOperations;
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct QuestionSet {
-    pub(crate) questions: BTreeMap<String, SystemOneQuestion>,
+pub struct HasOperations;
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OperationSet {
+    pub(crate) operations: BTreeMap<String, SystemOneOperation>,
     duplicates: BTreeSet<String>,
 }
 
-impl QuestionSet {
-    pub(crate) fn insert(&mut self, key: String, question: SystemOneQuestion) {
-        if self.questions.insert(key.clone(), question).is_some() {
+impl OperationSet {
+    pub(crate) fn insert(&mut self, key: String, operation: SystemOneOperation) {
+        if self.operations.insert(key.clone(), operation).is_some() {
             self.duplicates.insert(key);
         }
     }
 
     pub(crate) fn validate(&self) -> Result<(), String> {
-        if self.questions.is_empty() {
-            return Err("at least one question is required".into());
+        if self.operations.is_empty() {
+            return Err("at least one operation is required".into());
         }
         if let Some(key) = self.duplicates.iter().next() {
-            return Err(format!("duplicate question key: {key}"));
+            return Err(format!("duplicate operation key: {key}"));
         }
-        for (key, question) in &self.questions {
-            question
+        for (key, operation) in &self.operations {
+            operation
                 .validate()
                 .map_err(|error| format!("{key}: {error}"))?;
         }
@@ -55,11 +95,11 @@ impl QuestionSet {
     }
 }
 
-/// A question sent to a System One endpoint. `Value` permits the structured
+/// An operation sent to a System One endpoint. `Value` permits the structured
 /// instructions and criteria supported by Jev's advanced API.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
-pub enum SystemOneQuestion {
+pub enum SystemOneOperation {
     Noul {
         instructions: Value,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,7 +107,7 @@ pub enum SystemOneQuestion {
     },
     Choice {
         instructions: Value,
-        criteria: BTreeMap<String, Value>,
+        criteria: BTreeMap<ChoiceLabel, Value>,
     },
     Score {
         instructions: Value,
@@ -92,7 +132,7 @@ impl NoulCriteria {
     }
 }
 
-impl SystemOneQuestion {
+impl SystemOneOperation {
     pub fn noul(instructions: impl Into<Question>) -> Self {
         Self::Noul {
             instructions: Value::String(instructions.into().0),
@@ -109,29 +149,29 @@ impl SystemOneQuestion {
 
     pub fn choice<K, V, C>(instructions: impl Into<Question>, criteria: C) -> Self
     where
-        K: Into<String>,
-        V: Into<String>,
+        K: Into<ChoiceLabel>,
+        V: Into<ChoiceDescription>,
         C: IntoIterator<Item = (K, V)>,
     {
         Self::Choice {
             instructions: Value::String(instructions.into().0),
             criteria: criteria
                 .into_iter()
-                .map(|(key, description)| (key.into(), Value::String(description.into())))
+                .map(|(key, description)| (key.into(), Value::String(description.into().0)))
                 .collect(),
         }
     }
 
     pub fn score<V, C>(instructions: impl Into<Question>, criteria: C) -> Self
     where
-        V: Into<String>,
+        V: Into<Criterion>,
         C: IntoIterator<Item = V>,
     {
         Self::Score {
             instructions: Value::String(instructions.into().0),
             criteria: criteria
                 .into_iter()
-                .map(|level| Value::String(level.into()))
+                .map(|level| Value::String(level.into().0))
                 .collect(),
         }
     }
@@ -177,7 +217,7 @@ pub struct SystemOneRequest {
     pub state: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    pub questions: BTreeMap<String, SystemOneQuestion>,
+    pub questions: BTreeMap<String, SystemOneOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -202,9 +242,9 @@ pub struct NoulAnswer {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChoiceAnswer {
-    pub choice: String,
+    pub choice: ChoiceLabel,
     pub confidence: f64,
-    pub probabilities: BTreeMap<String, f64>,
+    pub probabilities: BTreeMap<ChoiceLabel, f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

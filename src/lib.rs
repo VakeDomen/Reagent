@@ -83,8 +83,9 @@ pub use crate::invocation::{
 pub use crate::model::*;
 pub use crate::notifications::*;
 pub use crate::services::systemone::{
-    ChoiceAnswer, HasQuestions, NoQuestions, NoulAnswer, NoulCriteria, Question, ScoreAnswer,
-    SystemOneAnswer, SystemOneQuestion, SystemOneRequest, SystemOneResponse, SystemOneUsage,
+    ChoiceAnswer, ChoiceDescription, ChoiceLabel, Criterion, HasOperations, NoOperations,
+    NoulAnswer, NoulCriteria, Question, ScoreAnswer, SystemOneAnswer, SystemOneOperation,
+    SystemOneRequest, SystemOneResponse, SystemOneUsage,
 };
 pub use crate::skills::*;
 pub use crate::templates::*;
@@ -104,14 +105,15 @@ pub use crate::services::mcp::mcp_tool_builder::McpServerType;
 pub mod prelude {
     pub use crate::{
         flow, Agent, AgentBuildError, AgentBuilder, AgentError, ChatInvocation, ChatRequest,
-        ChatResponse, ChoiceAnswer, ClientConfig, Embedding, EmbeddingInvocation, EmbeddingModel,
-        EmbeddingModelBuilder, EmbeddingsResponse, Flow, InferenceOptions, Invocation, Llm,
-        LlmModel, LlmModelBuilder, LoadTemplateError, McpIntegrationError, McpServerType, Message,
-        Model, ModelBuilder, Notification, NotificationContent, NoulAnswer, NoulCriteria, Prompt,
-        Provider, Question, Role, SchemaSpec, ScoreAnswer, Skill, SkillLoadError, SkillResource,
-        SkillResourceKind, Standard, Structured, SystemOne, SystemOneAnswer, SystemOneInvocation,
-        SystemOneModel, SystemOneModelBuilder, SystemOneQuestion, SystemOneResponse, Template,
-        TemplateDataSource, TemplateInput, Tool, ToolBuilder, ToolExecutionError,
+        ChatResponse, ChoiceAnswer, ChoiceDescription, ChoiceLabel, ClientConfig, Criterion,
+        Embedding, EmbeddingInvocation, EmbeddingModel, EmbeddingModelBuilder, EmbeddingsResponse,
+        Flow, InferenceOptions, Invocation, Llm, LlmModel, LlmModelBuilder, LoadTemplateError,
+        McpIntegrationError, McpServerType, Message, Model, ModelBuilder, Notification,
+        NotificationContent, NoulAnswer, NoulCriteria, Prompt, Provider, Question, Role,
+        SchemaSpec, ScoreAnswer, Skill, SkillLoadError, SkillResource, SkillResourceKind, Standard,
+        Structured, SystemOne, SystemOneAnswer, SystemOneInvocation, SystemOneModel,
+        SystemOneModelBuilder, SystemOneOperation, SystemOneResponse, Template, TemplateDataSource,
+        TemplateInput, Tool, ToolBuilder, ToolExecutionError,
     };
 }
 

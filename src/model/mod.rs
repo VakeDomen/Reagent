@@ -115,7 +115,7 @@ fn model_builder_can_create_a_notification_receiver() {
 }
 
 #[test]
-fn systemone_model_can_reuse_multiple_questions_without_a_model_id() {
+fn systemone_model_can_reuse_multiple_operations_without_a_model_id() {
     let model = Model::systemone()
         .noul("refund", "Is a refund requested?")
         .score("severity", "How severe?", ["Low", "Medium", "High"])
@@ -123,5 +123,5 @@ fn systemone_model_can_reuse_multiple_questions_without_a_model_id() {
         .unwrap();
 
     assert_eq!(model.id(), None);
-    assert_eq!(model.questions().len(), 2);
+    assert_eq!(model.operations().len(), 2);
 }

@@ -2,17 +2,18 @@ use std::{collections::HashMap, marker::PhantomData, path::PathBuf};
 
 use crate::{
     services::llm::{ClientBuilder, ResponseFormatConfig},
-    services::systemone::{HasQuestions, NoQuestions, SystemOneClient},
-    ClientConfig, Embedding, InferenceOptions, InvocationError, Llm, LoadTemplateError, Message,
-    Model, Notification, NoulCriteria, Prompt, Provider, Question, SchemaSpec, Standard,
-    Structured, SystemOne, SystemOneQuestion, Template, TemplateDataSource, TemplateInput, Tool,
+    services::systemone::{HasOperations, NoOperations, SystemOneClient},
+    ChoiceDescription, ChoiceLabel, ClientConfig, Criterion, Embedding, InferenceOptions,
+    InvocationError, Llm, LoadTemplateError, Message, Model, Notification, NoulCriteria, Prompt,
+    Provider, Question, SchemaSpec, Standard, Structured, SystemOne, SystemOneOperation, Template,
+    TemplateDataSource, TemplateInput, Tool,
 };
 use serde_json::Value;
 use tokio::sync::mpsc::{self, Sender};
 
 pub type LlmModelBuilder = ModelBuilder<Llm, Standard>;
 pub type EmbeddingModelBuilder = ModelBuilder<Embedding>;
-pub type SystemOneModelBuilder<Q = NoQuestions> = ModelBuilder<SystemOne, Standard, Q>;
+pub type SystemOneModelBuilder<O = NoOperations> = ModelBuilder<SystemOne, Standard, O>;
 
 /// Kinds and input states for which a model is ready to build.
 #[doc(hidden)]
@@ -51,15 +52,15 @@ impl<I> BuildableModel<Embedding> for (Embedding, I) {
     }
 }
 
-impl BuildableModel<SystemOne> for (SystemOne, HasQuestions) {
+impl BuildableModel<SystemOne> for (SystemOne, HasOperations) {
     fn validate(
         kind: &SystemOne,
         _: Option<&str>,
         config: &ClientConfig,
     ) -> Result<(), InvocationError> {
-        kind.questions
+        kind.operations
             .validate()
-            .map_err(InvocationError::InvalidSystemOneQuestion)?;
+            .map_err(InvocationError::InvalidSystemOneOperation)?;
         SystemOneClient::new(config.clone())?;
         Ok(())
     }
@@ -196,7 +197,7 @@ impl<M, O, I> ModelBuilder<M, O, I> {
     }
 }
 
-impl ModelBuilder<SystemOne, Standard, NoQuestions> {
+impl ModelBuilder<SystemOne, Standard, NoOperations> {
     pub fn systemone() -> Self {
         let mut builder = Self::default();
         builder.client_config.provider = Some(Provider::SystemOne);
@@ -204,14 +205,14 @@ impl ModelBuilder<SystemOne, Standard, NoQuestions> {
     }
 }
 
-impl<Q> ModelBuilder<SystemOne, Standard, Q> {
-    /// Add a named question, including an advanced structured question.
-    pub fn question(
+impl<O> ModelBuilder<SystemOne, Standard, O> {
+    /// Add a named operation, including one with structured instructions or criteria.
+    pub fn operation(
         mut self,
         key: impl Into<String>,
-        question: SystemOneQuestion,
-    ) -> ModelBuilder<SystemOne, Standard, HasQuestions> {
-        self.kind.questions.insert(key.into(), question);
+        operation: SystemOneOperation,
+    ) -> ModelBuilder<SystemOne, Standard, HasOperations> {
+        self.kind.operations.insert(key.into(), operation);
         ModelBuilder {
             id: self.id,
             client_config: self.client_config,
@@ -234,8 +235,8 @@ impl<Q> ModelBuilder<SystemOne, Standard, Q> {
         self,
         key: impl Into<String>,
         instructions: impl Into<Question>,
-    ) -> ModelBuilder<SystemOne, Standard, HasQuestions> {
-        self.question(key, SystemOneQuestion::noul(instructions))
+    ) -> ModelBuilder<SystemOne, Standard, HasOperations> {
+        self.operation(key, SystemOneOperation::noul(instructions))
     }
 
     pub fn noul_with_criteria(
@@ -243,10 +244,10 @@ impl<Q> ModelBuilder<SystemOne, Standard, Q> {
         key: impl Into<String>,
         instructions: impl Into<Question>,
         criteria: NoulCriteria,
-    ) -> ModelBuilder<SystemOne, Standard, HasQuestions> {
-        self.question(
+    ) -> ModelBuilder<SystemOne, Standard, HasOperations> {
+        self.operation(
             key,
-            SystemOneQuestion::noul_with_criteria(instructions, criteria),
+            SystemOneOperation::noul_with_criteria(instructions, criteria),
         )
     }
 
@@ -255,13 +256,13 @@ impl<Q> ModelBuilder<SystemOne, Standard, Q> {
         key: impl Into<String>,
         instructions: impl Into<Question>,
         criteria: C,
-    ) -> ModelBuilder<SystemOne, Standard, HasQuestions>
+    ) -> ModelBuilder<SystemOne, Standard, HasOperations>
     where
-        K: Into<String>,
-        V: Into<String>,
+        K: Into<ChoiceLabel>,
+        V: Into<ChoiceDescription>,
         C: IntoIterator<Item = (K, V)>,
     {
-        self.question(key, SystemOneQuestion::choice(instructions, criteria))
+        self.operation(key, SystemOneOperation::choice(instructions, criteria))
     }
 
     pub fn score<V, C>(
@@ -269,12 +270,12 @@ impl<Q> ModelBuilder<SystemOne, Standard, Q> {
         key: impl Into<String>,
         instructions: impl Into<Question>,
         criteria: C,
-    ) -> ModelBuilder<SystemOne, Standard, HasQuestions>
+    ) -> ModelBuilder<SystemOne, Standard, HasOperations>
     where
-        V: Into<String>,
+        V: Into<Criterion>,
         C: IntoIterator<Item = V>,
     {
-        self.question(key, SystemOneQuestion::score(instructions, criteria))
+        self.operation(key, SystemOneOperation::score(instructions, criteria))
     }
 }
 
